@@ -26,6 +26,9 @@ public sealed class FactoryPaths(string repoRoot)
     /// <summary>Which toolchain checks passed on the mainline, keyed by commit.</summary>
     public string BaselineFile => Path.Combine(Root, "baseline.json");
 
+    /// <summary>Point-in-time snapshot of the running factory, for external readers.</summary>
+    public string StatusFile => Path.Combine(Root, "status.json");
+
     public bool Exists => File.Exists(Config);
 
     public void EnsureCreated()
