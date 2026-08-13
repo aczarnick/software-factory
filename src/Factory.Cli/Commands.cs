@@ -291,6 +291,22 @@ public static class Commands
         return 0;
     }
 
+    public static int Cancel(CommandLine cli)
+    {
+        using var host = OpenOrInit(cli);
+        var id = cli.First;
+        if (id is null || !host.Services.State.Items.TryGetValue(id, out var item))
+        {
+            Output.Error($"no work item '{id}'");
+            return 1;
+        }
+
+        var cancelled = host.Transition(item, WorkItemState.Cancelled, "cancelled");
+        host.Update(cancelled);
+        Output.Success($"{item.Id}  cancelled");
+        return 0;
+    }
+
     // ── inspection ──────────────────────────────────────────────────────────
 
     public static int Status(CommandLine cli)
