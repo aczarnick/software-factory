@@ -83,6 +83,43 @@ public class AgentProfileTests
 
         Assert.Equal("1.25", ArgValue(CliAgentTransport.BuildArgs(request), "--max-budget-usd"));
     }
+
+    [Fact]
+    public void Root_gets_the_sandbox_opt_in_that_bypassPermissions_requires()
+    {
+        // Without it the CLI refuses the run outright — "--dangerously-skip-permissions cannot
+        // be used with root/sudo privileges" — and every station in a root container fails.
+        var thick = AgentProfile.Thick(ModelTier.Sonnet, ["Read", "Bash"]);
+
+        Assert.True(CliAgentTransport.NeedsSandboxOptIn(thick, inherited: null, isRoot: true));
+        Assert.False(CliAgentTransport.NeedsSandboxOptIn(thick, inherited: null, isRoot: false));
+    }
+
+    [Fact]
+    public void An_inherited_sandbox_setting_is_never_overridden()
+    {
+        var thick = AgentProfile.Thick(ModelTier.Sonnet, ["Read"]);
+
+        Assert.False(CliAgentTransport.NeedsSandboxOptIn(thick, inherited: "0", isRoot: true));
+        Assert.False(CliAgentTransport.NeedsSandboxOptIn(thick, inherited: "1", isRoot: true));
+    }
+
+    [Fact]
+    public void Thin_stations_never_need_the_sandbox_opt_in()
+    {
+        // Thin runs carry no tools and no permission mode, so root is not a constraint on them.
+        var thin = AgentProfile.Thin(ModelTier.Haiku, "sys");
+
+        Assert.False(CliAgentTransport.NeedsSandboxOptIn(thin, inherited: null, isRoot: true));
+    }
+
+    [Fact]
+    public void A_station_that_opts_out_of_bypass_is_left_alone()
+    {
+        var prompting = AgentProfile.Thick(ModelTier.Sonnet, ["Read"]) with { PermissionMode = "acceptEdits" };
+
+        Assert.False(CliAgentTransport.NeedsSandboxOptIn(prompting, inherited: null, isRoot: true));
+    }
 }
 
 public class ResultParsingTests

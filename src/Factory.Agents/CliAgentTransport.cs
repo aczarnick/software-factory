@@ -39,6 +39,7 @@ public sealed class CliAgentTransport(string? executable = null, TimeSpan? timeo
         };
 
         foreach (var a in BuildArgs(request)) psi.ArgumentList.Add(a);
+        ApplyEnvironment(psi, request);
 
         using var proc = new Process { StartInfo = psi };
 
@@ -185,6 +186,47 @@ public sealed class CliAgentTransport(string? executable = null, TimeSpan? timeo
 
         return args;
     }
+
+    /// <summary>
+    /// Thick stations run with <c>--permission-mode bypassPermissions</c>, which the CLI treats
+    /// as <c>--dangerously-skip-permissions</c> and refuses outright under uid 0:
+    /// <c>"--dangerously-skip-permissions cannot be used with root/sudo privileges"</c>. Every
+    /// station then fails to produce a result message, so `factory up` dies on the first
+    /// dispatch. Containers routinely run as root, and the CLI's sanctioned escape for exactly
+    /// that case is <c>IS_SANDBOX=1</c> — the container boundary is the sandbox the permission
+    /// prompt would otherwise be standing in for.
+    ///
+    /// An inherited value always wins, so a caller that has deliberately set (or cleared) it
+    /// keeps control.
+    /// </summary>
+    internal static void ApplyEnvironment(ProcessStartInfo psi, AgentRequest request)
+    {
+        if (NeedsSandboxOptIn(
+                request.Profile,
+                Environment.GetEnvironmentVariable("IS_SANDBOX"),
+                IsRoot()))
+        {
+            psi.Environment["IS_SANDBOX"] = "1";
+        }
+    }
+
+    /// <summary>The decision behind <see cref="ApplyEnvironment"/>, separated so it is testable
+    /// without a root process.</summary>
+    internal static bool NeedsSandboxOptIn(AgentProfile profile, string? inherited, bool isRoot) =>
+        isRoot && inherited is null && !profile.IsThin && profile.PermissionMode == "bypassPermissions";
+
+    /// <summary>True when this process is running as uid 0 on a Unix-like host.</summary>
+    internal static bool IsRoot()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS()) return false;
+
+        try { return Geteuid() == 0; }
+        catch (EntryPointNotFoundException) { return false; }
+        catch (DllNotFoundException) { return false; }
+    }
+
+    [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "geteuid")]
+    private static extern uint Geteuid();
 
     private static async Task DrainAsync(StreamReader reader, StringBuilder sink, CancellationToken ct)
     {
