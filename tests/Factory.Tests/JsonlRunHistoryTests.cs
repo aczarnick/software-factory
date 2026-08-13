@@ -88,6 +88,7 @@ public class JsonlRunHistoryTests : IDisposable
 
         Assert.Equal(0.30m, view.PerItemUsd["wi-a"]);
         Assert.Equal(0.10m, view.DailyUsd);
+        Assert.Equal(0m, view.EvolutionDailyUsd);
     }
 
     [Fact]
@@ -97,15 +98,20 @@ public class JsonlRunHistoryTests : IDisposable
         var clock = new FakeTimeProvider(now);
         using var history = Open(clock);
 
-        var item = WorkItem.Create("self-improvement") with
+        var evolutionItem = WorkItem.Create("self-improvement") with
         {
             Provenance = Provenance.FromEvolution("optimiser")
         };
-        history.Append(new WorkItemFiled(item));
-        history.Append(new RunCompleted(Run(item.Id, "implement", 0.40m) with { At = now }));
+        var humanItem = WorkItem.Create("human work");
+
+        history.Append(new WorkItemFiled(evolutionItem));
+        history.Append(new WorkItemFiled(humanItem));
+        history.Append(new RunCompleted(Run(evolutionItem.Id, "implement", 0.40m) with { At = now }));
+        history.Append(new RunCompleted(Run(humanItem.Id, "implement", 0.15m) with { At = now }));
 
         var view = history.ForBudget();
 
+        Assert.Equal(0.55m, view.DailyUsd);
         Assert.Equal(0.40m, view.EvolutionDailyUsd);
     }
 
@@ -128,6 +134,19 @@ public class JsonlRunHistoryTests : IDisposable
         Assert.Equal([1, 2], events.Select(e => e.Seq));
         Assert.IsType<WorkItemFiled>(events[0]);
         Assert.Equal(WorkItemState.Ready, reopened.Replay().Items[item.Id].State);
+    }
+
+    [Fact]
+    public void ReadFrom_returns_only_events_strictly_after_the_given_sequence()
+    {
+        using var history = Open();
+        history.Append(new FactoryNote("one"));
+        history.Append(new FactoryNote("two"));
+        history.Append(new FactoryNote("three"));
+
+        var events = history.ReadFrom(1).ToList();
+
+        Assert.Equal([2, 3], events.Select(e => e.Seq));
     }
 
     [Fact]
