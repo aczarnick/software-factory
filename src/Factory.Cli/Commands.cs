@@ -662,6 +662,66 @@ public static class Commands
         return 0;
     }
 
+    // ── doctor ──────────────────────────────────────────────────────────────
+
+    /// <summary>Checks whether a deployment is actually able to run: a detectable toolchain,
+    /// the claude CLI reachable on PATH, and a blueprint that passes its own validation. Also
+    /// surfaces the model usage windows the governor is currently tracking. Exits non-zero if
+    /// any check fails, so it can gate CI or a pre-flight script.</summary>
+    public static int Doctor(CommandLine cli)
+    {
+        using var host = OpenOrInit(cli, quiet: true);
+        var ok = true;
+
+        Output.Header("Toolchain");
+        var toolchain = Toolchain.Detect(host.Paths.RepoRoot);
+        if (toolchain.IsEmpty)
+        {
+            Output.Warn("no toolchain detected — the check station has nothing to run");
+            ok = false;
+        }
+        else
+        {
+            Output.Success(toolchain.Describe);
+        }
+
+        Output.Header("Claude CLI");
+        var claudeExe = Environment.GetEnvironmentVariable("FACTORY_CLAUDE_BIN") ?? "claude";
+        if (Shell.Which(claudeExe))
+        {
+            Output.Success($"'{claudeExe}' found on PATH");
+        }
+        else
+        {
+            Output.Warn($"'{claudeExe}' not found on PATH — model calls will fail to start");
+            ok = false;
+        }
+
+        Output.Header("Blueprint");
+        var errors = host.Blueprint.Validate().ToList();
+        if (errors.Count == 0)
+        {
+            Output.Success($"'{host.Blueprint.Name}' is valid");
+        }
+        else
+        {
+            foreach (var e in errors) Output.Warn(e);
+            ok = false;
+        }
+
+        Output.Header("Usage windows");
+        var windows = host.Services.Runner.Governor.Windows;
+        if (windows.Count == 0)
+            Output.Info("no usage window data recorded yet");
+        else
+            foreach (var window in windows) Output.Info(window.Describe(DateTimeOffset.UtcNow));
+
+        Output.Line();
+        if (ok) Output.Success("all checks passed");
+        else Output.Error("one or more checks failed");
+        return ok ? 0 : 1;
+    }
+
     // ── help ────────────────────────────────────────────────────────────────
 
     public static int Help()
@@ -682,6 +742,7 @@ public static class Commands
               factory ls [--all]                Backlog
               factory show <id>                 One item in full, with its run history
               factory status                    Backlog, spend, and configuration
+              factory doctor                    Check toolchain, claude CLI, and blueprint health
 
             {Output.Bold("Composition")}
               factory link <path> [--as <name>] [--pipeline]
