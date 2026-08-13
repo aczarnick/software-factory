@@ -9,6 +9,11 @@ namespace Factory.Runtime;
 /// </summary>
 public sealed class LedgerWorkItemStore(IRunHistory history, FactoryState state) : IWorkItemStore
 {
+    /// <summary>Guards compound read-modify-write sequences — <see cref="TryClaim"/> and
+    /// <see cref="Release"/> — where a stale read between the check and the act would let two
+    /// callers claim the same item. Single-<see cref="Record"/> members (<see cref="Add"/>,
+    /// <see cref="Update"/>, <see cref="Transition"/>) do not need it: their atomicity already
+    /// comes from <see cref="IRunHistory"/>'s and <see cref="FactoryState"/>'s own locking.</summary>
     private readonly Lock _gate = new();
 
     public WorkItem Add(WorkItem item)
@@ -53,8 +58,11 @@ public sealed class LedgerWorkItemStore(IRunHistory history, FactoryState state)
 
     public void Release(string id, string reason)
     {
-        if (Get(id) is not { } item) return;
-        Transition(item, WorkItemState.Ready, reason);
+        lock (_gate)
+        {
+            if (Get(id) is not { } item) return;
+            Transition(item, WorkItemState.Ready, reason);
+        }
     }
 
     /// <summary>No-op: a local ledger has no remote to reconcile with.</summary>

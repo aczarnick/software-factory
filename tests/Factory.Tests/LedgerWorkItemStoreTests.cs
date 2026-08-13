@@ -91,9 +91,24 @@ public class LedgerWorkItemStoreTests : IDisposable
         var (store, history) = Open();
         using var _ = history;
 
-        store.Add(WorkItem.Create("proposal"));   // Draft, not Ready
+        var proposal = store.Add(WorkItem.Create("proposal"));   // Draft, not Ready
 
         Assert.Null(store.TryClaim("machine-a"));
+        Assert.Equal(WorkItemState.Draft, store.Get(proposal.Id)!.State);
+    }
+
+    [Fact]
+    public void Update_persists_the_new_field_values()
+    {
+        var (store, history) = Open();
+        using var _ = history;
+
+        var item = store.Add(WorkItem.Create("thing") with { State = WorkItemState.Ready });
+
+        var updated = store.Update(item with { Title = "renamed thing" });
+
+        Assert.Equal("renamed thing", store.Get(item.Id)!.Title);
+        Assert.True(updated.UpdatedAt > item.UpdatedAt);
     }
 
     [Fact]
