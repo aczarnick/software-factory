@@ -56,6 +56,14 @@ public sealed record UsagePolicy
     /// <summary>Slack added after a reported reset time before retrying.</summary>
     public TimeSpan ResetGrace { get; init; } = TimeSpan.FromSeconds(15);
 
+    /// <summary>
+    /// Cooldown applied when a limit is only *inferred* from an error string, with no reported
+    /// reset time. Deliberately short: an inferred limit is a guess, and the retry backoff
+    /// already paces the attempt. Treating a guess like a real window stalls the factory for
+    /// minutes on a single transient error.
+    /// </summary>
+    public TimeSpan InferredCooldown { get; init; } = TimeSpan.FromSeconds(30);
+
     public static readonly UsagePolicy Default = new();
 }
 
@@ -144,9 +152,10 @@ public sealed class UsageGovernor
         {
             Status = RateLimitStatus.Rejected,
             Window = "inferred",
-            // Nothing told us when it clears, so retry after a conservative interval rather
-            // than hammering a ceiling we cannot see.
-            ResetsAt = _clock.GetUtcNow().AddMinutes(5),
+            // Nothing told us when this clears. A short cooldown avoids hammering a ceiling
+            // we cannot see, without mistaking a guess for a measured window — the transport
+            // will report a real one on the next attempt if the limit is genuine.
+            ResetsAt = _clock.GetUtcNow() + Policy.InferredCooldown,
             ObservedAt = _clock.GetUtcNow()
         });
     }

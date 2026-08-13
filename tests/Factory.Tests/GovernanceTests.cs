@@ -237,6 +237,50 @@ public class ToolchainTests : IDisposable
         Assert.True(Toolchain.Detect(_dir).IsEmpty);
     }
 
+    private static Toolchain OneCheck(string name = "build") =>
+        new() { Name = "fake", Checks = [new ToolchainCheck(name, "irrelevant", 30)] };
+
+    [Fact]
+    public async Task A_check_that_fails_once_then_passes_is_recorded_as_flaky_not_broken()
+    {
+        var calls = 0;
+        var results = await ToolchainRunner.RunAsync(OneCheck(), "/tmp", default,
+            (_, _, _) => Task.FromResult(++calls == 1
+                ? new ShellResult(132, "", "csc.dll exited with code 132", false)
+                : new ShellResult(0, "ok", "", false)));
+
+        // Blaming the work for the machine's flakiness is the failure mode being prevented.
+        Assert.True(results[0].Passed);
+        Assert.Equal(2, results[0].Attempts);
+        Assert.True(results[0].WasFlaky);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public async Task A_check_that_fails_twice_is_believed()
+    {
+        var calls = 0;
+        var results = await ToolchainRunner.RunAsync(OneCheck(), "/tmp", default,
+            (_, _, _) => { calls++; return Task.FromResult(new ShellResult(1, "", "real error", false)); });
+
+        Assert.False(results[0].Passed);
+        Assert.Equal(2, results[0].Attempts);
+        Assert.False(results[0].WasFlaky);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public async Task A_check_that_passes_first_time_is_not_run_again()
+    {
+        var calls = 0;
+        var results = await ToolchainRunner.RunAsync(OneCheck(), "/tmp", default,
+            (_, _, _) => { calls++; return Task.FromResult(new ShellResult(0, "ok", "", false)); });
+
+        Assert.True(results[0].Passed);
+        Assert.Equal(1, results[0].Attempts);
+        Assert.Equal(1, calls);
+    }
+
     [Fact]
     public async Task Checks_run_in_order_and_a_failed_build_stops_the_cascade()
     {

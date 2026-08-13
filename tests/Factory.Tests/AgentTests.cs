@@ -255,7 +255,7 @@ public class AgentRunnerTests : IDisposable
     [Fact]
     public async Task Transient_failures_are_retried_and_permanent_ones_are_not()
     {
-        var transient = new FakeTransport().Fail("plan", "rate_limit exceeded");
+        var transient = new FakeTransport().Fail("plan", "connection reset by peer");
         var runner = new AgentRunner(transient, cache: null,
             new AgentRunnerOptions { MaxRetries = 2, BaseBackoff = TimeSpan.Zero });
 
@@ -268,6 +268,29 @@ public class AgentRunnerTests : IDisposable
 
         await strict.RunAsync(Request());
         Assert.Equal(1, permanent.Calls);
+    }
+
+    [Fact]
+    public async Task A_rate_limited_failure_cools_down_before_retrying_rather_than_stalling()
+    {
+        // An inferred limit is a guess, so its cooldown must stay short. Treating it like a
+        // measured window made one transient rate-limit error stall the factory for minutes.
+        var governor = new UsageGovernor(new UsagePolicy { InferredCooldown = TimeSpan.Zero });
+        var transport = new FakeTransport().Fail("plan", "rate_limit_error");
+
+        var runner = new AgentRunner(transport, cache: null,
+            new AgentRunnerOptions { MaxRetries = 1, BaseBackoff = TimeSpan.Zero }, governor);
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        await runner.RunAsync(Request());
+        stopwatch.Stop();
+
+        Assert.Equal(2, transport.Calls);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5),
+            $"retry took {stopwatch.Elapsed.TotalSeconds:F1}s; an inferred limit must not gate it");
+
+        // The default cooldown is short enough that a retry is paced, not parked.
+        Assert.True(UsagePolicy.Default.InferredCooldown <= TimeSpan.FromMinutes(1));
     }
 
     [Fact]

@@ -254,6 +254,11 @@ PREFIX=~/.local ./install.sh
 ## Layout
 
 ```
+SPEC.md                  The design document
+PLAN.md                  The build plan
+examples/                Proof artifacts, each with its own git history (see examples/README.md)
+.factory/                This deployment's own state: ledger, prompt registry, cache, baseline
+
 src/Factory.Core/        Domain, ledger, blueprint, budgets, verification  (no dependencies)
 src/Factory.Agents/      Claude SDK harness: transport, profiles, cache, token economy
 src/Factory.Runtime/     Orchestrator, stations, workspaces, composition

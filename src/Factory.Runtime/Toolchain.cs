@@ -129,7 +129,12 @@ public sealed record Toolchain
     }
 }
 
-public sealed record CheckOutcome(string Name, bool Passed, string Detail, long DurationMs);
+public sealed record CheckOutcome(string Name, bool Passed, string Detail, long DurationMs, int Attempts = 1)
+{
+    /// <summary>True when the check only succeeded on a retry — worth surfacing, because a
+    /// gate that is intermittently wrong is worse than one that is consistently strict.</summary>
+    public bool WasFlaky => Passed && Attempts > 1;
+}
 
 /// <summary>Which checks passed on the mainline before the factory touched anything.</summary>
 public sealed record ToolchainBaseline
@@ -167,27 +172,49 @@ public sealed record ToolchainVerdict(
 
 public static class ToolchainRunner
 {
+    /// <summary>
+    /// Runs the toolchain, retrying a failed check once.
+    ///
+    /// Build tools are not perfectly reliable — the Roslyn compiler server has been observed
+    /// dying outright (`csc.dll exited with code 132`) on roughly half of builds on some
+    /// hosts. A gate that reports a spurious failure is worse than no gate: it blames the work
+    /// for the machine's flakiness, and during baseline capture it does the opposite, recording
+    /// a check as already-broken and silently switching the gate off. A check that fails twice
+    /// is believed; a check that fails once and then passes is recorded as flaky.
+    /// </summary>
     public static async Task<IReadOnlyList<CheckOutcome>> RunAsync(
-        Toolchain toolchain, string workDir, CancellationToken ct = default)
+        Toolchain toolchain, string workDir, CancellationToken ct = default,
+        Func<ToolchainCheck, string, CancellationToken, Task<ShellResult>>? execute = null)
     {
+        var run = execute ?? ((c, dir, token) => Shell.RunAsync(c.Command, dir, c.TimeoutSeconds, token));
         var results = new List<CheckOutcome>();
 
         foreach (var check in toolchain.Checks)
         {
             ct.ThrowIfCancellationRequested();
+
             var started = DateTimeOffset.UtcNow;
-            var run = await Shell.RunAsync(check.Command, workDir, check.TimeoutSeconds, ct).ConfigureAwait(false);
+            var attempts = 1;
+            var result = await run(check, workDir, ct).ConfigureAwait(false);
+
+            if (!result.Ok)
+            {
+                attempts = 2;
+                result = await run(check, workDir, ct).ConfigureAwait(false);
+            }
+
             var elapsed = (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds;
 
             results.Add(new CheckOutcome(
                 check.Name,
-                run.Ok,
-                run.Ok ? $"`{check.Command}` passed" : Explain(check, run),
-                elapsed));
+                result.Ok,
+                result.Ok ? $"`{check.Command}` passed" : Explain(check, result),
+                elapsed,
+                attempts));
 
             // A failed build makes every later check meaningless, so stop and report the
             // thing that actually needs fixing rather than a cascade of consequences.
-            if (!run.Ok && check.Name is "build" or "syntax") break;
+            if (!result.Ok && check.Name is "build" or "syntax") break;
         }
 
         return results;
