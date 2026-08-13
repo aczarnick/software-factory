@@ -1,0 +1,3 @@
+93c1259 factory: integrate wi_e51c3f872e71 — Add VERSION file with initial version string
+39b57de Add VERSION file with initial version string
+bad59f7 factory: initial commit
