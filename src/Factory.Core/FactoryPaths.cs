@@ -19,6 +19,13 @@ public sealed class FactoryPaths(string repoRoot)
     public string WorktreesDir => Path.Combine(Root, "worktrees");
     public string LockFile => Path.Combine(Root, "factory.lock");
 
+    /// <summary>Observed model usage windows, so a restart inside an exhausted window does
+    /// not immediately spend its way back into the same rejection.</summary>
+    public string UsageFile => Path.Combine(Root, "usage.json");
+
+    /// <summary>Which toolchain checks passed on the mainline, keyed by commit.</summary>
+    public string BaselineFile => Path.Combine(Root, "baseline.json");
+
     public bool Exists => File.Exists(Config);
 
     public void EnsureCreated()

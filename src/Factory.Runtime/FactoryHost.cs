@@ -96,7 +96,11 @@ public sealed class FactoryHost : IDisposable
         budget.Restore(state.Runs, state.Items);
 
         var cache = new ResponseCache(paths.CacheDir);
-        var runner = new AgentRunner(transport ?? new CliAgentTransport(), cache);
+
+        var governor = new UsageGovernor(statePath: paths.UsageFile);
+        governor.Changed += message => (log ?? (_ => { }))($"  [usage] {message}");
+
+        var runner = new AgentRunner(transport ?? new CliAgentTransport(), cache, governor: governor);
 
         var services = new FactoryServices
         {
@@ -109,6 +113,7 @@ public sealed class FactoryHost : IDisposable
             Budget = budget,
             Workspace = new Workspace(paths.RepoRoot, paths),
             State = state,
+            Transport = transport,
             Log = log ?? (_ => { })
         };
 
@@ -174,6 +179,7 @@ public sealed class FactoryHost : IDisposable
         StationRole.Decompose => new DecomposeStation(),
         StationRole.Plan => new PlanStation(),
         StationRole.Implement => new ImplementStation(),
+        StationRole.Check => new CheckStation(),
         StationRole.Verify => new VerifyStation(),
         StationRole.Review => new ReviewStation(),
         StationRole.Integrate => new IntegrateStation(),
@@ -191,7 +197,8 @@ public sealed class FactoryHost : IDisposable
     /// <summary>Stations that need an isolated checkout. Planning and decomposition read a
     /// digest instead, so they never pay for a worktree.</summary>
     public static bool NeedsWorkspace(StationRole role) =>
-        role is StationRole.Implement or StationRole.Verify or StationRole.Review or StationRole.Integrate;
+        role is StationRole.Implement or StationRole.Check or StationRole.Verify
+             or StationRole.Review or StationRole.Integrate;
 
     public void Dispose() => _ledger.Dispose();
 }

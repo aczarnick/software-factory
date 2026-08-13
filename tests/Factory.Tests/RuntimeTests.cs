@@ -351,7 +351,9 @@ public class CompositionTests : IDisposable
     [Fact]
     public async Task A_parent_factory_delegates_an_item_to_its_child_and_rolls_up_the_cost()
     {
-        var childTransport = new FakeTransport()
+        // One transport serves the whole composite, as it does in production: the child
+        // inherits it from the parent rather than silently opening a default one.
+        var transport = new FakeTransport()
             .Respond("decompose",
                 """{"children":[{"key":"a","title":"do it","kind":"Feature","requirements":["works"],"acceptanceCriteria":[]}]}""")
             .Respond("plan", """{"files":[{"path":"built.txt","change":"create"}],"steps":["write"],"risks":[]}""")
@@ -361,7 +363,7 @@ public class CompositionTests : IDisposable
                 return FakeTransport.Success("built", cost: 0.05m);
             });
 
-        using (var child = FactoryHost.Init(_child, transport: childTransport)) { }
+        using (var child = FactoryHost.Init(_child, transport: transport)) { }
 
         var composite = Blueprint.Composite("platform", new Dictionary<string, string> { ["worker"] = _child });
         using var parent = FactoryHost.Init(_parent, composite,
@@ -370,8 +372,7 @@ public class CompositionTests : IDisposable
                 Name = "platform",
                 Factories = new Dictionary<string, string> { ["worker"] = _child }
             },
-            transport: new FakeTransport().Respond("decompose",
-                """{"children":[{"key":"a","title":"delegated work","kind":"Feature","requirements":["works"],"acceptanceCriteria":[]}]}"""));
+            transport: transport);
 
         parent.Submit(WorkItem.Create("build it") with
         {

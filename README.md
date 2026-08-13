@@ -73,10 +73,60 @@ The mechanisms, in order of leverage:
 
 ---
 
+## Guarantees, not opinions
+
+Wherever a deterministic tool can answer a question, the factory asks the tool instead of the
+model. This is cheaper, but that is the lesser reason: a check the agent did not author is a
+check the agent cannot satisfy by lowering the bar.
+
+**The repository's own toolchain is a gate.** `check` detects and runs the compiler, test
+suite, linter and formatter the project already has — `dotnet build`/`test`, `cargo
+clippy`/`fmt`, `go vet`, whatever `package.json` declares, `ruff`/`pytest`. Zero tokens, and
+the tool's own error output is fed verbatim into the next implementation attempt, because a
+compiler error is already the best possible description of what to fix.
+
+**Failures are attributed, not assumed.** Before work starts, the toolchain runs on the
+mainline to record what was already passing, cached against the commit. Afterwards, only
+checks that *regressed* block the item. A repository that arrived with a failing linter does
+not fail every item forever — and a check introduced by the work itself must pass, or the
+work has not been demonstrated.
+
+**Acceptance criteria prefer commands.** Intake is instructed to write criteria a shell can
+settle, and to exercise the feature the way a user reaches it — invoking the built program
+proves it is wired up; calling the function behind it does not. That last rule came from
+watching the factory pass a test for a CLI command it had not routed.
+
+**Review is skipped when nothing needs judging.** If every criterion was machine-checked and
+passed, a model has nothing to add to a proof.
+
+---
+
+## Staying inside the usage limits
+
+The transport reports its own ceilings: every run emits a `rate_limit_event` carrying a
+status, which window it applies to (five-hour, weekly) and when that window resets. The
+factory reads that sensor rather than inferring limits from failures after the fact.
+
+The response is graded:
+
+| Reported status | What the factory does |
+|---|---|
+| allowed | full configured concurrency |
+| warning | narrows to one item at a time and spaces runs out, stretching the window |
+| rejected | stops dispatching, lets in-flight items drain, waits for the reset |
+
+Concurrency is re-derived on every scheduling pass, so throttling takes effect immediately
+rather than at the next run. Window state is persisted, so a factory restarted inside an
+exhausted window does not spend its way back into the same rejection. If a reset is further
+away than the wait ceiling, it stops and leaves the work queued rather than blocking a
+command for hours.
+
+---
+
 ## The pipeline
 
 ```
-intake → decompose → plan → implement → verify → review → integrate
+intake → decompose → plan → implement → check → verify → review → integrate
 ```
 
 - **intake** — an agent, not a form. Elicits requirements and acceptance criteria, and is
@@ -85,6 +135,8 @@ intake → decompose → plan → implement → verify → review → integrate
   with a real dependency graph.
 - **plan** — an edit plan from a bounded repo digest.
 - **implement** — the only station with tools, working in an isolated git worktree.
+- **check** — the repository's own compiler, tests and linter. Zero tokens, not authored by
+  the thing being checked, and only regressions block.
 - **verify** — runs the acceptance criteria. Zero tokens. Failures route back to
   implementation *with the failure attached*, so the station learns without a human relaying it.
 - **review** — judges what a command cannot see. Skipped when nothing needs judging.

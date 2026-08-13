@@ -7,5 +7,22 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <!-- One version for the whole factory. Stamped into every run record so history stays
+         attributable to the harness that produced it. -->
+    <Version>1.1.0</Version>
+    <Product>Software Factory</Product>
   </PropertyGroup>
+
+  <!-- Append the commit to the informational version when building inside a git checkout. -->
+  <Target Name="StampCommit" BeforeTargets="GetAssemblyVersion" Condition="'$(SourceRevisionId)' == ''">
+    <Exec Command="git rev-parse HEAD" ConsoleToMSBuild="true" ContinueOnError="true"
+          StandardOutputImportance="low" WorkingDirectory="$(MSBuildThisFileDirectory)">
+      <Output TaskParameter="ConsoleOutput" PropertyName="ResolvedCommit" />
+      <Output TaskParameter="ExitCode" PropertyName="GitExitCode" />
+    </Exec>
+    <PropertyGroup Condition="'$(GitExitCode)' == '0' and '$(ResolvedCommit)' != ''">
+      <SourceRevisionId>$(ResolvedCommit.Trim())</SourceRevisionId>
+    </PropertyGroup>
+  </Target>
 </Project>

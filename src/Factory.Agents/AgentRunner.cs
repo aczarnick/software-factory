@@ -17,11 +17,15 @@ public sealed record AgentRunnerOptions
 public sealed class AgentRunner(
     IAgentTransport transport,
     ResponseCache? cache = null,
-    AgentRunnerOptions? options = null)
+    AgentRunnerOptions? options = null,
+    UsageGovernor? governor = null)
 {
     private readonly AgentRunnerOptions _opts = options ?? new AgentRunnerOptions();
 
     public ResponseCache? Cache { get; } = cache;
+
+    /// <summary>Watches the provider's usage windows and paces work to stay inside them.</summary>
+    public UsageGovernor Governor { get; } = governor ?? new UsageGovernor();
 
     /// <summary>Cumulative spend observed through this runner, for reporting.</summary>
     public decimal TotalCostUsd { get; private set; }
@@ -42,17 +46,31 @@ public sealed class AgentRunner(
 
         AgentRunResult result = AgentRunResult.Failure("not attempted");
 
+        // Every run feeds the governor as well as obeying it: the transport reports the
+        // usage windows on the way out, which is how the next dispatch decision is made.
+        void Watch(AgentEvent evt)
+        {
+            Governor.Observe(evt);
+            onEvent?.Invoke(evt);
+        }
+
         for (var attempt = 0; attempt <= _opts.MaxRetries; attempt++)
         {
             ct.ThrowIfCancellationRequested();
 
-            result = await transport.RunAsync(request, onEvent, ct).ConfigureAwait(false);
+            if (!await Governor.AwaitClearanceAsync(ct).ConfigureAwait(false))
+                return AgentRunResult.Failure("held back by the model usage limit");
+
+            result = await transport.RunAsync(request, Watch, ct).ConfigureAwait(false);
 
             Calls++;
             TotalCostUsd += result.CostUsd;
             TotalUsage += result.Usage;
 
             if (result.Success) break;
+
+            Governor.ObserveRejection(result.Error);
+
             if (!IsTransient(result.Error)) break;
             if (attempt == _opts.MaxRetries) break;
 

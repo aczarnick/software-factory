@@ -135,14 +135,35 @@ public sealed class CliAgentTransport(string? executable = null, TimeSpan? timeo
             Usage = usage,
             Turns = evt.Int("num_turns"),
             StopReason = evt.Str("stop_reason") ?? evt.Subtype,
-            Error = isError ? (evt.Str("api_error_status") ?? evt.Subtype ?? "agent reported an error") : null,
+            Error = isError ? DescribeError(evt) : null,
             DurationMs = durationMs,
-            ToolsUsed = toolsUsed.Distinct().ToList()
+            ToolsUsed = toolsUsed.Distinct().ToList(),
+            RawResult = isError ? evt.Raw.GetRawText() : null
         };
 
         static int Num(System.Text.Json.JsonElement e, string p) =>
             e.TryGetProperty(p, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
                 ? v.GetInt32() : 0;
+    }
+
+    /// <summary>
+    /// Turns a failed result into something a person can act on. The transport can report
+    /// <c>is_error</c> while the subtype still reads "success" — an abnormally ended turn
+    /// rather than a rejected request — and naively echoing the subtype produced the
+    /// spectacularly unhelpful message "gate failed: success".
+    /// </summary>
+    private static string DescribeError(AgentEvent evt)
+    {
+        if (evt.Str("api_error_status") is { Length: > 0 } apiStatus) return apiStatus;
+
+        if (evt.Subtype is { Length: > 0 } subtype && subtype != "success") return subtype;
+
+        var stop = evt.Str("stop_reason");
+        var turns = evt.Int("num_turns");
+
+        return stop is { Length: > 0 }
+            ? $"run ended abnormally after {turns} turn(s) (stop_reason: {stop})"
+            : $"agent reported an error after {turns} turn(s) without giving a reason";
     }
 
     internal static List<string> BuildArgs(AgentRequest request)

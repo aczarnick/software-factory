@@ -1,3 +1,4 @@
+using Factory.Agents;
 using Factory.Core;
 
 namespace Factory.Runtime;
@@ -58,7 +59,7 @@ public sealed class Orchestrator(FactoryHost host)
         OrchestratorOptions? options = null, CancellationToken ct = default)
     {
         var opts = options ?? new OrchestratorOptions();
-        var concurrency = Math.Max(1, opts.MaxConcurrency ?? _s.Config.MaxConcurrency);
+        var configured = Math.Max(1, opts.MaxConcurrency ?? _s.Config.MaxConcurrency);
 
         RequeueOrphans();
 
@@ -69,7 +70,30 @@ public sealed class Orchestrator(FactoryHost host)
         {
             running.RemoveAll(t => t.IsCompleted);
 
-            var claimable = concurrency - running.Count;
+            // Concurrency is re-derived every pass: when the provider reports we are close to
+            // a usage ceiling the factory narrows itself rather than sprinting into the wall.
+            var concurrency = _s.Runner.Governor.Concurrency(configured);
+
+            // A rejected window means nothing new should be started at all. In-flight items
+            // are left to drain, so no verified work is lost to a limit we just hit.
+            var throttled = _s.Runner.Governor.ShouldHold(out var holdFor, out var holdReason) &&
+                            _s.Runner.Governor.Binding?.Status == RateLimitStatus.Rejected;
+
+            if (throttled && running.Count == 0)
+            {
+                if (holdFor > _s.Runner.Governor.Policy.MaxWait || opts.StopWhenIdle && holdFor > opts.PollInterval * 4)
+                {
+                    _s.Log($"⏸ {holdReason} — stopping; remaining work stays queued");
+                    break;
+                }
+
+                _s.Log($"⏸ {holdReason}");
+                try { await Task.Delay(holdFor, ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; }
+                continue;
+            }
+
+            var claimable = throttled ? 0 : concurrency - running.Count;
             if (claimable > 0)
             {
                 var batch = _s.State.Dispatchable().Take(claimable).ToList();

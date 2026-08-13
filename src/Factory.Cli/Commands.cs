@@ -319,11 +319,19 @@ public static class Commands
         var items = state.Items.Values.ToList();
 
         Output.Header($"factory '{host.Config.Name}'");
+        Output.Info($"version   {FactoryVersion.Full}");
         Output.Info($"root      {host.Paths.RepoRoot}");
         Output.Info($"blueprint {host.Blueprint.Name} · {string.Join(" → ", host.Blueprint.Pipeline)}");
 
+        // The deterministic gates the repository itself provides, shown so it is obvious
+        // what guarantees are in force beyond model-authored acceptance criteria.
+        Output.Info($"toolchain {Toolchain.Detect(host.Paths.RepoRoot).Describe}");
+
         if (host.Blueprint.Factories.Count > 0)
             Output.Info($"linked    {string.Join(", ", host.Blueprint.Factories.Keys)}");
+
+        foreach (var window in host.Services.Runner.Governor.Windows)
+            Output.Info($"usage     {window.Describe(DateTimeOffset.UtcNow)}");
 
         Output.Header("Backlog");
         if (items.Count == 0)
@@ -700,7 +708,7 @@ public static class Commands
 
     public static int Version()
     {
-        Output.Line("factory 1.0.0");
+        Output.Line($"factory {FactoryVersion.Full}");
         return 0;
     }
 

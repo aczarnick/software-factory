@@ -38,7 +38,10 @@ public sealed class DelegateStation : IStation
         s.Record(new DelegationStarted(ctx.Item.Id, childName, ctx.Run.Depth + 1));
         ctx.Log($"delegating to '{childName}' at {resolved}");
 
-        using var child = FactoryHost.Open(resolved, msg => s.Log($"    ({childName}) {msg}"));
+        // The child inherits the parent's transport. A composite configured with a particular
+        // transport must not silently fall back to the default one inside its children.
+        using var child = FactoryHost.Open(
+            resolved, msg => s.Log($"    ({childName}) {msg}"), transport: s.Transport);
 
         // The item crosses the port as a fresh item in the child's own ledger: each factory
         // keeps an independent, auditable history of what it was asked to do.

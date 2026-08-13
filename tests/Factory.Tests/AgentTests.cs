@@ -85,6 +85,66 @@ public class AgentProfileTests
     }
 }
 
+public class ResultParsingTests
+{
+    private static AgentRunResult Parse(string json) =>
+        CliAgentTransport.FromResultEvent(
+            AgentEvent.TryParse(json)!, sessionId: "s", assistantText: "", toolsUsed: [], durationMs: 1);
+
+    [Fact]
+    public void A_clean_result_is_a_success_with_usage_and_cost()
+    {
+        var run = Parse(
+            """
+            {"type":"result","subtype":"success","is_error":false,"result":"done",
+             "total_cost_usd":0.0125,"num_turns":3,"stop_reason":"end_turn",
+             "usage":{"input_tokens":10,"output_tokens":40,"cache_read_input_tokens":900,"cache_creation_input_tokens":100}}
+            """);
+
+        Assert.True(run.Success);
+        Assert.Null(run.Error);
+        Assert.Null(run.RawResult);
+        Assert.Equal(0.0125m, run.CostUsd);
+        Assert.Equal(1050, run.Usage.Total);
+    }
+
+    [Fact]
+    public void An_abnormal_end_is_described_rather_than_echoed_as_success()
+    {
+        // Observed in a real run: the transport reported is_error with the subtype still
+        // reading "success", which naive handling surfaced as "gate failed: success".
+        var run = Parse(
+            """
+            {"type":"result","subtype":"success","is_error":true,"result":"",
+             "total_cost_usd":0.25,"num_turns":16,"stop_reason":"stop_sequence"}
+            """);
+
+        Assert.False(run.Success);
+        Assert.NotEqual("success", run.Error);
+        Assert.Contains("stop_sequence", run.Error);
+        Assert.Contains("16 turn", run.Error);
+    }
+
+    [Fact]
+    public void A_failure_keeps_the_raw_message_for_diagnosis()
+    {
+        var run = Parse("""{"type":"result","subtype":"error_max_turns","is_error":true,"num_turns":1}""");
+
+        Assert.False(run.Success);
+        Assert.Equal("error_max_turns", run.Error);
+        Assert.Contains("error_max_turns", run.RawResult);
+    }
+
+    [Fact]
+    public void An_api_error_status_wins_over_the_subtype()
+    {
+        var run = Parse(
+            """{"type":"result","subtype":"error","is_error":true,"api_error_status":"rate_limit_error","num_turns":0}""");
+
+        Assert.Equal("rate_limit_error", run.Error);
+    }
+}
+
 public class StructuredOutputTests
 {
     [Theory]

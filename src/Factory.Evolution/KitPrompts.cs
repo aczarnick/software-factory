@@ -46,6 +46,9 @@ public static class KitPrompts
         Commands run from the repository root in a POSIX shell. Use commands that will exist
         after the work is done, not commands that exist now.
 
+        Prefer a command that exercises the thing the way a user reaches it. Invoking the
+        built program proves it is wired up; calling the function behind it does not.
+
         If the request is too vague to produce criteria, put precise, answerable questions in
         `questions` and return no items. Ask only what changes what gets built. If you can
         proceed on a reasonable assumption, do that and record it in `assumptions` instead.
@@ -67,6 +70,11 @@ public static class KitPrompts
         - Each child carries its own acceptance criteria, preferring shell-command
           verification exactly as intake does. Criteria checked by command cost nothing;
           criteria judged by a model cost money on every check.
+        - Criteria must exercise the feature the way it is actually reached — through the
+          command, the endpoint, the public entry point — and not only the function behind
+          it. A check that calls the implementation directly passes even when nothing is
+          wired up to it, which is precisely the defect that splitting work into separate
+          children tends to introduce.
         - Use `dependsOn` (by child `key`) to express real ordering constraints only.
           Independent children run in parallel, so a false dependency costs wall time.
         - Foundational work comes first: schema and interfaces before the code that uses

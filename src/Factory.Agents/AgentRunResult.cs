@@ -23,6 +23,10 @@ public sealed record AgentRunResult
 
     public IReadOnlyList<string> ToolsUsed { get; init; } = [];
 
+    /// <summary>Raw terminal result message, kept only for failures. A station that fails for
+    /// a reason the harness does not model is otherwise undiagnosable after the fact.</summary>
+    public string? RawResult { get; init; }
+
     public static AgentRunResult Failure(string error, long durationMs = 0) =>
         new() { Success = false, Error = error, DurationMs = durationMs };
 

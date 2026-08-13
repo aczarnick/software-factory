@@ -55,6 +55,11 @@ public sealed record RunRecord
     public bool CacheHit { get; init; }
 
     public int Attempt { get; init; }
+
+    /// <summary>Harness version that produced this run. Without it, a shift in a prompt's
+    /// measured pass rate cannot be told apart from a change to the factory itself.</summary>
+    public string FactoryVersion { get; init; } = Core.FactoryVersion.Full;
+
     public DateTimeOffset At { get; init; } = DateTimeOffset.UtcNow;
 }
 

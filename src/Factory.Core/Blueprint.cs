@@ -8,6 +8,11 @@ public enum StationRole
     Decompose,
     Plan,
     Implement,
+
+    /// <summary>Runs the repository's own toolchain — compiler, tests, linter. Deterministic,
+    /// zero tokens, and not authored by the thing it is checking.</summary>
+    Check,
+
     Verify,
     Review,
     Integrate,
@@ -141,7 +146,9 @@ public sealed record Blueprint
         Description = "General-purpose software production pipeline.",
         Budget = new BudgetSpec(),
         MaxConcurrency = 2,
-        Pipeline = ["decompose", "plan", "implement", "verify", "review", "integrate"],
+        // check runs before verify: a repository that no longer compiles makes every
+        // acceptance criterion meaningless, and the compiler says why in one step.
+        Pipeline = ["decompose", "plan", "implement", "check", "verify", "review", "integrate"],
         Stations =
         [
             new StationDef
@@ -168,6 +175,13 @@ public sealed record Blueprint
                 Tier = ModelTier.Sonnet, Profile = TokenProfile.Thick,
                 Tools = ["Read", "Write", "Edit", "Bash", "Grep", "Glob"],
                 MaxTurns = 40, BudgetUsd = 2.00m, Retries = 2, OnFail = "implement"
+            },
+            new StationDef
+            {
+                // Deterministic: the repository's own compiler, tests and linter. Zero tokens.
+                Id = "check", Role = StationRole.Check,
+                Tier = ModelTier.None, Profile = TokenProfile.None,
+                OnFail = "implement", Retries = 2
             },
             new StationDef
             {

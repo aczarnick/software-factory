@@ -28,6 +28,39 @@ public static class Shell
         return await ExecAsync(psi, timeoutSeconds, ct).ConfigureAwait(false);
     }
 
+    /// <summary>Whether a tool is on PATH. Deliberately synchronous: this is called during
+    /// toolchain detection, and blocking on an async call there risks deadlocking a
+    /// saturated thread pool for what is a five-millisecond question.</summary>
+    public static bool Which(string tool)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo("/bin/sh")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            };
+            psi.ArgumentList.Add("-c");
+            psi.ArgumentList.Add($"command -v {tool}");
+
+            using var proc = Process.Start(psi);
+            if (proc is null) return false;
+
+            proc.StandardOutput.ReadToEnd();
+            proc.StandardError.ReadToEnd();
+
+            if (proc.WaitForExit(5000)) return proc.ExitCode == 0;
+
+            try { proc.Kill(entireProcessTree: true); } catch { /* already gone */ }
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or SystemException)
+        {
+            return false;
+        }
+    }
+
     public static async Task<ShellResult> GitAsync(
         string workingDirectory, CancellationToken ct, params string[] args)
     {

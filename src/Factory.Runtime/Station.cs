@@ -16,6 +16,11 @@ public sealed class FactoryServices
     public required BudgetGuard Budget { get; init; }
     public required Workspace Workspace { get; init; }
     public required FactoryState State { get; init; }
+
+    /// <summary>Transport this host was opened with, so child factories inherit it. Without
+    /// this a delegate silently opens its child on the default transport, which means a
+    /// composite cannot be exercised without live model calls.</summary>
+    public IAgentTransport? Transport { get; init; }
     public Random Rng { get; init; } = new();
     public Action<string> Log { get; init; } = _ => { };
 
@@ -174,6 +179,24 @@ public abstract class AgentStation : IStation
             s.Record(new BudgetConsumed($"item:{ctx.Item.Id}", result.CostUsd, total));
         }
 
+        if (result.RawResult is { Length: > 0 } raw) PersistFailure(s, runId, raw);
+
         return (result, record);
+    }
+
+    /// <summary>Keeps the transport's terminal message for a failed run. The ledger records
+    /// that a run failed and the harness's reading of why; this keeps the evidence for the
+    /// cases the harness does not yet model.</summary>
+    private static void PersistFailure(FactoryServices services, string runId, string raw)
+    {
+        try
+        {
+            Directory.CreateDirectory(services.Paths.RunsDir);
+            File.WriteAllText(Path.Combine(services.Paths.RunsDir, $"{runId}.failed.json"), raw);
+        }
+        catch (IOException)
+        {
+            // Diagnostics are best-effort; losing them must not fail the run.
+        }
     }
 }
