@@ -23,6 +23,7 @@
     <ProjectReference Include="..\..\src\Factory.Agents\Factory.Agents.csproj" />
     <ProjectReference Include="..\..\src\Factory.Runtime\Factory.Runtime.csproj" />
     <ProjectReference Include="..\..\src\Factory.Evolution\Factory.Evolution.csproj" />
+    <ProjectReference Include="..\..\src\Factory.Cli\Factory.Cli.csproj" />
   </ItemGroup>
 
 </Project>
