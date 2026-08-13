@@ -678,6 +678,7 @@ public static class Commands
               factory intake ["<request>"]      Interactive requirements conversation
               factory add "<title>" [--criterion "<cmd>"]
               factory activate <id> | --all     Promote proposed work into the queue
+              factory cancel <id>               Cancel a queued or in-flight item
               factory ls [--all]                Backlog
               factory show <id>                 One item in full, with its run history
               factory status                    Backlog, spend, and configuration
