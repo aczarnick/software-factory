@@ -88,6 +88,23 @@ public sealed class Workspace(string repoRoot, FactoryPaths paths)
         await _integrateGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            // A dirty mainline is the user's working state, not a defect in the work. Detect
+            // it before touching anything so the failure is actionable rather than a merge
+            // abort message, and so verified work is never discarded over it.
+            // Only tracked modifications matter: an untracked scratch file cannot be
+            // overwritten by a merge, so blocking on one would be needless friction.
+            var mainline = await Shell.GitAsync(RepoRoot, ct,
+                "status", "--porcelain", "--untracked-files=no").ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(mainline.Stdout))
+            {
+                var dirty = mainline.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Take(5).Select(l => l.Trim());
+                return (false,
+                    "the working tree has uncommitted changes, so the merge would overwrite them: " +
+                    string.Join(", ", dirty) +
+                    ". Commit or stash them, then requeue this item with `factory activate`.");
+            }
+
             await Shell.GitAsync(workDir, ct, "add", "-A").ConfigureAwait(false);
 
             var status = await Shell.GitAsync(workDir, ct, "status", "--porcelain").ConfigureAwait(false);

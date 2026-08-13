@@ -273,6 +273,43 @@ public class PipelineTests : IDisposable
     }
 
     [Fact]
+    public async Task A_dirty_mainline_blocks_integration_and_keeps_the_verified_work()
+    {
+        using var host = Open(Scripted());
+        await host.Services.Workspace.EnsureRepoAsync();
+
+        // A tracked file the user is midway through editing.
+        var userFile = Path.Combine(_dir, "user-edit.txt");
+        File.WriteAllText(userFile, "committed\n");
+        await Shell.GitAsync(_dir, default, "add", "-A");
+        await Shell.GitAsync(_dir, default, "commit", "-q", "-m", "user work");
+        File.WriteAllText(userFile, "half-finished edit\n");
+
+        var item = host.Submit(WorkItem.Create("create hello.txt") with
+        {
+            AcceptanceCriteria = [AcceptanceCriterion.Command("file exists", "test -f hello.txt")]
+        });
+
+        var report = await host.CreateOrchestrator().RunAsync(new OrchestratorOptions { StopWhenIdle = true });
+
+        // Blocked, not failed: the work passed its gates and only integration is waiting.
+        Assert.Equal(1, report.Blocked);
+        Assert.Equal(0, report.Failed);
+        Assert.Equal(WorkItemState.Blocked, host.Services.State.Items[item.Id].State);
+
+        // The user's in-progress edit must survive untouched.
+        Assert.Equal("half-finished edit\n", File.ReadAllText(userFile));
+
+        // And the verified work must not have been thrown away.
+        Assert.True(Directory.Exists(Path.Combine(host.Paths.WorktreesDir, item.Id)),
+            "a blocked item must keep its worktree so nothing verified is redone");
+
+        var reason = host.Services.State.Items[item.Id].LastError ?? "";
+        Assert.Contains("uncommitted changes", reason);
+        Assert.Contains("factory activate", reason);
+    }
+
+    [Fact]
     public async Task Orphaned_work_is_requeued_after_a_restart()
     {
         using var host = Open(Scripted());

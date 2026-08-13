@@ -188,7 +188,11 @@ public sealed record Blueprint
             new StationDef
             {
                 Id = "integrate", Role = StationRole.Integrate,
-                Tier = ModelTier.None, Profile = TokenProfile.None
+                Tier = ModelTier.None, Profile = TokenProfile.None,
+                // Integration fails for reasons outside the work itself — a dirty mainline,
+                // a conflicting merge. The work is already verified by this point, so block
+                // and keep the worktree rather than failing, which would discard it.
+                EscalateToHuman = true
             },
             new StationDef
             {

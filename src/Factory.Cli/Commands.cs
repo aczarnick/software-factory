@@ -273,13 +273,16 @@ public static class Commands
         using var host = OpenOrInit(cli);
         var state = host.Services.State;
 
+        var activatable = new[] { WorkItemState.Draft, WorkItemState.Blocked, WorkItemState.Failed };
+
         var targets = cli.Has("all")
-            ? state.Items.Values.Where(i => i.State == WorkItemState.Draft).ToList()
+            ? state.Items.Values.Where(i => activatable.Contains(i.State)).ToList()
             : state.Items.Values.Where(i => i.Id == cli.First).ToList();
 
         if (targets.Count == 0)
         {
             Output.Warn("nothing to activate");
+            Output.Step("`factory activate --all` queues proposed, blocked, and failed items.");
             return 1;
         }
 

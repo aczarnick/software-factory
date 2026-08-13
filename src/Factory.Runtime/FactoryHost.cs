@@ -133,12 +133,22 @@ public sealed class FactoryHost : IDisposable
         return filed;
     }
 
-    /// <summary>Moves a proposed (Draft) item into the queue.</summary>
+    /// <summary>Queues an item that is waiting on a person: a proposal an agent filed, or work
+    /// that was blocked or failed on something outside itself. A blocked item keeps its
+    /// worktree and resumes at the station it stopped on, so nothing already verified is redone.</summary>
     public WorkItem Activate(WorkItem item)
     {
-        if (item.State != WorkItemState.Draft) return item;
+        if (item.State is not (WorkItemState.Draft or WorkItemState.Blocked or WorkItemState.Failed))
+            return item;
+
+        // Resume mid-pipeline only if the work is still there. If the worktree is gone the
+        // item must start over, otherwise it would resume at (say) integrate with an empty
+        // checkout and fail for a second, more confusing reason.
+        var resumable = item.Station is not null &&
+                        Directory.Exists(Path.Combine(Paths.WorktreesDir, item.Id));
+
         var ready = Transition(item, WorkItemState.Ready, "activated");
-        return Update(ready);
+        return Update(ready with { Station = resumable ? ready.Station : null });
     }
 
     public WorkItem Transition(WorkItem item, WorkItemState to, string? reason = null)
