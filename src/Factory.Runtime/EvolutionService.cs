@@ -102,7 +102,7 @@ public sealed class EvolutionService(FactoryHost host)
     {
         var traces = new Dictionary<string, List<string>>();
 
-        foreach (var evt in _s.Ledger.ReadAll())
+        foreach (var evt in _s.History.ReadFrom(0))
         {
             if (evt is not GateEvaluated { Passed: false } gate) continue;
             if (!traces.TryGetValue(gate.StationId, out var list))

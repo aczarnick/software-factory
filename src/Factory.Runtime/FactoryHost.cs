@@ -10,17 +10,17 @@ namespace Factory.Runtime;
 /// </summary>
 public sealed class FactoryHost : IDisposable
 {
-    private readonly Ledger _ledger;
+    private readonly IRunHistory _history;
 
     public FactoryServices Services { get; }
     public FactoryPaths Paths { get; }
     public Blueprint Blueprint => Services.Blueprint;
     public FactoryConfig Config => Services.Config;
 
-    private FactoryHost(FactoryServices services, Ledger ledger, FactoryPaths paths)
+    private FactoryHost(FactoryServices services, IRunHistory history, FactoryPaths paths)
     {
         Services = services;
-        _ledger = ledger;
+        _history = history;
         Paths = paths;
     }
 
@@ -82,8 +82,8 @@ public sealed class FactoryHost : IDisposable
         if (config.Factories.Count > 0)
             blueprint = blueprint with { Factories = config.Factories };
 
-        var ledger = new Ledger(paths.LedgerFile);
-        var state = ledger.Replay();
+        var history = new JsonlRunHistory(paths.LedgerFile);
+        var state = history.Replay();
 
         var prompts = new PromptRegistry(paths.PromptsDir);
         foreach (var (stationId, text) in KitPrompts.All)
@@ -107,7 +107,7 @@ public sealed class FactoryHost : IDisposable
             Paths = paths,
             Config = config,
             Blueprint = blueprint,
-            Ledger = ledger,
+            History = history,
             Runner = runner,
             Prompts = prompts,
             Budget = budget,
@@ -117,7 +117,7 @@ public sealed class FactoryHost : IDisposable
             Log = log ?? (_ => { })
         };
 
-        return new FactoryHost(services, ledger, paths);
+        return new FactoryHost(services, history, paths);
     }
 
     /// <summary>Files work into the factory. This is the <c>in</c> port: the intake agent,
@@ -200,5 +200,5 @@ public sealed class FactoryHost : IDisposable
         role is StationRole.Implement or StationRole.Check or StationRole.Verify
              or StationRole.Review or StationRole.Integrate;
 
-    public void Dispose() => _ledger.Dispose();
+    public void Dispose() => _history.Dispose();
 }

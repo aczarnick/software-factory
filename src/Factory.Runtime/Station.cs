@@ -10,7 +10,7 @@ public sealed class FactoryServices
     public required FactoryPaths Paths { get; init; }
     public required FactoryConfig Config { get; init; }
     public required Blueprint Blueprint { get; init; }
-    public required Ledger Ledger { get; init; }
+    public required IRunHistory History { get; init; }
     public required AgentRunner Runner { get; init; }
     public required PromptRegistry Prompts { get; init; }
     public required BudgetGuard Budget { get; init; }
@@ -24,11 +24,11 @@ public sealed class FactoryServices
     public Random Rng { get; init; } = new();
     public Action<string> Log { get; init; } = _ => { };
 
-    /// <summary>Appends to the ledger and folds the event into live state in one step, so
+    /// <summary>Appends to the run history and folds the event into live state in one step, so
     /// the in-memory view never drifts from the durable log.</summary>
     public T Record<T>(T evt) where T : FactoryEvent
     {
-        Ledger.Append(evt);
+        History.Append(evt);
         State.Apply(evt);
         return evt;
     }

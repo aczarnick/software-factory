@@ -385,7 +385,7 @@ public class CompositionTests : IDisposable
         Assert.Equal(1, report.Completed);
         Assert.True(File.Exists(Path.Combine(_child, "built.txt")), "the child factory should have built it");
 
-        var delegations = parent.Services.Ledger.ReadAll().OfType<DelegationCompleted>().ToList();
+        var delegations = parent.Services.History.ReadFrom(0).OfType<DelegationCompleted>().ToList();
         Assert.Single(delegations);
         Assert.True(delegations[0].Success);
         Assert.True(delegations[0].ChildCostUsd > 0, "child spend should roll up to the parent");
