@@ -10,7 +10,7 @@ PREFIX="${PREFIX:-/usr/local}"
 BIN="$PREFIX/bin"
 
 command -v dotnet >/dev/null 2>&1 || {
-  echo "error: .NET 9 SDK is required — https://dot.net" >&2
+  echo "error: .NET 10 SDK is required — https://dot.net" >&2
   exit 1
 }
 
