@@ -70,9 +70,17 @@ public sealed class DelegateStation : IStation
         if (report.CostUsd > 0) s.Budget.Record(ctx.Item, report.CostUsd);
 
         var detail = $"{childName}: {report.Summary}";
-        return success
+
+        var result = success
             ? StationResult.Ok(detail)
             : StationResult.GateFailed($"{detail}; child item ended {final?.State.ToString() ?? "missing"}" +
                                        (final?.LastError is { } e ? $" — {e}" : ""));
+
+        return result with
+        {
+            DelegatedCostUsd = report.CostUsd,
+            DelegatedUsage = report.Usage,
+            DelegatedCalls = report.ModelCalls
+        };
     }
 }

@@ -30,9 +30,14 @@ public sealed record OrchestratorReport
     public int ModelCalls { get; init; }
     public int CacheHits { get; init; }
 
+    /// <summary>Portion of <see cref="CostUsd"/> spent inside linked child factories.</summary>
+    public decimal DelegatedCostUsd { get; init; }
+
     public string Summary =>
         $"{Completed} completed, {Failed} failed, {Blocked} blocked · " +
-        $"${CostUsd:F4} · {Usage.Total:N0} tokens · {ModelCalls} model calls, {CacheHits} cache hits";
+        $"${CostUsd:F4}" +
+        (DelegatedCostUsd > 0 ? $" (${DelegatedCostUsd:F4} in linked factories)" : "") +
+        $" · {Usage.Total:N0} tokens · {ModelCalls} model calls, {CacheHits} cache hits";
 }
 
 /// <summary>
@@ -44,7 +49,10 @@ public sealed class Orchestrator(FactoryHost host)
 {
     private readonly FactoryServices _s = host.Services;
 
-    private int _completed, _failed, _blocked;
+    private int _completed, _failed, _blocked, _delegatedCalls;
+    private decimal _delegatedCost;
+    private TokenUsage _delegatedUsage = TokenUsage.Zero;
+    private readonly Lock _tally = new();
 
     public async Task<OrchestratorReport> RunAsync(
         OrchestratorOptions? options = null, CancellationToken ct = default)
@@ -95,16 +103,20 @@ public sealed class Orchestrator(FactoryHost host)
         try { await Task.WhenAll(running).ConfigureAwait(false); }
         catch (OperationCanceledException) { /* drain */ }
 
-        return new OrchestratorReport
-        {
-            Completed = _completed,
-            Failed = _failed,
-            Blocked = _blocked,
-            CostUsd = _s.Runner.TotalCostUsd,
-            Usage = _s.Runner.TotalUsage,
-            ModelCalls = _s.Runner.Calls,
-            CacheHits = _s.Runner.CacheHits
-        };
+        lock (_tally)
+            return new OrchestratorReport
+            {
+                Completed = _completed,
+                Failed = _failed,
+                Blocked = _blocked,
+                // Totals include work done inside child factories, which spend through their
+                // own runners and would otherwise be invisible here.
+                CostUsd = _s.Runner.TotalCostUsd + _delegatedCost,
+                Usage = _s.Runner.TotalUsage + _delegatedUsage,
+                ModelCalls = _s.Runner.Calls + _delegatedCalls,
+                CacheHits = _s.Runner.CacheHits,
+                DelegatedCostUsd = _delegatedCost
+            };
     }
 
     /// <summary>Work left mid-flight by a crash is put back on the queue. This is what the
@@ -163,6 +175,16 @@ public sealed class Orchestrator(FactoryHost host)
 
                 var ctx = new StationContext { Services = _s, Def = def, Run = run, Ct = ct };
                 var result = await ExecuteStationAsync(ctx).ConfigureAwait(false);
+
+                if (result.DelegatedCostUsd > 0 || result.DelegatedCalls > 0)
+                {
+                    lock (_tally)
+                    {
+                        _delegatedCost += result.DelegatedCostUsd;
+                        _delegatedUsage += result.DelegatedUsage;
+                        _delegatedCalls += result.DelegatedCalls;
+                    }
+                }
 
                 if (result.Run is { } record) _s.Record(new RunCompleted(record));
                 _s.Record(new GateEvaluated(run.Item.Id, def.Id, result.GatePassed, result.Detail));

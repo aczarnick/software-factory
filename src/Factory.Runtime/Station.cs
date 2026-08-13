@@ -76,6 +76,17 @@ public sealed record StationResult
 
     public RunRecord? Run { get; init; }
 
+    /// <summary>Spend and tokens incurred inside a child factory. Reported separately from the
+    /// station's own run because it is not in this factory's runner, but it must still reach
+    /// the parent's totals — a composite that hides its children's cost makes every budget
+    /// figure a lie.</summary>
+    public decimal DelegatedCostUsd { get; init; }
+
+    public TokenUsage DelegatedUsage { get; init; } = TokenUsage.Zero;
+
+    /// <summary>Model calls made inside a child factory.</summary>
+    public int DelegatedCalls { get; init; }
+
     /// <summary>Ends the pipeline early and marks the item done (used when decomposition
     /// replaces an item with its children).</summary>
     public bool ShortCircuitToDone { get; init; }

@@ -351,6 +351,11 @@ public class CompositionTests : IDisposable
         Assert.Single(delegations);
         Assert.True(delegations[0].Success);
         Assert.True(delegations[0].ChildCostUsd > 0, "child spend should roll up to the parent");
+
+        // A composite that hides its children's spend makes every budget figure a lie.
+        Assert.Equal(delegations[0].ChildCostUsd, report.DelegatedCostUsd);
+        Assert.True(report.CostUsd >= delegations[0].ChildCostUsd,
+            $"headline cost ${report.CostUsd:F4} must include the ${delegations[0].ChildCostUsd:F4} spent downstream");
     }
 
     [Fact]
