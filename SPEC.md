@@ -79,6 +79,12 @@ OAuth. The harness therefore probes the active auth mode at startup and only ena
 `--bare` fast path when an API key is present; under subscription OAuth it uses the
 equivalent explicit strip flags, which measure the same.
 
+**Structured-output turn floor.** A call carrying `--json-schema` spends one turn producing
+the answer and another emitting it against the schema: a one-turn structured call reports
+`num_turns: 2` and terminates as `error_max_turns` with an empty result. Any station asking
+for JSON therefore needs at least three turns. The harness raises the limit itself whenever a
+schema is attached, so no blueprint can misconfigure it into silent failure.
+
 ---
 
 ## 3. Token economy

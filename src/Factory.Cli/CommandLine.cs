@@ -17,9 +17,11 @@ public sealed class CommandLine
 
     public static CommandLine Parse(string[] args)
     {
-        var command = args.Length > 0 && !args[0].StartsWith('-') ? args[0] : "help";
-        var rest = args.Skip(command == "help" && args.Length > 0 && !args[0].StartsWith('-') ? 1 : 0).ToArray();
-        if (command != "help") rest = args.Skip(1).ToArray();
+        // A leading bare word is the command and is consumed; anything else (no args, or a
+        // leading flag such as --help) falls through to help with all args left to parse.
+        var hasCommand = args.Length > 0 && !args[0].StartsWith('-');
+        var command = hasCommand ? args[0] : "help";
+        var rest = hasCommand ? args[1..] : args;
 
         var positional = new List<string>();
         var flags = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);

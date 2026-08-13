@@ -174,7 +174,10 @@ public sealed record Blueprint
                 // Deterministic: runs acceptance criteria as commands. Zero tokens.
                 Id = "verify", Role = StationRole.Verify,
                 Tier = ModelTier.None, Profile = TokenProfile.None,
-                OnFail = "implement"
+                // Failing verification twice before giving up is normal: the first repair
+                // cycle often uncovers the real problem. Retries here are cheap to gate
+                // (the check itself costs nothing) and only the repair costs tokens.
+                OnFail = "implement", Retries = 2
             },
             new StationDef
             {

@@ -490,8 +490,10 @@ public static class Commands
 
         if (cli.Has("pipeline") && !blueprint.Pipeline.Contains(name))
         {
-            // A composite routes decomposed work to its children instead of building itself.
-            blueprint = blueprint with { Pipeline = ["decompose", .. blueprint.Pipeline.Where(p => p == name || IsDelegate(blueprint, p)), name] };
+            // A composite routes decomposed work to its children instead of building it
+            // itself, so the pipeline collapses to decompose plus the delegates in order.
+            var existingDelegates = blueprint.Pipeline.Where(p => IsDelegate(blueprint, p));
+            blueprint = blueprint with { Pipeline = ["decompose", .. existingDelegates, name] };
         }
 
         var errors = blueprint.Validate().ToList();
