@@ -242,7 +242,7 @@ self-improving system that cannot say "leave it alone" does not improve — it d
 
 ## Install
 
-Requires the [.NET 9 SDK](https://dot.net) and the `claude` CLI on `PATH`.
+Requires the [.NET 10 SDK](https://dot.net) and the `claude` CLI on `PATH`.
 
 ```bash
 ./install.sh                  # to /usr/local/bin
