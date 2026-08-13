@@ -25,6 +25,7 @@ try
         "intake" => await Commands.Intake(cli, cancellation.Token),
         "add" => Commands.Add(cli),
         "activate" => Commands.Activate(cli),
+        "cancel" => Commands.Cancel(cli), // factory cancel <id>          Cancel a queued or in-flight item
         "status" => Commands.Status(cli),
         "ls" => Commands.List(cli),
         "show" => Commands.Show(cli),
