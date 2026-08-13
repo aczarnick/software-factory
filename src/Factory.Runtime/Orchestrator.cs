@@ -63,6 +63,21 @@ public sealed class Orchestrator(FactoryHost host)
 
         RequeueOrphans();
 
+        // Baseline the mainline before anything else compiles, so the deterministic gate is
+        // measured against a quiet machine rather than one already under load.
+        if (_s.Blueprint.Stations.Any(s => s.Role == StationRole.Check))
+        {
+            try
+            {
+                await CheckStation.CaptureBaselineAsync(_s, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                _s.Log($"  [check] could not baseline the mainline: {ex.Message}");
+            }
+        }
+
         var started = 0;
         var running = new List<Task>();
 

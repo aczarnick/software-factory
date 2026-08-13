@@ -157,6 +157,48 @@ public class UsageGovernorTests
     }
 }
 
+public class ShellTests : IDisposable
+{
+    private readonly string _dir = TempDir.Create();
+    public void Dispose() => TempDir.Delete(_dir);
+
+    [Fact]
+    public async Task A_daemon_child_holding_the_pipe_does_not_stall_the_command()
+    {
+        // Build tools do exactly this: `dotnet build` leaves MSBuild nodes alive that
+        // inherited its stdout. Reading to end-of-file therefore waits on the daemon, not on
+        // the build — which stalled a check station for its full timeout after the build had
+        // already succeeded.
+        // The daemon is short-lived on purpose: a long one would outlive the test and slow
+        // the whole suite, which is the same antisocial behaviour being tested for.
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var result = await Shell.RunAsync("echo finished; sleep 12 &", _dir, timeoutSeconds: 60);
+        stopwatch.Stop();
+
+        Assert.True(result.Ok);
+        Assert.Contains("finished", result.Stdout);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(8),
+            $"command returned in {stopwatch.Elapsed.TotalSeconds:F1}s; it should not wait for the daemon");
+    }
+
+    [Fact]
+    public async Task Output_is_still_captured_for_ordinary_commands()
+    {
+        var result = await Shell.RunAsync("echo out; echo err 1>&2; exit 3", _dir, timeoutSeconds: 30);
+
+        Assert.Equal(3, result.ExitCode);
+        Assert.Contains("out", result.Stdout);
+        Assert.Contains("err", result.Stderr);
+    }
+
+    [Fact]
+    public void Which_finds_a_present_tool_and_not_an_absent_one()
+    {
+        Assert.True(Shell.Which("sh"));
+        Assert.False(Shell.Which("definitely-not-a-real-tool-xyz"));
+    }
+}
+
 public class ToolchainTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();

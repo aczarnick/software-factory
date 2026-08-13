@@ -205,23 +205,35 @@ public static class ToolchainRunner
         return $"`{check.Command}` exited {run.ExitCode}:\n{output}";
     }
 
-    /// <summary>Captures which checks pass on the mainline, cached against the commit so the
-    /// cost is paid once per baseline rather than once per item.</summary>
+    public static async Task<string> HeadCommitAsync(string repoRoot, CancellationToken ct = default) =>
+        (await Shell.GitAsync(repoRoot, ct, "rev-parse", "HEAD").ConfigureAwait(false)).Stdout.Trim();
+
+    /// <summary>Reads a cached baseline if one was taken at this commit.</summary>
+    public static ToolchainBaseline? TryLoadBaseline(string cachePath, string commit)
+    {
+        if (!File.Exists(cachePath) || commit.Length == 0) return null;
+        try
+        {
+            var cached = FactoryJson.Read<ToolchainBaseline>(File.ReadAllText(cachePath));
+            return cached is not null && cached.Commit == commit ? cached : null;
+        }
+        catch (Exception ex) when (ex is IOException or JsonException) { return null; }
+    }
+
+    /// <summary>
+    /// Captures which checks pass on the mainline, cached against the commit.
+    ///
+    /// This must run when nothing else is building. Taken while implementation agents are
+    /// compiling in their own worktrees, it contends for the same toolchain and can record a
+    /// spurious failure — which silently downgrades the gate, because a check believed to be
+    /// already broken no longer blocks anything.
+    /// </summary>
     public static async Task<ToolchainBaseline> BaselineAsync(
         Toolchain toolchain, string repoRoot, string cachePath, CancellationToken ct = default)
     {
-        var head = await Shell.GitAsync(repoRoot, ct, "rev-parse", "HEAD").ConfigureAwait(false);
-        var commit = head.Stdout.Trim();
+        var commit = await HeadCommitAsync(repoRoot, ct).ConfigureAwait(false);
 
-        if (File.Exists(cachePath))
-        {
-            try
-            {
-                var cached = FactoryJson.Read<ToolchainBaseline>(File.ReadAllText(cachePath));
-                if (cached is not null && cached.Commit == commit && commit.Length > 0) return cached;
-            }
-            catch (Exception ex) when (ex is IOException or JsonException) { }
-        }
+        if (TryLoadBaseline(cachePath, commit) is { } cached) return cached;
 
         var results = await RunAsync(toolchain, repoRoot, ct).ConfigureAwait(false);
         var baseline = new ToolchainBaseline

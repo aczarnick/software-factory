@@ -14,9 +14,6 @@ namespace Factory.Runtime;
 /// </summary>
 public sealed class CheckStation : IStation
 {
-    // Baseline capture builds the mainline, so only one item may do it at a time.
-    private static readonly SemaphoreSlim BaselineGate = new(1, 1);
-
     public StationRole Role => StationRole.Check;
 
     public async Task<StationResult> ExecuteAsync(StationContext ctx)
@@ -30,7 +27,13 @@ public sealed class CheckStation : IStation
             return StationResult.Ok("no toolchain detected");
         }
 
-        var baseline = await CaptureBaselineAsync(ctx, toolchain).ConfigureAwait(false);
+        // The baseline is taken once before dispatch, while nothing else is building. If none
+        // was recorded, assume everything was healthy: absent evidence that a check was
+        // already broken, a failure is attributed to the change rather than excused.
+        var commit = await ToolchainRunner.HeadCommitAsync(ctx.Services.Workspace.RepoRoot, ctx.Ct)
+            .ConfigureAwait(false);
+        var baseline = ToolchainRunner.TryLoadBaseline(ctx.Services.Paths.BaselineFile, commit)
+                       ?? new ToolchainBaseline { Commit = commit };
 
         var results = await ToolchainRunner.RunAsync(toolchain, ctx.Run.WorkDir, ctx.Ct).ConfigureAwait(false);
         var verdict = ToolchainRunner.Compare(results, baseline);
@@ -46,21 +49,29 @@ public sealed class CheckStation : IStation
             : StationResult.GateFailed(string.Join("\n", verdict.Regressions.Select(r => r.Detail)));
     }
 
-    /// <summary>Establishes which checks passed before the factory touched anything, so an
-    /// item is only blamed for what it broke. Cached against the commit it was taken at.</summary>
-    private static async Task<ToolchainBaseline> CaptureBaselineAsync(StationContext ctx, Toolchain toolchain)
+    /// <summary>Establishes which checks passed before the factory touched anything, so an item
+    /// is only blamed for what it broke. Called once by the orchestrator before any dispatch,
+    /// because a baseline taken while agents are compiling is not a baseline.</summary>
+    public static async Task<ToolchainBaseline?> CaptureBaselineAsync(
+        FactoryServices services, CancellationToken ct = default)
     {
-        var cachePath = Path.Combine(ctx.Services.Paths.Root, "baseline.json");
+        var toolchain = Toolchain.Detect(services.Workspace.RepoRoot);
+        if (toolchain.IsEmpty) return null;
 
-        await BaselineGate.WaitAsync(ctx.Ct).ConfigureAwait(false);
-        try
-        {
-            return await ToolchainRunner.BaselineAsync(
-                toolchain, ctx.Services.Workspace.RepoRoot, cachePath, ctx.Ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            BaselineGate.Release();
-        }
+        var commit = await ToolchainRunner.HeadCommitAsync(services.Workspace.RepoRoot, ct).ConfigureAwait(false);
+        if (ToolchainRunner.TryLoadBaseline(services.Paths.BaselineFile, commit) is { } cached) return cached;
+
+        services.Log($"  [check] baselining {toolchain.Describe} on the mainline…");
+
+        var baseline = await ToolchainRunner.BaselineAsync(
+            toolchain, services.Workspace.RepoRoot, services.Paths.BaselineFile, ct).ConfigureAwait(false);
+
+        // A baseline that cannot establish a healthy mainline is worth saying out loud: from
+        // here on, those checks stop blocking anything.
+        foreach (var (name, passing) in baseline.Passing.Where(p => !p.Value))
+            services.Log($"  [check] warning: `{name}` already fails on the mainline — " +
+                         "it will not block work until it is fixed");
+
+        return baseline;
     }
 }

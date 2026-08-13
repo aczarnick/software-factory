@@ -76,14 +76,37 @@ public static class Shell
         return await ExecAsync(psi, 120, ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// How long to keep draining output after the command itself has exited.
+    ///
+    /// Build tools leave daemons behind — MSBuild node reuse, gradle, watchman — and those
+    /// children inherit the command's stdout and stderr. Reading to end-of-file therefore
+    /// blocks until the *daemon* exits, not until the command finishes, which stalls a build
+    /// gate for its entire timeout after the build has already succeeded.
+    /// </summary>
+    private static readonly TimeSpan DrainGrace = TimeSpan.FromSeconds(2);
+
     private static async Task<ShellResult> ExecAsync(ProcessStartInfo psi, int timeoutSeconds, CancellationToken ct)
     {
-        using var proc = new Process { StartInfo = psi };
+        // Stop build tools leaving daemons behind in the first place.
+        psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+        psi.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
+        psi.Environment["DOTNET_NOLOGO"] = "1";
+
+        using var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
 
+        // Signals on process exit alone. Process.WaitForExitAsync also waits for the
+        // redirected streams to reach end-of-file, which never happens while an inherited
+        // daemon still holds them — so waiting on it hangs long after the command finished.
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        proc.Exited += (_, _) => exited.TrySetResult();
+
         try { proc.Start(); }
         catch (Exception ex) { return new ShellResult(127, "", ex.Message, false); }
+
+        if (proc.HasExited) exited.TrySetResult();
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
@@ -93,8 +116,13 @@ public static class Shell
 
         try
         {
-            await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
-            await Task.WhenAll(outTask, errTask).ConfigureAwait(false);
+            await exited.Task.WaitAsync(cts.Token).ConfigureAwait(false);
+
+            // Bounded drain: collect whatever output is still buffered, but never wait on a
+            // pipe that an inherited daemon is holding open.
+            await Task.WhenAny(
+                Task.WhenAll(outTask, errTask),
+                Task.Delay(DrainGrace, cts.Token)).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
