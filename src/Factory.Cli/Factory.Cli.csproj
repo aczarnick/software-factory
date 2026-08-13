@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Factory.Core\Factory.Core.csproj" />
+    <ProjectReference Include="..\Factory.Agents\Factory.Agents.csproj" />
+    <ProjectReference Include="..\Factory.Runtime\Factory.Runtime.csproj" />
+    <ProjectReference Include="..\Factory.Evolution\Factory.Evolution.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- The deployed command is `factory`. -->
+    <AssemblyName>factory</AssemblyName>
+    <RootNamespace>Factory.Cli</RootNamespace>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+</Project>
