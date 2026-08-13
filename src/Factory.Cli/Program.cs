@@ -27,6 +27,7 @@ try
         "activate" => Commands.Activate(cli),
         "cancel" => Commands.Cancel(cli), // factory cancel <id>          Cancel a queued or in-flight item
         "status" => Commands.Status(cli),
+        "doctor" => Commands.Doctor(cli),
         "ls" => Commands.List(cli),
         "show" => Commands.Show(cli),
         "link" => Commands.Link(cli),

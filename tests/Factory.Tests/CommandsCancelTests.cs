@@ -4,6 +4,12 @@ using Factory.Runtime;
 
 namespace Factory.Tests;
 
+/// <summary>Redirects Console.Out, which is process-global — grouped into a shared,
+/// non-parallel collection with other tests that do the same so they cannot race each other.</summary>
+[CollectionDefinition("Console")]
+public class ConsoleCollection;
+
+[Collection("Console")]
 public class CommandsCancelTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
