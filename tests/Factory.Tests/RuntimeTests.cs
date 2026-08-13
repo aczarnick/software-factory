@@ -161,6 +161,36 @@ public class PipelineTests : IDisposable
     }
 
     [Fact]
+    public async Task Two_independent_ready_items_are_both_claimed_and_completed()
+    {
+        // Each item must produce its own file: two items racing to write the same path would
+        // let a lucky merge order mask a claim that never actually ran.
+        var transport = Scripted().Respond("implement", request =>
+        {
+            var produces = request.Prompt.Contains("second thing") ? "second.txt" : "hello.txt";
+            File.WriteAllText(Path.Combine(request.WorkingDirectory!, produces), "hi\n");
+            return FakeTransport.Success("wrote the file", cost: 0.02m);
+        });
+        using var host = Open(transport);
+
+        var first = host.Submit(WorkItem.Create("create hello.txt") with
+        {
+            AcceptanceCriteria = [AcceptanceCriterion.Command("file exists", "test -f hello.txt")]
+        });
+        var second = host.Submit(WorkItem.Create("create second thing") with
+        {
+            AcceptanceCriteria = [AcceptanceCriterion.Command("file exists", "test -f second.txt")]
+        });
+
+        var report = await host.CreateOrchestrator()
+            .RunAsync(new OrchestratorOptions { MaxConcurrency = 2, StopWhenIdle = true });
+
+        Assert.Equal(2, report.Completed);
+        Assert.Equal(WorkItemState.Done, host.Services.State.Items[first.Id].State);
+        Assert.Equal(WorkItemState.Done, host.Services.State.Items[second.Id].State);
+    }
+
+    [Fact]
     public async Task Review_is_skipped_when_every_criterion_was_machine_checked()
     {
         var transport = Scripted();
