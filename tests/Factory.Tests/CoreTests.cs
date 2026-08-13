@@ -321,6 +321,63 @@ public class BlueprintTests
     }
 }
 
+public class HeartbeatStatusTests
+{
+    [Fact]
+    public void Round_trips_through_FactoryJson_without_loss()
+    {
+        var status = new HeartbeatStatus
+        {
+            Pid = 4242,
+            StartedAtUtc = new DateTime(2026, 8, 13, 9, 0, 0, DateTimeKind.Utc),
+            Status = "running",
+            StoppedAtUtc = null,
+            Items =
+            [
+                new HeartbeatItemStatus
+                {
+                    Id = "wi-1",
+                    Title = "build a thing",
+                    Station = "implement",
+                    EnteredStationAtUtc = new DateTime(2026, 8, 13, 9, 5, 0, DateTimeKind.Utc),
+                    ElapsedSeconds = 123.4,
+                    CurrentCommand = "dotnet build",
+                    Stalled = false
+                }
+            ],
+            Spend = new HeartbeatSpend { TotalUsd = 1.23m, ModelCallCount = 7 },
+            UsageWindows =
+            [
+                new HeartbeatUsageWindow
+                {
+                    Model = "claude-sonnet-5",
+                    WindowStartUtc = new DateTime(2026, 8, 13, 5, 0, 0, DateTimeKind.Utc),
+                    WindowEndUtc = new DateTime(2026, 8, 13, 10, 0, 0, DateTimeKind.Utc),
+                    Used = 40,
+                    Limit = 100
+                }
+            ],
+            RecentGates =
+            [
+                new HeartbeatGateResult
+                {
+                    ItemId = "wi-1",
+                    GateName = "verify",
+                    Passed = true,
+                    TimestampUtc = new DateTime(2026, 8, 13, 9, 10, 0, DateTimeKind.Utc)
+                }
+            ]
+        };
+
+        var json = FactoryJson.Write(status);
+        var restored = FactoryJson.Read<HeartbeatStatus>(json);
+
+        // Records compare their List<T> members by reference, not by content, so a
+        // structural comparison is needed to catch data loss across the round trip.
+        Assert.Equivalent(status, restored, strict: true);
+    }
+}
+
 internal static class TempDir
 {
     public static string Create()
