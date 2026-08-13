@@ -84,6 +84,7 @@ public sealed class FactoryHost : IDisposable
 
         var history = new JsonlRunHistory(paths.LedgerFile);
         var state = history.Replay();
+        var items = new LedgerWorkItemStore(history, state);
 
         var prompts = new PromptRegistry(paths.PromptsDir);
         foreach (var (stationId, text) in KitPrompts.All)
@@ -93,7 +94,7 @@ public sealed class FactoryHost : IDisposable
         if (budgetOverride is not null) blueprint = blueprint with { Budget = budgetOverride };
 
         var budget = new BudgetGuard(blueprint.Budget);
-        budget.Restore(state.Runs, state.Items);
+        budget.Restore(history.ForBudget());
 
         var cache = new ResponseCache(paths.CacheDir);
 
@@ -108,6 +109,7 @@ public sealed class FactoryHost : IDisposable
             Config = config,
             Blueprint = blueprint,
             History = history,
+            Items = items,
             Runner = runner,
             Prompts = prompts,
             Budget = budget,
@@ -134,8 +136,7 @@ public sealed class FactoryHost : IDisposable
             ? item with { State = WorkItemState.Ready, UpdatedAt = DateTimeOffset.UtcNow }
             : item;
 
-        Services.Record(new WorkItemFiled(filed));
-        return filed;
+        return Services.Items.Add(filed);
     }
 
     /// <summary>Queues an item that is waiting on a person: a proposal an agent filed, or work
@@ -156,23 +157,10 @@ public sealed class FactoryHost : IDisposable
         return Update(ready with { Station = resumable ? ready.Station : null });
     }
 
-    public WorkItem Transition(WorkItem item, WorkItemState to, string? reason = null)
-    {
-        if (!WorkItemStates.CanTransition(item.State, to))
-            throw new InvalidOperationException(
-                $"Illegal transition {item.State} -> {to} for {item.Id}.");
+    public WorkItem Transition(WorkItem item, WorkItemState to, string? reason = null) =>
+        Services.Items.Transition(item, to, reason);
 
-        Services.Record(new WorkItemStateChanged(item.Id, item.State, to, reason));
-        var updated = item with { State = to, UpdatedAt = DateTimeOffset.UtcNow };
-        return updated;
-    }
-
-    public WorkItem Update(WorkItem item)
-    {
-        var updated = item with { UpdatedAt = DateTimeOffset.UtcNow };
-        Services.Record(new WorkItemUpdated(updated));
-        return updated;
-    }
+    public WorkItem Update(WorkItem item) => Services.Items.Update(item);
 
     public IStation Resolve(StationDef def) => def.Role switch
     {

@@ -35,7 +35,6 @@ public sealed class EvolutionService(FactoryHost host)
         GateSettings? settings = null, CancellationToken ct = default)
     {
         var loop = new EvolutionLoop(_s.Prompts, _s.Runner, msg => _s.Log($"  [evolve] {msg}"));
-        var runs = _s.State.Runs;
         var traces = FailureTraces();
 
         var outcomes = new List<EvolutionOutcome>();
@@ -53,7 +52,8 @@ public sealed class EvolutionService(FactoryHost host)
             var stationTraces = traces.GetValueOrDefault(station.Id) ?? [];
 
             var outcome = await loop.RunStationAsync(
-                station.Id, tier, runs, stationTraces, perStationBudget, settings, ct).ConfigureAwait(false);
+                station.Id, tier, _s.History.RunsForStation(station.Id), stationTraces,
+                perStationBudget, settings, ct).ConfigureAwait(false);
 
             outcomes.Add(outcome);
             cost += outcome.CostUsd;

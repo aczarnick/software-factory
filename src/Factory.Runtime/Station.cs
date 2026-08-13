@@ -11,6 +11,7 @@ public sealed class FactoryServices
     public required FactoryConfig Config { get; init; }
     public required Blueprint Blueprint { get; init; }
     public required IRunHistory History { get; init; }
+    public required IWorkItemStore Items { get; init; }
     public required AgentRunner Runner { get; init; }
     public required PromptRegistry Prompts { get; init; }
     public required BudgetGuard Budget { get; init; }

@@ -106,12 +106,31 @@ public class BudgetTests
         var item = Item();
         var guard = new BudgetGuard(new BudgetSpec { DailyUsd = 10m, PerItemUsd = 1m });
 
-        guard.Restore(
-            [new RunRecord { RunId = "r", ItemId = item.Id, StationId = "implement", CostUsd = 1.2m }],
-            new Dictionary<string, WorkItem> { [item.Id] = item });
+        guard.Restore(new BudgetRestoreView(
+            new Dictionary<string, decimal> { [item.Id] = 1.2m },
+            DailyUsd: 1.2m,
+            EvolutionDailyUsd: 0m));
 
         Assert.Equal(1.2m, guard.SpentOn(item.Id));
         Assert.Throws<BudgetExhaustedException>(() => guard.EnsureCanSpend(item));
+    }
+}
+
+public class BudgetRestoreTests
+{
+    [Fact]
+    public void Restore_rehydrates_per_item_and_daily_spend_from_a_view()
+    {
+        var guard = new BudgetGuard(new BudgetSpec { DailyUsd = 10m, PerItemUsd = 5m });
+
+        guard.Restore(new BudgetRestoreView(
+            new Dictionary<string, decimal> { ["wi-a"] = 2.50m },
+            DailyUsd: 4m,
+            EvolutionDailyUsd: 1m));
+
+        Assert.Equal(2.50m, guard.SpentOn("wi-a"));
+        Assert.Equal(4m, guard.DailySpent);
+        Assert.Equal(1m, guard.EvolutionSpent);
     }
 }
 

@@ -424,7 +424,7 @@ public static class Commands
             foreach (var a in item.Assumptions) Output.Info($"- {a}");
         }
 
-        var runs = host.Services.State.Runs.Where(r => r.ItemId == item.Id).ToList();
+        var runs = host.Services.History.RunsForItem(item.Id);
         if (runs.Count > 0)
         {
             Output.Header("Runs");
@@ -550,7 +550,7 @@ public static class Commands
     {
         if (cli.Has("no-evolve") || !host.Config.EvolutionEnabled) return;
 
-        var runs = host.Services.State.Runs.Count;
+        var runs = host.Services.History.Totals().RunCount;
         if (!cli.Has("evolve") && runs < host.Config.EvolveEveryRuns) return;
 
         Output.Header("Evolution");
@@ -561,7 +561,7 @@ public static class Commands
     public static int Report(CommandLine cli)
     {
         using var host = OpenOrInit(cli, quiet: true);
-        var runs = host.Services.State.Runs;
+        var runs = host.Services.History.ReadFrom(0).OfType<RunCompleted>().Select(e => e.Record).ToList();
 
         if (runs.Count == 0)
         {

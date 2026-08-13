@@ -110,26 +110,16 @@ public sealed class BudgetGuard(BudgetSpec spec, TimeProvider? clock = null)
         }
     }
 
-    /// <summary>Rehydrate accumulators from ledger history so restarts do not reset spend.</summary>
-    public void Restore(IEnumerable<RunRecord> runs, IReadOnlyDictionary<string, WorkItem> items)
+    /// <summary>Rehydrate accumulators from recorded history so restarts do not reset spend.</summary>
+    public void Restore(BudgetRestoreView view)
     {
-        var today = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
         lock (_gate)
         {
-            _day = today;
-            _daily = 0m;
-            _evolutionDaily = 0m;
+            _day = DateOnly.FromDateTime(_clock.GetUtcNow().UtcDateTime);
+            _daily = view.DailyUsd;
+            _evolutionDaily = view.EvolutionDailyUsd;
             _perItem.Clear();
-
-            foreach (var r in runs)
-            {
-                _perItem[r.ItemId] = _perItem.GetValueOrDefault(r.ItemId) + r.CostUsd;
-                if (DateOnly.FromDateTime(r.At.UtcDateTime) != today) continue;
-                _daily += r.CostUsd;
-                if (items.TryGetValue(r.ItemId, out var it) &&
-                    it.Provenance.Kind == ProvenanceKind.Evolution)
-                    _evolutionDaily += r.CostUsd;
-            }
+            foreach (var (itemId, usd) in view.PerItemUsd) _perItem[itemId] = usd;
         }
     }
 }
