@@ -109,22 +109,19 @@ public sealed class Orchestrator(FactoryHost host)
             }
 
             var claimable = throttled ? 0 : concurrency - running.Count;
-            if (claimable > 0)
+
+            // Claiming marks the item in progress before it is dispatched, so the next poll
+            // cannot pick it up again.
+            for (var i = 0; i < claimable && started < opts.MaxItems; i++)
             {
-                var batch = _s.State.Dispatchable().Take(claimable).ToList();
+                if (_s.Items.TryClaim(_s.Config.Name) is not { } claimed) break;
 
-                foreach (var item in batch)
+                claimed = _s.Items.Update(claimed with
                 {
-                    if (started >= opts.MaxItems) break;
-
-                    // Claim before dispatching so the next poll cannot pick it up again.
-                    var claimed = host.Transition(item, WorkItemState.InProgress, "dispatched");
-                    claimed = host.Update(claimed with { Station = claimed.Station ?? _s.Blueprint.Pipeline.FirstOrDefault() });
-                    started++;
-                    running.Add(ProcessItemAsync(claimed, opts, ct));
-                }
-
-                if (batch.Count > 0) continue;
+                    Station = claimed.Station ?? _s.Blueprint.Pipeline.FirstOrDefault()
+                });
+                started++;
+                running.Add(ProcessItemAsync(claimed, opts, ct));
             }
 
             if (running.Count > 0)
