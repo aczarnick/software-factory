@@ -1,8 +1,9 @@
 # Storage Ports: Phase 2 Handoff
 
-Phase 2 (plugin infrastructure, spec decision **D5**) implemented 2026-08-17/18 on branch
-`storage-ports-phase-2-work`, 10 commits, **not yet merged**. Suite **188 passing**, build clean
-apart from the one pre-existing CA1416. This is what phase 3 needs and could not learn from the diff.
+Phase 2 (plugin infrastructure, spec decision **D5**) implemented 2026-08-17/18 and **merged to
+`master` 2026-08-18** as merge commit `1a611e2` (`--no-ff`; the branch `storage-ports-phase-2-work`
+was deleted after merging). Suite on the merged result: **203 passing**, build clean apart from the
+one pre-existing CA1416. This is what phase 3 needs and could not learn from the diff.
 
 ## What phase 2 delivered
 
@@ -28,6 +29,26 @@ work is isolated. Phase 2 was completed this way from Task 3 onward. Phase 3 sho
 Consequence for this branch: `storage-ports-phase-2-work` carries those four factory commits as
 ancestors. They are the factory's own work, already destined for master, and they touch only
 `CheckStation.cs`, `Toolchain.cs` and their tests — zero file overlap with phase 2.
+
+### Repository state phase 3 inherits
+
+At the time phase 2 merged, the main checkout was still on `storage-ports-phase-2` and the factory
+kept committing there, so `master` immediately began falling behind (18 commits within the hour).
+The factory work that had accumulated on that branch was brought onto `master` by cherry-picking the
+`factory: integrate` **merge** commits with `-m 1` — that takes the diff against the first parent,
+which is the work-item content, and so excluded the phase-2 commits interleaved in the same chain.
+A plain fast-forward would have dragged partial phase-2 work onto `master`.
+
+Consequences to settle **before** phase 3 starts:
+
+1. `master` and `storage-ports-phase-2` now hold duplicate-content commits with different SHAs.
+   Merging that branch again will conflict in files phase work never touched — the phase-2 merge hit
+   exactly one such conflict, in `Toolchain.cs`, where the resolution was "take master, the phase
+   side contributed nothing".
+2. The lasting fix is to get the main checkout back onto `master` so the factory commits there again.
+   That moves a live process's HEAD, so it needs an operator: stop `factory up`, `git checkout master`
+   in the main checkout, then restart. Until that happens, every phase will need the cherry-pick dance.
+3. `master` is local-only; nothing in this work has been pushed.
 
 ## Where the plan was wrong
 
