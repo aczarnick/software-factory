@@ -170,9 +170,6 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string
     // The reason is not authoritative state -- the transition it explains already committed -- so a
     // failure here must not throw. It must not vanish in silence either: without a log line, the
     // ledger records a reason beads never got, and nothing says the two disagree.
-    // The reason is not authoritative state -- the transition it explains already committed -- so a
-    // failure here must not throw. It must not vanish in silence either: without a log line, the
-    // ledger records a reason beads never got, and nothing says the two disagree.
     private void Note(string id, string? reason)
     {
         if (string.IsNullOrWhiteSpace(reason)) return;
