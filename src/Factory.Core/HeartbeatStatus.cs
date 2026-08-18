@@ -15,10 +15,14 @@ public sealed record HeartbeatStatus
     public DateTime? StoppedAtUtc { get; init; }
 
     public List<HeartbeatItemStatus> Items { get; init; } = [];
-    public HeartbeatSpend Spend { get; init; } = new();
-    public List<HeartbeatUsageWindow> UsageWindows { get; init; } = [];
+    public SpendTotals Spend { get; init; } = SpendTotals.Empty;
+    public List<RateLimitSnapshot> UsageWindows { get; init; } = [];
     public List<HeartbeatGateResult> RecentGates { get; init; } = [];
     public List<HeartbeatWorkItemStatus> WorkItems { get; init; } = [];
+
+    /// <summary>Cap on <see cref="RecentGates"/> so the heartbeat file does not grow without
+    /// bound over a long-running factory.</summary>
+    public const int MaxRecentGates = 20;
 }
 
 /// <summary>Where one active work item sits in the factory right now, keyed by work item id.</summary>
@@ -43,22 +47,6 @@ public sealed record HeartbeatItemStatus
 
     /// <summary>True when the item has sat in the same station well past its usual time.</summary>
     public bool Stalled { get; init; }
-}
-
-public sealed record HeartbeatSpend
-{
-    public decimal TotalUsd { get; init; }
-    public int ModelCallCount { get; init; }
-}
-
-/// <summary>Observed usage against a model's rate-limit window.</summary>
-public sealed record HeartbeatUsageWindow
-{
-    public string Model { get; init; } = "";
-    public DateTime WindowStartUtc { get; init; }
-    public DateTime WindowEndUtc { get; init; }
-    public double Used { get; init; }
-    public double Limit { get; init; }
 }
 
 /// <summary>One recent gate verdict, for a rolling view of what is passing and failing.</summary>

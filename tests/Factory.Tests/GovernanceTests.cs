@@ -1,4 +1,5 @@
 using Factory.Agents;
+using Factory.Core;
 using Factory.Runtime;
 
 namespace Factory.Tests;

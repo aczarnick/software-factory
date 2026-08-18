@@ -326,16 +326,17 @@ public class HeartbeatStatusTests
                     Stalled = false
                 }
             ],
-            Spend = new HeartbeatSpend { TotalUsd = 1.23m, ModelCallCount = 7 },
+            Spend = new SpendTotals(3, 1.23m, new TokenUsage(1000, 2000, 3000)),
             UsageWindows =
             [
-                new HeartbeatUsageWindow
+                new RateLimitSnapshot
                 {
-                    Model = "claude-sonnet-5",
-                    WindowStartUtc = new DateTime(2026, 8, 13, 5, 0, 0, DateTimeKind.Utc),
-                    WindowEndUtc = new DateTime(2026, 8, 13, 10, 0, 0, DateTimeKind.Utc),
-                    Used = 40,
-                    Limit = 100
+                    Status = RateLimitStatus.Warning,
+                    Window = "five_hour",
+                    ResetsAt = new DateTimeOffset(2026, 8, 13, 10, 0, 0, TimeSpan.Zero),
+                    UsingOverage = false,
+                    OverageAvailable = true,
+                    ObservedAt = new DateTimeOffset(2026, 8, 13, 9, 0, 0, TimeSpan.Zero)
                 }
             ],
             RecentGates =
@@ -356,6 +357,17 @@ public class HeartbeatStatusTests
         // Records compare their List<T> members by reference, not by content, so a
         // structural comparison is needed to catch data loss across the round trip.
         Assert.Equivalent(status, restored, strict: true);
+    }
+
+    [Fact]
+    public void Defaults_Spend_UsageWindows_and_RecentGates_to_empty()
+    {
+        var status = new HeartbeatStatus { Pid = 4242, StartedAtUtc = DateTime.UtcNow };
+
+        Assert.Equal(SpendTotals.Empty, status.Spend);
+        Assert.Empty(status.UsageWindows);
+        Assert.Empty(status.RecentGates);
+        Assert.True(status.RecentGates.Count <= HeartbeatStatus.MaxRecentGates);
     }
 
     [Fact]
