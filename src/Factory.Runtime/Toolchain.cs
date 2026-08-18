@@ -170,6 +170,62 @@ public sealed record ToolchainVerdict(
     }
 }
 
+/// <summary>The SDK version(s) and target framework(s) a repository declares it needs, read
+/// from its own manifests (e.g. global.json, csproj) rather than assumed.</summary>
+public sealed record RepoToolchainRequirement(
+    IReadOnlyList<string> RequiredSdkVersions,
+    IReadOnlyList<string> TargetFrameworks);
+
+/// <summary>Reads the toolchain a repository declares it needs. Concerned only with the
+/// repo's own manifests — never with what is actually installed on the host.</summary>
+public interface IToolchainRequirementReader
+{
+    Task<RepoToolchainRequirement> ReadRequirementsAsync(string repoPath, CancellationToken ct = default);
+}
+
+/// <summary>Reports the SDK/toolchain versions installed on the host. Injectable so
+/// compatibility checks can be tested against a fake instead of shelling to a real toolchain.</summary>
+public interface IInstalledSdkProvider
+{
+    Task<IReadOnlyList<string>> GetInstalledVersionsAsync(CancellationToken ct = default);
+}
+
+/// <summary>Whether a repo's declared toolchain requirement is satisfied by what is installed.
+/// Installed/required versions are only carried when incompatible — a compatible result has
+/// nothing to report.</summary>
+public sealed record ToolchainCompatibilityResult
+{
+    public required bool IsCompatible { get; init; }
+    public IReadOnlyList<string> RequiredVersions { get; init; } = [];
+    public IReadOnlyList<string> InstalledVersions { get; init; } = [];
+
+    public static ToolchainCompatibilityResult Compatible() => new() { IsCompatible = true };
+
+    public static ToolchainCompatibilityResult Incompatible(
+        IReadOnlyList<string> required, IReadOnlyList<string> installed) => new()
+    {
+        IsCompatible = false,
+        RequiredVersions = required,
+        InstalledVersions = installed
+    };
+}
+
+/// <summary>Determines whether a repo's toolchain requirement is met by the installed SDKs.
+/// Not yet implemented — this child only declares the shape dotnet-specific probes will fill.</summary>
+public interface IToolchainProbe
+{
+    Task<ToolchainCompatibilityResult> ProbeAsync(string repoPath, CancellationToken ct = default);
+}
+
+/// <summary>A toolchain incompatibility, distinct from a station's generic <see
+/// cref="StationResult.Failed"/>: it carries the exact required and installed versions so the
+/// message can say precisely what is missing.</summary>
+public sealed record ToolchainMismatch(IReadOnlyList<string> RequiredVersions, IReadOnlyList<string> InstalledVersions)
+{
+    public string Message =>
+        $"requires SDK {string.Join(", ", RequiredVersions)} but found {string.Join(", ", InstalledVersions)} installed";
+}
+
 public static class ToolchainRunner
 {
     /// <summary>
