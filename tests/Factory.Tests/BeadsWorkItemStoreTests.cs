@@ -209,6 +209,37 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
+    public void Transitioning_a_claimed_item_back_to_ready_leaves_it_claimable_again()
+    {
+        if (Unavailable) return;
+        DrainReadyQueue();
+        var store = Store();
+        store.Add(WorkItem.Create("returned to the queue") with { State = WorkItemState.Ready });
+        var claimed = store.TryClaim(Owner)!;
+
+        store.Transition(claimed, WorkItemState.Ready, "cancelled");
+
+        // Claimable, not merely Ready: bd skips an open bead that still carries an assignee, even
+        // for the actor named in it, so a status assertion here would pass over a stranded item.
+        Assert.Equal(claimed.Id, store.TryClaim(Owner)?.Id);
+    }
+
+    [Fact]
+    public void Transitioning_a_claimed_item_back_to_ready_reports_nobody_holding_it()
+    {
+        if (Unavailable) return;
+        DrainReadyQueue();
+        var store = Store();
+        store.Add(WorkItem.Create("released by transition") with { State = WorkItemState.Ready });
+        var claimed = store.TryClaim(Owner)!;
+        Assert.Equal(Owner, store.Get(claimed.Id)!.Owner);
+
+        store.Transition(claimed, WorkItemState.Ready, "cancelled");
+
+        Assert.Null(store.Get(claimed.Id)!.Owner);
+    }
+
+    [Fact]
     public void Release_does_nothing_for_an_id_the_backlog_does_not_know()
     {
         if (Unavailable) return;

@@ -5,10 +5,16 @@ namespace Factory.Tests;
 
 /// <summary>
 /// The whole integration, against a real beads database in a temp directory: selecting the provider
-/// by config, deploying it, holding a claim open across a run, and requeueing an orphan.
+/// by config, deploying it, holding a claim open across a run, requeueing an orphan, and returning
+/// work to a queue it can actually be claimed from again.
+///
+/// A deployment per test rather than a shared fixture: each test opens its own factory, and a
+/// shared ledger would let one test's Ready item answer another's claim.
 /// </summary>
 public class BeadsBackedFactoryTests : IDisposable
 {
+    private const string Owner = "test-machine";
+
     private readonly string _dir = TempDir.Create();
     private static bool Available => Shell.Which("bd");
 
@@ -34,7 +40,7 @@ public class BeadsBackedFactoryTests : IDisposable
     private FactoryHost OpenBeadsBacked(FakeTransport transport) =>
         FactoryHost.Init(_dir, config: new FactoryConfig
         {
-            Name = "test-machine",
+            Name = Owner,
             BlueprintName = Blueprint.Standard().Name,
             MaxConcurrency = 1,
             WorkItemStore = new ProviderRef("beads")
@@ -114,8 +120,8 @@ public class BeadsBackedFactoryTests : IDisposable
 
         // Stand in for a crash: claimed, in progress, lease held, then the process died.
         store.Add(WorkItem.Create("interrupted") with { State = WorkItemState.Ready });
-        var claimed = store.TryClaim("test-machine")!;
-        Assert.Equal("test-machine", Bead(claimed.Id).Assignee);
+        var claimed = store.TryClaim(Owner)!;
+        Assert.Equal(Owner, Bead(claimed.Id).Assignee);
 
         await host.CreateOrchestrator().RunAsync(new OrchestratorOptions { StopWhenIdle = true, MaxItems = 0 });
 
@@ -141,5 +147,104 @@ public class BeadsBackedFactoryTests : IDisposable
         // correct. If it corrects anyway, every open rewrites the whole backlog into the ledger
         // for as long as the factory lives.
         Assert.DoesNotContain(log, message => message.Contains("reconciled"));
+    }
+
+    // Every path that puts work back on the queue asserts the item is claimable again rather than
+    // that its status is Ready. bd's `ready --claim` skips an open bead that still carries an
+    // assignee — even for the actor named in it — so an item returned to Ready with its claim
+    // intact is Ready everywhere and claimable nowhere, and a status assertion sees nothing wrong.
+
+    [Fact]
+    public void Activating_a_blocked_item_leaves_it_claimable_again()
+    {
+        if (!Available) return;
+        using var host = OpenBeadsBacked(new FakeTransport());
+        var store = host.Services.Items;
+
+        store.Add(WorkItem.Create("blocked on a person") with { State = WorkItemState.Ready });
+        var blocked = host.Transition(store.TryClaim(Owner)!, WorkItemState.Blocked, "needs a decision");
+
+        host.Activate(blocked);
+
+        Assert.Equal(blocked.Id, store.TryClaim(Owner)?.Id);
+    }
+
+    [Fact]
+    public void Retrying_a_failed_item_leaves_it_claimable_again()
+    {
+        if (!Available) return;
+        using var host = OpenBeadsBacked(new FakeTransport());
+        var store = host.Services.Items;
+
+        store.Add(WorkItem.Create("failed on something outside itself") with { State = WorkItemState.Ready });
+        var failed = host.Transition(store.TryClaim(Owner)!, WorkItemState.Failed, "verify gate failed");
+
+        host.Activate(failed);
+
+        Assert.Equal(failed.Id, store.TryClaim(Owner)?.Id);
+    }
+
+    [Fact]
+    public async Task An_item_a_cancelled_run_returns_to_the_queue_is_claimable_again()
+    {
+        if (!Available) return;
+
+        using var cancellation = new CancellationTokenSource();
+
+        // Ctrl-C while the first station is working. The next station's cancellation check unwinds
+        // the run through the orchestrator's handler, which returns the item to Ready.
+        var transport = new FakeTransport().Respond("decompose", _ =>
+        {
+            cancellation.Cancel();
+            return FakeTransport.Success(SingleChild);
+        });
+
+        using var host = OpenBeadsBacked(transport);
+        var item = host.Submit(WorkItem.Create("interrupted mid-run"));
+
+        await host.CreateOrchestrator().RunAsync(
+            new OrchestratorOptions { StopWhenIdle = true, MaxItems = 1 }, cancellation.Token);
+
+        Assert.Equal(WorkItemState.Ready, host.Services.Items.Get(item.Id)!.State);
+        Assert.Equal(item.Id, host.Services.Items.TryClaim(Owner)?.Id);
+    }
+
+    [Fact]
+    public async Task Requeueing_orphans_leaves_an_item_another_checkout_holds_in_progress_alone()
+    {
+        if (!Available) return;
+
+        const string elsewhere = "other-machine";
+        string foreignId;
+        string mineId;
+
+        using (var host = OpenBeadsBacked(new FakeTransport()))
+        {
+            var store = host.Services.Items;
+
+            store.Add(WorkItem.Create("another checkout's work") with { State = WorkItemState.Ready });
+            foreignId = new BeadsWorkItemStore(new BeadsCli(_dir), elsewhere).TryClaim(elsewhere)!.Id;
+
+            store.Add(WorkItem.Create("my interrupted work") with { State = WorkItemState.Ready });
+            mineId = store.TryClaim(Owner)!.Id;
+        }
+
+        // Reopening folds the foreign claim in from the shared backlog, which is how a claim this
+        // checkout never made becomes visible to its orphan requeue in the first place.
+        var log = new List<string>();
+        using var reopened = FactoryHost.Open(_dir, log.Add, transport: new FakeTransport());
+        Assert.Equal(elsewhere, reopened.Services.State.Items[foreignId].Owner);
+
+        // bd refuses to clear the assignee of a bead another actor holds in progress, so requeueing
+        // it would throw and take the whole run start down with it.
+        await reopened.CreateOrchestrator().RunAsync(new OrchestratorOptions { StopWhenIdle = true, MaxItems = 0 });
+
+        var foreignBead = Bead(foreignId);
+        Assert.Equal(WorkItemState.InProgress, BeadMapper.StateFor(foreignBead.Status));
+        Assert.Equal(elsewhere, foreignBead.Assignee);
+        Assert.Contains(log, message => message.Contains(foreignId) && message.Contains(elsewhere));
+
+        // Reported, not reaped — and this checkout's own orphan is still requeued and claimable.
+        Assert.Equal(mineId, reopened.Services.Items.TryClaim(Owner)?.Id);
     }
 }

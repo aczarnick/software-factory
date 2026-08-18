@@ -75,6 +75,13 @@ public sealed record WorkItem
 
     public Provenance Provenance { get; init; } = Provenance.Human;
 
+    /// <summary>Checkout holding the claim on this item, as the backlog store records it. Owned by
+    /// the backlog rather than by this machine — unlike <see cref="Station"/> and
+    /// <see cref="Worktree"/>, which are local run state — so reconciling from the backlog is
+    /// entitled to overwrite it. Null when nothing holds the item, or when the store keeps no
+    /// claims.</summary>
+    public string? Owner { get; init; }
+
     /// <summary>Station currently holding the item, when InProgress.</summary>
     public string? Station { get; init; }
 

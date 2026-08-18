@@ -222,15 +222,32 @@ public sealed class Orchestrator : IDisposable
     /// event-sourced ledger buys: a killed factory resumes rather than losing the item.
     ///
     /// Released rather than merely transitioned: releasing is what also drops the claim and clears
-    /// the assignee, and an orphan that kept either could not be picked up by another machine.</summary>
+    /// the assignee, and an orphan that kept either could not be picked up by another machine.
+    ///
+    /// Only this checkout's own claims: a shared backlog puts every machine's in-flight work in the
+    /// fold, and a backlog store is entitled to refuse a release of a claim it does not hold — which
+    /// would take the whole run start down with it. Another checkout's item is reported and left
+    /// alone, never forced: its holder may be working on it right now, and only its own restart or
+    /// an expired lease can safely return it.</summary>
     private void RequeueOrphans()
     {
         foreach (var item in _s.State.InFlight().ToList())
         {
+            if (HeldElsewhere(item))
+            {
+                _s.Log($"left {item.Id} ({item.Title}) in flight — {item.Owner} still holds it");
+                continue;
+            }
+
             _s.Items.Release(item.Id, "requeued after restart");
             _s.Log($"requeued {item.Id} ({item.Title})");
         }
     }
+
+    // An item with no recorded owner is this checkout's: a backlog store that keeps no claims
+    // reports none, and it is per-checkout anyway.
+    private bool HeldElsewhere(WorkItem item) =>
+        !string.IsNullOrEmpty(item.Owner) && item.Owner != _s.Config.Name;
 
     private async Task ProcessItemAsync(WorkItem item, OrchestratorOptions opts, CancellationToken ct)
     {

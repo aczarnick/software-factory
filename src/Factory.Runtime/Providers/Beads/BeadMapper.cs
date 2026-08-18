@@ -102,6 +102,12 @@ public static class BeadMapper
             BudgetUsd = metadata.BudgetUsd,
             Provenance = new Provenance(metadata.ProvenanceKind, metadata.ProvenanceSource),
 
+            // Read from the bead, never from the metadata: beads owns the assignee natively, and a
+            // second copy would go stale the moment another machine claimed or released the bead.
+            // Empty normalises to null because reconcile compares the whole mapped projection, and
+            // "" against null would rewrite every unheld item into the ledger on every open.
+            Owner = string.IsNullOrEmpty(bead.Assignee) ? null : bead.Assignee,
+
             // The filing time the factory recorded, falling back to the bead's own stamp for work
             // some other tool filed. Never defaulted to now: dispatch order breaks priority ties on
             // this, and reconcile compares it, so a fresh value on every read would both reshuffle
@@ -172,11 +178,27 @@ public static class BeadMapper
     public static IReadOnlyList<string> ReclaimArgs(TimeSpan olderThan, string owner) =>
         ["reclaim", "--older-than", $"{(long)olderThan.TotalSeconds}s", "--json", "--actor", owner];
 
-    public static IReadOnlyList<string> UpdateArgs(WorkItem item) =>
-    [
-        "update", item.Id,
-        "--status", StatusFor(item.State),
-        "-p", item.Priority.ToString(),
-        "--metadata", MetadataFor(item)
-    ];
+    /// <summary>Writes an item's mapped fields over the bead. Returning one to Ready also drops the
+    /// claim, because <c>bd ready --claim</c> skips an open bead that still carries an assignee —
+    /// even for the actor named in it, and <c>--claim</c> refuses to combine with
+    /// <c>--assignee</c> — so an item requeued with its claim intact would be Ready everywhere and
+    /// claimable nowhere. Any other status keeps the assignee: clearing it while work is in flight
+    /// would hand the item to whichever machine claimed next.
+    ///
+    /// The clear only lands when the caller also names the holder with <c>--actor</c>, which
+    /// <see cref="BeadsWorkItemStore.Update"/> appends.</summary>
+    public static IReadOnlyList<string> UpdateArgs(WorkItem item)
+    {
+        var args = new List<string>
+        {
+            "update", item.Id,
+            "--status", StatusFor(item.State),
+            "-p", item.Priority.ToString(),
+            "--metadata", MetadataFor(item)
+        };
+
+        if (item.State == WorkItemState.Ready) { args.Add("--assignee"); args.Add(""); }
+
+        return args;
+    }
 }

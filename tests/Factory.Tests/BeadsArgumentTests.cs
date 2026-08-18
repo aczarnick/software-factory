@@ -52,6 +52,28 @@ public class BeadsArgumentTests
         Assert.DoesNotContain("unclaim", BeadMapper.ReleaseArgs("wi-aaaa11112222", "node-a"));
     }
 
+    [Fact]
+    public void Updating_an_item_back_to_the_queue_clears_the_assignee()
+    {
+        var args = BeadMapper.UpdateArgs(WorkItem.Create("requeued") with { State = WorkItemState.Ready });
+
+        // bd's `ready --claim` skips an open bead that still carries an assignee — even for the
+        // actor named in it — so an item updated to Ready with its claim intact is stranded:
+        // Ready everywhere and claimable nowhere.
+        Assert.Equal("open", ValueAfter(args, "--status"));
+        Assert.Equal("", ValueAfter(args, "--assignee"));
+    }
+
+    [Fact]
+    public void Updating_an_item_that_is_not_returning_to_the_queue_leaves_the_assignee_alone()
+    {
+        var args = BeadMapper.UpdateArgs(WorkItem.Create("in flight") with { State = WorkItemState.InReview });
+
+        // Only a return to the queue drops the claim. Clearing it on every update would hand work
+        // still in flight to whichever machine claimed next.
+        Assert.DoesNotContain("--assignee", args);
+    }
+
     [Theory]
     [InlineData(90, "90s")]
     [InlineData(30, "30s")]

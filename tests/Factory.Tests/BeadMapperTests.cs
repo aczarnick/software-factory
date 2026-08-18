@@ -169,6 +169,39 @@ public class BeadMapperTests
     }
 
     [Fact]
+    public void The_assignee_is_read_as_the_checkout_holding_the_item()
+    {
+        var bead = new BeadRecord { Id = "wi-eeee11112222", Title = "held", Assignee = "other-machine" };
+
+        // Who holds an item is what lets a requeue tell its own orphan from work another checkout
+        // is still running, which bd refuses to let this one release.
+        Assert.Equal("other-machine", BeadMapper.ToWorkItem(bead).Owner);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void An_unassigned_bead_is_owned_by_nobody(string? assignee)
+    {
+        var bead = new BeadRecord { Id = "wi-eeee11112222", Title = "unheld", Assignee = assignee };
+
+        // Empty and absent have to land on the same value: reconcile compares the whole mapped
+        // projection, so "" against null would rewrite the item into the ledger on every open.
+        Assert.Null(BeadMapper.ToWorkItem(bead).Owner);
+    }
+
+    [Fact]
+    public void The_holder_of_an_item_is_not_duplicated_into_the_metadata()
+    {
+        var metadata = BeadMapper.MetadataFor(WorkItem.Create("held") with { Owner = "other-machine" });
+
+        // beads owns the assignee natively; a second copy in the metadata would go stale the moment
+        // another machine claimed or released the bead.
+        Assert.DoesNotContain("owner", metadata, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("other-machine", metadata, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Refactor_and_improvement_map_to_custom_types()
     {
         Assert.Equal("refactor", BeadMapper.TypeFor(WorkItemKind.Refactor));
