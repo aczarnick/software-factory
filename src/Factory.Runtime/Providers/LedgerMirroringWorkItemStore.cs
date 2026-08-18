@@ -62,15 +62,24 @@ public sealed class LedgerMirroringWorkItemStore(
     public void Heartbeat(string id) => inner.Heartbeat(id);
     public void Sync() => inner.Sync();
 
-    private WorkItemState? StateOf(string id) => state.Items.GetValueOrDefault(id)?.State;
+    private WorkItem? ItemOf(string id) => state.Items.GetValueOrDefault(id);
+    private WorkItemState? StateOf(string id) => ItemOf(id)?.State;
 
     // A state change is the more useful audit record because it carries the reason, but the fold
     // can only apply one to an item it already holds — work another machine filed arrives here
-    // unknown, and has to be recorded whole.
-    private void MirrorChange(WorkItem after, WorkItemState from, string? reason) =>
-        Mirror(StateOf(after.Id) is null
+    // unknown, and has to be recorded whole. An owner change forces the same whole-record write:
+    // FactoryState.ApplyLocked applies a WorkItemStateChanged as State + UpdatedAt only, so a claim
+    // or a Ready-bound release that changed who holds the item would otherwise never reach the
+    // fold at all, and the next open would find every one of them "reconciled" from the backlog.
+    // The cost is the reason string, which is lost on the write that changed the owner but kept on
+    // every other one.
+    private void MirrorChange(WorkItem after, WorkItemState from, string? reason)
+    {
+        var known = ItemOf(after.Id);
+        Mirror(known is null || known.Owner != after.Owner
             ? new WorkItemUpdated(after)
             : new WorkItemStateChanged(after.Id, from, after.State, reason));
+    }
 
     private void Mirror(FactoryEvent evt)
     {

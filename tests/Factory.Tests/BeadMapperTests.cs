@@ -213,7 +213,7 @@ public class BeadMapperTests
     {
         var item = WorkItem.Create("thing") with { State = WorkItemState.Verified };
 
-        var args = BeadMapper.UpdateArgs(item);
+        var args = BeadMapper.UpdateArgs(item, "node-a");
 
         Assert.Contains("--status", args);
         Assert.Contains("verified", args);

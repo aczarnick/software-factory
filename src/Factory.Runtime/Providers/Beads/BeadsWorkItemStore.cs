@@ -19,13 +19,14 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner) : IWorkItemSt
 
     public WorkItem Update(WorkItem item)
     {
-        // --actor names this checkout, as every other mutating call does. Load-bearing when a
-        // Ready-bound update clears the assignee of a bead still in progress: bd refuses that to
-        // anyone but the holder, and with no actor it resolves one from the human's git identity
-        // rather than from the checkout that holds the claim — so the factory is refused its own
-        // item, and a run cancelled mid-station cannot put it back.
-        Write([.. BeadMapper.UpdateArgs(item), "--actor", owner], $"update {item.Id}");
-        return item with { UpdatedAt = DateTimeOffset.UtcNow };
+        Write(BeadMapper.UpdateArgs(item, owner), $"update {item.Id}");
+
+        // A Ready-bound write just cleared the bead's assignee (BeadMapper.UpdateArgs), so the
+        // returned item has to say the same thing — otherwise the mirror carries a stale Owner
+        // into the ledger for a bead that bd now shows as unassigned.
+        return item.State == WorkItemState.Ready
+            ? item with { Owner = null, UpdatedAt = DateTimeOffset.UtcNow }
+            : item with { UpdatedAt = DateTimeOffset.UtcNow };
     }
 
     public WorkItem Transition(WorkItem item, WorkItemState to, string? reason)
@@ -34,8 +35,7 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner) : IWorkItemSt
             throw new InvalidOperationException(
                 $"Illegal transition {item.State} -> {to} for {item.Id}.");
 
-        var moved = item with { State = to, UpdatedAt = DateTimeOffset.UtcNow };
-        Update(moved);
+        var moved = Update(item with { State = to, UpdatedAt = DateTimeOffset.UtcNow });
         Note(item.Id, reason);
 
         return moved;

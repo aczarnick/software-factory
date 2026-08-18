@@ -149,6 +149,39 @@ public class BeadsBackedFactoryTests : IDisposable
         Assert.DoesNotContain(log, message => message.Contains("reconciled"));
     }
 
+    [Fact]
+    public async Task Reopening_after_a_claim_returns_to_the_queue_reports_no_corrections()
+    {
+        if (!Available) return;
+
+        using var cancellation = new CancellationTokenSource();
+
+        // Claimed, then cancelled mid-station and returned to Ready — the same path
+        // An_item_a_cancelled_run_returns_to_the_queue_is_claimable_again exercises, but this test
+        // cares about what the fold learned from it rather than about the bead itself.
+        var transport = new FakeTransport().Respond("decompose", _ =>
+        {
+            cancellation.Cancel();
+            return FakeTransport.Success(SingleChild);
+        });
+
+        using (var host = OpenBeadsBacked(transport))
+        {
+            host.Submit(WorkItem.Create("claimed then requeued"));
+
+            await host.CreateOrchestrator().RunAsync(
+                new OrchestratorOptions { StopWhenIdle = true, MaxItems = 1 }, cancellation.Token);
+        }
+
+        var log = new List<string>();
+        using var reopened = FactoryHost.Open(_dir, log.Add, transport: new FakeTransport());
+
+        // The claim and its release both happened inside the first factory's own run, so its own
+        // ledger already agrees with the unassigned bead. If the mirror never carried Owner, the
+        // fold's stale copy of it would disagree with beads on every open from here on.
+        Assert.DoesNotContain(log, message => message.Contains("reconciled"));
+    }
+
     // Every path that puts work back on the queue asserts the item is claimable again rather than
     // that its status is Ready. bd's `ready --claim` skips an open bead that still carries an
     // assignee — even for the actor named in it — so an item returned to Ready with its claim

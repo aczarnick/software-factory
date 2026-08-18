@@ -185,16 +185,19 @@ public static class BeadMapper
     /// claimable nowhere. Any other status keeps the assignee: clearing it while work is in flight
     /// would hand the item to whichever machine claimed next.
     ///
-    /// The clear only lands when the caller also names the holder with <c>--actor</c>, which
-    /// <see cref="BeadsWorkItemStore.Update"/> appends.</summary>
-    public static IReadOnlyList<string> UpdateArgs(WorkItem item)
+    /// <c>--actor</c> is always named because <c>bd</c> refuses to clear the assignee of a bead it
+    /// believes another actor holds — including the holder's own item, when the write does not name
+    /// it — so a Ready-bound write with no actor is refused on exactly the item it is meant to
+    /// requeue.</summary>
+    public static IReadOnlyList<string> UpdateArgs(WorkItem item, string owner)
     {
         var args = new List<string>
         {
             "update", item.Id,
             "--status", StatusFor(item.State),
             "-p", item.Priority.ToString(),
-            "--metadata", MetadataFor(item)
+            "--metadata", MetadataFor(item),
+            "--actor", owner
         };
 
         if (item.State == WorkItemState.Ready) { args.Add("--assignee"); args.Add(""); }
