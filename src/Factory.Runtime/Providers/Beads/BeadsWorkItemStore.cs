@@ -6,15 +6,14 @@ namespace Factory.Runtime;
 /// Backlog stored in beads. Authoritative for item state across every machine sharing the Dolt
 /// remote; volatile per-run state stays in the local ledger.
 /// </summary>
-public sealed class BeadsWorkItemStore(BeadsCli cli, string owner) : IWorkItemStore
+public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string> log) : IWorkItemStore
 {
     public WorkItem Add(WorkItem item)
     {
         Write(BeadMapper.CreateArgs(item), $"file {item.Id}");
 
-        // bd has no status flag on create, so anything but Ready needs a second write. The bead is
-        // briefly claimable in between; one local write apart, and accepted.
-        return item.State == WorkItemState.Ready ? item : Update(item);
+        // bd create has no status flag, so anything but Ready needs a second write.
+        return item.State == WorkItemState.Ready ? item : FinishFiling(item);
     }
 
     public WorkItem Update(WorkItem item)
@@ -79,6 +78,31 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner) : IWorkItemSt
                 .Select(lease => Get(lease.Id))
                 .OfType<WorkItem>()
         ];
+    }
+
+    /// <summary>bd's exit code for a write whose <c>--if-status</c> or <c>--if-assignee</c>
+    /// precondition no longer held: nothing was written, and another actor won the race. Any other
+    /// non-zero code is a genuine failure and must not be read as a lost race.</summary>
+    private const int PreconditionNoLongerHeld = 13;
+
+    // The second of Add's two writes. Losing the race is not a backlog failure: throwing would let
+    // GuardedWorkItemStore halt the whole factory because another machine claimed a proposal this
+    // one had just filed. So the collision is reported and the bead is re-read, because the item
+    // handed back is what the fold records — returning the Draft this checkout intended would put an
+    // item in the fold that beads says is in progress somewhere else.
+    private WorkItem FinishFiling(WorkItem item)
+    {
+        var result = cli.Exec([.. BeadMapper.FilingStatusArgs(item, owner)]);
+        if (result.Ok) return item with { UpdatedAt = DateTimeOffset.UtcNow };
+
+        if (result.ExitCode != PreconditionNoLongerHeld)
+            throw new InvalidOperationException(
+                $"Could not file {item.Id} as {item.State} in beads: {result.Combined}");
+
+        log($"{item.Id} was claimed by another checkout while being filed, so it stays as beads " +
+            "reports it rather than being forced back to a proposal");
+
+        return Get(item.Id) ?? item;
     }
 
     private void Write(IReadOnlyList<string> args, string what)

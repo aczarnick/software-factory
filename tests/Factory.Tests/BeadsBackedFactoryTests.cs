@@ -266,7 +266,7 @@ public class BeadsBackedFactoryTests : IDisposable
             var store = host.Services.Items;
 
             store.Add(WorkItem.Create("another checkout's work") with { State = WorkItemState.Ready });
-            foreignId = new BeadsWorkItemStore(new BeadsCli(_dir, elsewhere), elsewhere).TryClaim(elsewhere)!.Id;
+            foreignId = new BeadsWorkItemStore(new BeadsCli(_dir, elsewhere), elsewhere, _ => { }).TryClaim(elsewhere)!.Id;
 
             store.Add(WorkItem.Create("my interrupted work") with { State = WorkItemState.Ready });
             mineId = store.TryClaim(Owner)!.Id;

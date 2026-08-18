@@ -46,6 +46,6 @@ public class BeadsDeploymentTests : IDisposable
 
         BeadsDeployment.EnsureInitialised(cli, "wi", _ => { });
 
-        Assert.NotNull(new BeadsWorkItemStore(cli, "test-machine").Get("wi-aaaa11112222"));
+        Assert.NotNull(new BeadsWorkItemStore(cli, "test-machine", _ => { }).Get("wi-aaaa11112222"));
     }
 }

@@ -34,7 +34,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     private const string Owner = "test-machine";
 
     private BeadsCli Cli() => new(database.Directory, Owner);
-    private BeadsWorkItemStore Store() => new(Cli(), Owner);
+    private BeadsWorkItemStore Store() => new(Cli(), Owner, _ => { });
 
     // bd is on PATH in this environment, so these run for real. A machine without bd skips them
     // rather than failing: the rest of the suite must stay offline-clean.
@@ -42,6 +42,28 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
 
     private BeadRecord Bead(string id) =>
         Cli().Json<BeadRecord>([.. BeadMapper.GetArgs(id)]).Single();
+
+    /// <summary>Lets a test act on the bead in the window between <c>Add</c>'s two writes. That
+    /// window is bounded by a single <c>bd</c> process start, so nothing outside this seam can reach
+    /// it deterministically — and both of its outcomes, a lost race and a genuine failure, only
+    /// happen there.</summary>
+    private sealed class InterposesAfterCreate : BeadsCli
+    {
+        private readonly Action<string> _afterCreate;
+
+        public InterposesAfterCreate(string directory, string owner, Action<string> afterCreate)
+            : base(directory, owner) => _afterCreate = afterCreate;
+
+        public override ShellResult Exec(params string[] args)
+        {
+            var result = base.Exec(args);
+            if (result.Ok && args is ["create", ..]) _afterCreate(IdIn(args));
+
+            return result;
+        }
+
+        private static string IdIn(string[] args) => args[Array.IndexOf(args, "--id") + 1];
+    }
 
     /// <summary>Empties the ready queue so a claim test sees only what it filed.</summary>
     private void DrainReadyQueue()
@@ -83,6 +105,53 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         var item = store.Add(WorkItem.Create("a proposal"));
 
         Assert.Equal(WorkItemState.Draft, store.Get(item.Id)!.State);
+    }
+
+    [Fact]
+    public void Add_leaves_a_bead_another_checkout_claimed_mid_filing_alone()
+    {
+        if (Unavailable) return;
+        const string elsewhere = "other-machine";
+        var logged = new List<string>();
+        var item = WorkItem.Create("filed while another checkout was claiming");
+        var otherCheckout = new BeadsCli(database.Directory, elsewhere);
+        var store = new BeadsWorkItemStore(
+            new InterposesAfterCreate(database.Directory, Owner,
+                id => otherCheckout.Exec("update", id, "--claim", "--actor", elsewhere)),
+            Owner,
+            logged.Add);
+
+        var filed = store.Add(item);
+
+        // The other checkout is running it under a live lease, so forcing draft here would drop that
+        // lease and cancel work already in flight elsewhere.
+        var bead = Bead(item.Id);
+        Assert.Equal("in_progress", bead.Status);
+        Assert.Equal(elsewhere, bead.Assignee);
+        Assert.NotNull(bead.LeaseExpiresAt);
+
+        // And the item handed back has to be what beads says, not the Draft this checkout intended:
+        // the fold is written from this return value, so anything else makes the fold lie.
+        Assert.Equal(WorkItemState.InProgress, filed.State);
+        Assert.Equal(elsewhere, filed.Owner);
+        Assert.Contains(logged, message => message.Contains(item.Id));
+    }
+
+    [Fact]
+    public void Add_still_fails_loudly_when_the_second_write_fails_for_any_other_reason()
+    {
+        if (Unavailable) return;
+        var cli = Cli();
+        var store = new BeadsWorkItemStore(
+            new InterposesAfterCreate(database.Directory, Owner,
+                id => cli.Exec("delete", id, "--force")),
+            Owner,
+            _ => { });
+
+        // A bead deleted in the window fails the second write with exit 1, not the 13 that means a
+        // precondition went stale. A guard that read every failure as a lost race would report a
+        // broken backlog as a filed item.
+        Assert.Throws<InvalidOperationException>(() => store.Add(WorkItem.Create("deleted mid-filing")));
     }
 
     [Fact]

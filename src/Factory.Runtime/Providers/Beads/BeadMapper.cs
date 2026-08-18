@@ -233,4 +233,13 @@ public static class BeadMapper
 
         return args;
     }
+
+    /// <summary>The second write that gives a freshly created bead its real status. <c>bd create</c>
+    /// has no status flag, so filing anything but Ready takes two writes and the bead is claimable
+    /// in the window between them. <c>--if-status open</c> makes this write refuse — nothing written,
+    /// exit 13 — once the bead has moved on, rather than dragging a bead another machine claimed in
+    /// that window back to <c>draft</c> and dropping the lease it is working under, which bd
+    /// otherwise does while exiting 0.</summary>
+    public static IReadOnlyList<string> FilingStatusArgs(WorkItem item, string owner) =>
+        [.. UpdateArgs(item, owner), "--if-status", StatusFor(WorkItemState.Ready)];
 }

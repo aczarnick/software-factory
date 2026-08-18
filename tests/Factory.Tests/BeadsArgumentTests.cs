@@ -110,6 +110,18 @@ public class BeadsArgumentTests
         Assert.DoesNotContain("--assignee", args);
     }
 
+    [Fact]
+    public void The_write_that_finishes_filing_refuses_to_overwrite_a_bead_someone_else_claimed()
+    {
+        var args = BeadMapper.FilingStatusArgs(WorkItem.Create("a proposal"), "node-a");
+
+        // bd create has no status flag, so filing anything but Ready is two writes and the bead is
+        // briefly claimable in between. Unguarded, the second write drags a bead another machine
+        // claimed back to draft and drops the lease it is working under — exiting 0 while doing it.
+        Assert.Equal("draft", ValueAfter(args, "--status"));
+        Assert.Equal("open", ValueAfter(args, "--if-status"));
+    }
+
     [Theory]
     [InlineData(90, "90s")]
     [InlineData(30, "30s")]

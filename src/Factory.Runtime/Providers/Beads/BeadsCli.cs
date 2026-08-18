@@ -22,12 +22,15 @@ namespace Factory.Runtime;
 /// skip nothing, the same armed-but-inert failure described above for a committed config file.
 /// <c>owner</c> comes from <see cref="Factory.Core.FactoryConfig.Name"/>, so that value must be
 /// unique per machine wherever the backlog is shared.</remarks>
-public sealed class BeadsCli(string workingDirectory, string owner)
+public class BeadsCli(string workingDirectory, string owner)
 {
     private readonly Dictionary<string, string> _environment =
         new() { ["BD_NON_INTERACTIVE"] = "1", ["BEADS_NODE_ID"] = owner };
 
-    public ShellResult Exec(params string[] args) =>
+    /// <summary>Runs <c>bd</c>. Overridable so a test can interpose at a specific call — the window
+    /// between the two writes that file a non-Ready item is bounded by one process start, so nothing
+    /// outside this seam can reach it deterministically.</summary>
+    public virtual ShellResult Exec(params string[] args) =>
         Shell.Run("bd", args, workingDirectory, _environment);
 
     /// <summary>Runs a command expected to emit JSON, failing loudly when it does not. <c>bd</c>

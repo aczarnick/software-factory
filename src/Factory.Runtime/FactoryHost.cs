@@ -108,7 +108,7 @@ public sealed class FactoryHost : IDisposable
         {
             var cli = new BeadsCli(paths.RepoRoot, config.Name);
             BeadsDeployment.EnsureInitialised(cli, reference.Options.GetValueOrDefault("prefix", "wi"), backlogLog);
-            return new BeadsWorkItemStore(cli, config.Name);
+            return new BeadsWorkItemStore(cli, config.Name, backlogLog);
         });
 
         var items = new GuardedWorkItemStore(
