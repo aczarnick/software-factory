@@ -22,11 +22,12 @@ public class ToolchainRemediationTests : IDisposable
     /// <summary>Returns each compatibility result in turn — one call for the initial
     /// detection, a second for the post-remediation re-check — repeating the last if called
     /// again, so a test never has to guess exactly how many times it will be probed.</summary>
-    private static Func<string, CancellationToken, Task<ToolchainCompatibility>> Probes(
-        params ToolchainCompatibility[] results)
+    private sealed class FakeToolchainProbe(params ToolchainCompatibilityResult[] results) : IToolchainProbe
     {
-        var next = 0;
-        return (_, _) => Task.FromResult(results[Math.Min(next++, results.Length - 1)]);
+        private int _next;
+
+        public Task<ToolchainCompatibilityResult> ProbeAsync(string repoPath, CancellationToken ct = default) =>
+            Task.FromResult(results[Math.Min(_next++, results.Length - 1)]);
     }
 
     private StationContext ContextFor(FactoryHost host, WorkItem item) => new()
@@ -43,9 +44,9 @@ public class ToolchainRemediationTests : IDisposable
         var item = WorkItem.Create("needs a newer toolchain");
 
         var runner = new FakeRemediationRunner(new RemediationResult(true, true, true, "installed", null));
-        var mismatch = new ToolchainCompatibility(false, "9.0.100", "8.0.100");
-        var resolved = new ToolchainCompatibility(true, "9.0.100", "9.0.100");
-        var station = new CheckStation(runner, Probes(mismatch, resolved));
+        var mismatch = ToolchainCompatibilityResult.Incompatible(["9.0.100"], ["8.0.100"]);
+        var resolved = ToolchainCompatibilityResult.Compatible();
+        var station = new CheckStation(runner, new FakeToolchainProbe(mismatch, resolved));
 
         var result = await station.ExecuteAsync(ContextFor(host, item));
 
@@ -63,8 +64,8 @@ public class ToolchainRemediationTests : IDisposable
         var item = WorkItem.Create("needs a newer toolchain");
 
         var runner = new FakeRemediationRunner(RemediationResult.NotFound);
-        var mismatch = new ToolchainCompatibility(false, "9.0.100", "8.0.100");
-        var station = new CheckStation(runner, Probes(mismatch));
+        var mismatch = ToolchainCompatibilityResult.Incompatible(["9.0.100"], ["8.0.100"]);
+        var station = new CheckStation(runner, new FakeToolchainProbe(mismatch));
 
         var result = await station.ExecuteAsync(ContextFor(host, item));
 
@@ -83,8 +84,8 @@ public class ToolchainRemediationTests : IDisposable
         // The runner reports success, but the re-check is what is trusted — and it still
         // mismatches, so this must block rather than proceed.
         var runner = new FakeRemediationRunner(new RemediationResult(true, true, true, "installed", null));
-        var mismatch = new ToolchainCompatibility(false, "9.0.100", "8.0.100");
-        var station = new CheckStation(runner, Probes(mismatch, mismatch));
+        var mismatch = ToolchainCompatibilityResult.Incompatible(["9.0.100"], ["8.0.100"]);
+        var station = new CheckStation(runner, new FakeToolchainProbe(mismatch, mismatch));
 
         var result = await station.ExecuteAsync(ContextFor(host, item));
 
