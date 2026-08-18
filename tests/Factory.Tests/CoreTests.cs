@@ -40,6 +40,23 @@ public class WorkItemStateTests
         Assert.False(mixed.IsFullyDeterministic);
         Assert.False(WorkItem.Create("no criteria").IsFullyDeterministic);
     }
+
+    [Fact]
+    public void Blocked_status_and_reason_round_trip_through_FactoryJson_distinct_from_failed()
+    {
+        var blocked = WorkItem.Create("needs a newer toolchain") with
+        {
+            State = WorkItemState.Blocked,
+            LastError = "requires dotnet 10.0, 9.0 installed; no remediation attempted"
+        };
+
+        var restored = FactoryJson.Read<WorkItem>(FactoryJson.Write(blocked));
+
+        Assert.NotNull(restored);
+        Assert.Equal(WorkItemState.Blocked, restored!.State);
+        Assert.NotEqual(WorkItemState.Failed, restored.State);
+        Assert.Equal(blocked.LastError, restored.LastError);
+    }
 }
 
 public class BudgetTests
