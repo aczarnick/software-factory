@@ -106,3 +106,30 @@ Consequences for phase 2:
   A conflict here is plausible, not hypothetical.
 - Stopping the factory (or letting it drain to an empty backlog) before phase 2 is the
   cleanest option, but that is the operator's call — it is doing real work.
+
+## Why the remaining phases are not fed to the factory
+
+Asked and investigated 2026-08-14. Three blockers, all verified in code:
+
+1. **A running factory never sees externally-added items.** `FactoryState` is folded once in
+   `FactoryHost.Open`; `Orchestrator.cs` contains no `ReadFrom`/`Replay` call. Items appended
+   by a second process are invisible until restart.
+2. **A second writer corrupts the ledger.** `JsonlRunHistory._seq` is seeded once at
+   construction and incremented per-process (`evt.Seq = ++_seq`); `_gate` is an in-process
+   lock and the file is opened `FileShare.ReadWrite`. Two live processes assign the same
+   sequence numbers. The spec already lists "multiple factory processes against a single
+   checkout" as a non-goal.
+3. **`factory add` cannot express ordering.** It reads only `PositionalText`, `--intent`,
+   `--kind`, `--criterion` — no `--depends`, `--priority`, or `--draft`, and every item lands
+   `Ready`. The phase plans are strictly ordered (phase 2 Task 5 wires in what Task 4 builds),
+   so without dependency edges the factory would dispatch them out of order.
+
+Beyond the mechanics: phases 2-4 modify `FactoryHost`, `Orchestrator`, and `Station` — the
+engine executing the work — and phase 3 migrates the live backlog into beads, i.e. the factory
+replacing its own backlog store while using it. Phase 1 also needed three controller rulings
+where the *plan* was wrong; an autonomous pipeline meets those as blocked items rather than
+decisions.
+
+If feeding ordered plans to the factory is ever wanted, the enabling change is dependency and
+priority flags on `factory add` (`WorkItem.DependsOn` and `Priority` already exist and
+`FactoryState.Dispatchable()` already gates on them — only the CLI surface is missing).
