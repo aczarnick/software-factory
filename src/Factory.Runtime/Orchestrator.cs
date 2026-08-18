@@ -20,6 +20,11 @@ public sealed record OrchestratorOptions
     public int MaxItems { get; init; } = int.MaxValue;
 
     public int Depth { get; init; }
+
+    /// <summary>How often an in-flight item's claim is refreshed. Defaults to a third of the
+    /// shortest lease the factory has to survive, so two refreshes can be missed before a claim
+    /// is lost. Only lowered by tests.</summary>
+    public TimeSpan LeaseRefreshInterval { get; init; } = Leases.RefreshInterval;
 }
 
 public sealed record OrchestratorReport
@@ -117,6 +122,13 @@ public sealed class Orchestrator : IDisposable
         var started = 0;
         var running = new List<Task>();
 
+        // A claim carries a lease that expires while the station is still working, so refreshing
+        // has to span the whole run. It cannot live in the loop below: the loop exits as soon as
+        // MaxItems have been started, and the items it started then run to completion in the
+        // drain after it — with MaxItems of 1, that is the entire run.
+        using var leases = new HeartbeatTimer(RefreshClaimsAsync, opts.LeaseRefreshInterval);
+        leases.Start();
+
         while (!ct.IsCancellationRequested && started < opts.MaxItems)
         {
             running.RemoveAll(t => t.IsCompleted);
@@ -176,6 +188,8 @@ public sealed class Orchestrator : IDisposable
         try { await Task.WhenAll(running).ConfigureAwait(false); }
         catch (OperationCanceledException) { /* drain */ }
 
+        leases.Stop();
+
         lock (_tally)
             return new OrchestratorReport
             {
@@ -192,14 +206,28 @@ public sealed class Orchestrator : IDisposable
             };
     }
 
+    /// <summary>Holds this checkout's claims open while their stations work. Only items actually
+    /// in progress have a claim to refresh — a store drops the lease once a station moves an item
+    /// on to review — and a refusal is not a backlog failure, so failures are left to the timer to
+    /// swallow.</summary>
+    private Task RefreshClaimsAsync()
+    {
+        foreach (var item in _s.State.Items.Values.Where(i => i.State == WorkItemState.InProgress))
+            _s.Items.Heartbeat(item.Id);
+
+        return Task.CompletedTask;
+    }
+
     /// <summary>Work left mid-flight by a crash is put back on the queue. This is what the
-    /// event-sourced ledger buys: a killed factory resumes rather than losing the item.</summary>
+    /// event-sourced ledger buys: a killed factory resumes rather than losing the item.
+    ///
+    /// Released rather than merely transitioned: releasing is what also drops the claim and clears
+    /// the assignee, and an orphan that kept either could not be picked up by another machine.</summary>
     private void RequeueOrphans()
     {
         foreach (var item in _s.State.InFlight().ToList())
         {
-            var requeued = host.Transition(item, WorkItemState.Ready, "requeued after restart");
-            host.Update(requeued);
+            _s.Items.Release(item.Id, "requeued after restart");
             _s.Log($"requeued {item.Id} ({item.Title})");
         }
     }

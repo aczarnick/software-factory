@@ -272,4 +272,29 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
 
         Store().Sync();
     }
+
+    [Fact]
+    public void Reconciling_a_real_backlog_twice_writes_nothing_the_second_time()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var filed = store.Add(WorkItem.Create("shared work", "because") with
+        {
+            State = WorkItemState.Ready,
+            AcceptanceCriteria = [AcceptanceCriterion.Command("runs", "dotnet run")]
+        });
+
+        var ledger = Path.Combine(TempDir.Create(), "ledger.jsonl");
+        using var history = new JsonlRunHistory(ledger);
+        var state = history.Replay();
+
+        BacklogReconciler.Reconcile(store, state, history, _ => { });
+        var afterFirst = history.ReadFrom(0).Count();
+        BacklogReconciler.Reconcile(store, state, history, _ => { });
+
+        // Every field the comparison reads has to round-trip through bd unchanged, or the ledger
+        // grows by the whole backlog on every single open.
+        Assert.Equal(afterFirst, history.ReadFrom(0).Count());
+        Assert.Contains(filed.Id, state.Items.Keys);
+    }
 }

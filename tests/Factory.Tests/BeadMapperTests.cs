@@ -246,6 +246,7 @@ public class BeadMapperTests
         Assert.Equal(1, bead.Priority);
         Assert.Equal("- cli runs", bead.AcceptanceCriteria);
         Assert.Equal(-8189281253539385782L, bead.Revision);
+        Assert.Equal(DateTimeOffset.Parse("2026-08-18T13:27:50Z"), bead.CreatedAt);
 
         var item = BeadMapper.ToWorkItem(bead);
 
@@ -258,6 +259,9 @@ public class BeadMapperTests
         Assert.Equal(ProvenanceKind.Agent, item.Provenance.Kind);
         Assert.Equal("review", item.Provenance.Source);
         Assert.IsType<CommandVerification>(Assert.Single(item.AcceptanceCriteria).Verification);
+
+        // Dispatch order breaks priority ties on CreatedAt, so it has to come from the bead.
+        Assert.Equal(DateTimeOffset.Parse("2026-08-18T13:27:50Z"), item.CreatedAt);
     }
 
     [Theory]

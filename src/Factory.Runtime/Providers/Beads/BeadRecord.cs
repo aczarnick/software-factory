@@ -19,8 +19,11 @@ public sealed record BeadRecord
     /// counter or compare it for ordering, only for equality.</summary>
     [JsonPropertyName("revision")] public long Revision { get; init; }
 
+    [JsonPropertyName("created_at")] public DateTimeOffset? CreatedAt { get; init; }
+    [JsonPropertyName("updated_at")] public DateTimeOffset? UpdatedAt { get; init; }
     [JsonPropertyName("started_at")] public DateTimeOffset? StartedAt { get; init; }
     [JsonPropertyName("lease_expires_at")] public DateTimeOffset? LeaseExpiresAt { get; init; }
+    [JsonPropertyName("heartbeat_at")] public DateTimeOffset? HeartbeatAt { get; init; }
 
     /// <summary>Beads that must close before this one can be worked.</summary>
     [JsonPropertyName("dependencies")] public IReadOnlyList<BeadDependency> Dependencies { get; init; } = [];

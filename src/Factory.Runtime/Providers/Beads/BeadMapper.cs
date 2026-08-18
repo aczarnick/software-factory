@@ -99,7 +99,13 @@ public static class BeadMapper
             ParentId = metadata.ParentId,
             DependsOn = [.. Blockers(bead)],
             BudgetUsd = metadata.BudgetUsd,
-            Provenance = new Provenance(metadata.ProvenanceKind, metadata.ProvenanceSource)
+            Provenance = new Provenance(metadata.ProvenanceKind, metadata.ProvenanceSource),
+
+            // Read from the bead rather than defaulted to now: dispatch order breaks ties on
+            // CreatedAt, and reconcile compares it, so a fresh value on every read would both
+            // reshuffle the queue and make an unchanged backlog look changed.
+            CreatedAt = bead.CreatedAt ?? DateTimeOffset.UtcNow,
+            UpdatedAt = bead.UpdatedAt ?? DateTimeOffset.UtcNow
         };
     }
 
