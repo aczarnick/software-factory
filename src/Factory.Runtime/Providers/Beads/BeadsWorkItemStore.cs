@@ -56,9 +56,18 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string
     /// lease left to refresh. Neither is a backlog failure, so neither halts the factory.</summary>
     public void Heartbeat(string id) => cli.Exec("heartbeat", id, "--actor", owner);
 
+    /// <summary>Returns an item to the queue. Refuses one whose current state cannot reach Ready,
+    /// which the port requires and <see cref="LedgerWorkItemStore"/> gets from routing through
+    /// <c>Transition</c>: <c>bd update --status open</c> reopens even a closed bead and exits 0, so
+    /// without the check a release of integrated work would put it back in <c>bd ready</c> for the
+    /// next claim to pick up.</summary>
     public void Release(string id, string reason)
     {
-        if (Get(id) is null) return;
+        if (Get(id) is not { } item) return;
+
+        if (!WorkItemStates.CanTransition(item.State, WorkItemState.Ready))
+            throw new InvalidOperationException(
+                $"Illegal transition {item.State} -> {WorkItemState.Ready} for {id}.");
 
         Write(BeadMapper.ReleaseArgs(id, owner), $"release {id}");
         Note(id, reason);

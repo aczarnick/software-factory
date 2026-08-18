@@ -381,6 +381,23 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
+    public void Release_refuses_to_put_integrated_work_back_on_the_queue()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var done = store.Add(WorkItem.Create("already integrated") with { State = WorkItemState.Done });
+
+        Assert.Throws<InvalidOperationException>(() => store.Release(done.Id, "requeued after restart"));
+
+        // The exception on its own proves nothing: bd reopens a closed bead on `--status open` and
+        // exits 0, so what matters is that the refusal happened before the write. A bead back in
+        // `bd ready` is integrated work the next claim would hand to a station all over again.
+        Assert.Equal("closed", Bead(done.Id).Status);
+        Assert.DoesNotContain(
+            done.Id, Cli().Json<BeadRecord>("ready", "--json", "--limit", "0").Select(bead => bead.Id));
+    }
+
+    [Fact]
     public void Release_does_nothing_for_an_id_the_backlog_does_not_know()
     {
         if (Unavailable) return;
