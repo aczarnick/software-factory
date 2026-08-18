@@ -143,6 +143,10 @@ public sealed record ToolchainBaseline
     public string Commit { get; init; } = "";
     public Dictionary<string, bool> Passing { get; init; } = [];
     public DateTimeOffset CapturedAt { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>The commit SHA this baseline was captured against. Not yet wired up to any
+    /// staleness comparison — <see cref="Commit"/> remains the source of truth for that.</summary>
+    public string CapturedCommitSha { get; init; } = "";
 }
 
 public sealed record ToolchainVerdict(
