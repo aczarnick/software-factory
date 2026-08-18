@@ -109,10 +109,22 @@ public sealed class CheckStation(
     /// is only blamed for what it broke. Called once by the orchestrator before any dispatch,
     /// because a baseline taken while agents are compiling is not a baseline.</summary>
     public static async Task<ToolchainBaseline?> CaptureBaselineAsync(
-        FactoryServices services, CancellationToken ct = default)
+        FactoryServices services, CancellationToken ct = default, IToolchainProbe? probe = null)
     {
         var toolchain = Toolchain.Detect(services.Workspace.RepoRoot);
         if (toolchain.IsEmpty) return null;
+
+        // A mismatched toolchain makes every check below fail for reasons that have nothing
+        // to do with the mainline's health. Capturing that as a baseline would record it as
+        // "already failing" and keep excusing real regressions even after the mismatch is fixed.
+        var compatibility = await (probe ?? new DotnetToolchainProbe())
+            .ProbeAsync(services.Workspace.RepoRoot, ct).ConfigureAwait(false);
+        if (!compatibility.IsCompatible)
+        {
+            var mismatch = new ToolchainMismatch(compatibility.RequiredVersions, compatibility.InstalledVersions);
+            services.Log($"  [check] toolchain mismatch: {mismatch.Message}; skipping baseline capture");
+            return null;
+        }
 
         var commit = await ToolchainRunner.HeadCommitAsync(services.Workspace.RepoRoot, ct).ConfigureAwait(false);
         if (ToolchainRunner.TryLoadBaseline(services.Paths.BaselineFile, commit) is { } cached) return cached;
