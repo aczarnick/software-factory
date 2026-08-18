@@ -117,10 +117,12 @@ public static class BeadMapper
         };
     }
 
-    // Only the beads this one waits on. The self-id guard covers the reversed edge shape, where
-    // the same row would otherwise read as an item depending on itself.
+    // Only the beads this one waits on. Non-blocking edge types are dropped rather than read as
+    // blockers (see BeadDependency.IsBlocking), and the self-id guard covers the reversed edge
+    // shape, where the same row would otherwise read as an item depending on itself.
     private static IEnumerable<string> Blockers(BeadRecord bead) =>
         bead.Dependencies
+            .Where(dependency => dependency.IsBlocking)
             .Select(dependency => dependency.BlockerId)
             .Where(id => !string.IsNullOrEmpty(id) && id != bead.Id);
 

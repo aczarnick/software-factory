@@ -337,6 +337,26 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
+    public void A_related_edge_another_tool_added_does_not_block_the_item()
+    {
+        if (Unavailable) return;
+        DrainReadyQueue();
+        var store = Store();
+        var context = store.Add(WorkItem.Create("background reading") with { State = WorkItemState.Ready });
+        var dependent = store.Add(WorkItem.Create("work that merely relates to it") with { State = WorkItemState.Ready });
+
+        var added = Cli().Exec("dep", "add", dependent.Id, context.Id, "--type", "related");
+        Assert.True(added.Ok, added.Combined);
+
+        // beads does not withhold a `related` dependent from its own ready queue, so an item the
+        // store says is dispatchable must be dispatchable here too — otherwise the factory blocks
+        // work the store it calls authoritative is handing out.
+        var readyIds = Cli().Json<BeadRecord>("ready", "--json", "--limit", "0").Select(b => b.Id).ToList();
+        Assert.Contains(dependent.Id, readyIds);
+        Assert.Empty(store.Get(dependent.Id)!.DependsOn);
+    }
+
+    [Fact]
     public void An_edit_to_a_field_beads_owns_natively_survives_a_reconcile()
     {
         if (Unavailable) return;

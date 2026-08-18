@@ -311,6 +311,64 @@ public class BeadMapperTests
         Assert.Equal(["wi-aaaa11112222"], item.DependsOn);
     }
 
+    [Theory]
+    [InlineData("tracks")]
+    [InlineData("related")]
+    [InlineData("parent-child")]
+    [InlineData("discovered-from")]
+    [InlineData("until")]
+    [InlineData("caused-by")]
+    [InlineData("validates")]
+    [InlineData("relates-to")]
+    [InlineData("supersedes")]
+    public void An_edge_beads_does_not_treat_as_blocking_is_not_read_as_a_blocker(string type)
+    {
+        // Probed against bd 1.2.1: of its ten edge types only `blocks` withholds the dependent from
+        // `bd ready`, and only `blocks` counts towards the dependent's own dependency_count. Reading
+        // every edge as blocking turns an edge another tool filed as context into a false blocker
+        // that FactoryState.Dispatchable() will never dispatch past.
+        var fromList = new BeadRecord
+        {
+            Id = "wi-bbbb11112222",
+            Title = "dependent",
+            Dependencies =
+            [
+                new BeadDependency
+                {
+                    IssueId = "wi-bbbb11112222",
+                    DependsOnId = "wi-aaaa11112222",
+                    Type = type
+                }
+            ]
+        };
+
+        var fromShow = new BeadRecord
+        {
+            Id = "wi-bbbb11112222",
+            Title = "dependent",
+            Dependencies = [new BeadDependency { Id = "wi-aaaa11112222", DependencyType = type }]
+        };
+
+        // Both shapes, because `list` reports the edge and `show` embeds the blocking issue.
+        Assert.Empty(BeadMapper.ToWorkItem(fromList).DependsOn);
+        Assert.Empty(BeadMapper.ToWorkItem(fromShow).DependsOn);
+    }
+
+    [Fact]
+    public void An_edge_with_no_type_recorded_still_blocks()
+    {
+        var bead = new BeadRecord
+        {
+            Id = "wi-bbbb11112222",
+            Title = "dependent",
+            Dependencies = [new BeadDependency { DependsOnId = "wi-aaaa11112222" }]
+        };
+
+        // `blocks` is bd's own default for an edge with no type given, and the unsafe direction here
+        // is dropping a real blocker rather than keeping a spurious one.
+        Assert.Equal(["wi-aaaa11112222"], BeadMapper.ToWorkItem(bead).DependsOn);
+    }
+
     [Fact]
     public void A_reversed_dependency_edge_is_not_read_as_the_item_depending_on_itself()
     {
