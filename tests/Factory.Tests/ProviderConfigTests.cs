@@ -32,4 +32,15 @@ public class ProviderConfigTests
         Assert.Equal("tracer", restored.RunHistory.Sinks[0].Provider);
         Assert.Equal("x", restored.RunHistory.Sinks[0].Options["url"]);
     }
+
+    [Fact]
+    public void A_provider_named_with_no_options_still_has_an_empty_option_set()
+    {
+        // What the spec's own config example writes, and what `factory init` leaves behind.
+        var restored = FactoryJson.Read<ProviderRef>("""{"provider":"beads"}""")!;
+
+        Assert.Equal("beads", restored.Provider);
+        Assert.Empty(restored.Options);
+        Assert.Equal("wi", restored.Options.GetValueOrDefault("prefix", "wi"));
+    }
 }

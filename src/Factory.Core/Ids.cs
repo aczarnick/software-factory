@@ -5,7 +5,7 @@ namespace Factory.Core;
 
 public static class Ids
 {
-    public static string New(string prefix) => $"{prefix}_{Guid.NewGuid().ToString("n")[..12]}";
+    public static string New(string prefix) => $"{prefix}-{Guid.NewGuid().ToString("n")[..12]}";
 
     /// <summary>Stable short content hash, used for prompt versions and cache keys.</summary>
     public static string Hash(params string?[] parts)

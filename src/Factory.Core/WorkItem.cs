@@ -62,8 +62,9 @@ public sealed record WorkItem
 
     public WorkItemState State { get; init; } = WorkItemState.Draft;
 
-    /// <summary>Lower sorts first.</summary>
-    public int Priority { get; init; } = 100;
+    /// <summary>Dispatch priority, <see cref="Priorities.Highest"/> to
+    /// <see cref="Priorities.Lowest"/>. Lower sorts first.</summary>
+    public int Priority { get; init; } = Priorities.Default;
 
     public IReadOnlyList<string> Labels { get; init; } = [];
     public string? ParentId { get; init; }

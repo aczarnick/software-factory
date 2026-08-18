@@ -11,6 +11,11 @@ public readonly record struct ShellResult(int ExitCode, string Stdout, string St
 
 public static class Shell
 {
+    /// <summary>How much of a command's output is retained. Verification only needs enough to
+    /// explain a failure, but a caller parsing structured output must be able to tell a truncated
+    /// capture from a malformed one — <see cref="ShellResult.Stdout"/> at this length may be cut.</summary>
+    public const int MaxCapturedOutputChars = 64_000;
+
     /// <summary>Id of the work item on whose behalf the current async flow is running a shell
     /// command, if any. Set by the orchestrator around an item's processing so a command's
     /// start and completion can be attributed without threading an id through every call site.</summary>
@@ -20,6 +25,73 @@ public static class Shell
     /// finishes. Wired up by the orchestrator to feed per-item progress tracking.</summary>
     internal static Action<string>? OnCommandStarted;
     internal static Action<string>? OnCommandCompleted;
+
+    /// <summary>
+    /// Runs a short-lived local command synchronously. Deliberately not async: the storage
+    /// ports are synchronous, and sync-over-async on a saturated thread pool deadlocks. Use
+    /// only for fast local processes — never for network calls or builds.
+    ///
+    /// Draining stdout/stderr to end-of-file would block until every inherited grandchild
+    /// (e.g. a daemon the command forked into the background) releases the pipe, not until
+    /// the command itself exits — see <see cref="DrainGrace"/>. This waits on process exit
+    /// alone and then drains for a bounded grace period, the same strategy <see
+    /// cref="ExecCoreAsync"/> uses for the async path.
+    /// </summary>
+    public static ShellResult Run(
+        string fileName,
+        IEnumerable<string> args,
+        string workingDirectory,
+        IDictionary<string, string>? environment = null,
+        int timeoutSeconds = 60)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = fileName,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            WorkingDirectory = workingDirectory
+        };
+        foreach (var a in args) psi.ArgumentList.Add(a);
+        if (environment is not null)
+            foreach (var (key, value) in environment) psi.Environment[key] = value;
+
+        try
+        {
+            using var proc = Process.Start(psi);
+            if (proc is null) return new ShellResult(127, "", $"could not start {fileName}", false);
+
+            var stdout = new StringBuilder();
+            var stderr = new StringBuilder();
+            using var cts = new CancellationTokenSource();
+
+            var outTask = ReadAsync(proc.StandardOutput, stdout, cts.Token);
+            var errTask = ReadAsync(proc.StandardError, stderr, cts.Token);
+
+            if (!proc.WaitForExit(timeoutSeconds * 1000))
+            {
+                try { proc.Kill(entireProcessTree: true); } catch { /* already gone */ }
+                cts.Cancel();
+                Task.WhenAll(outTask, errTask).Wait();
+                return new ShellResult(124, stdout.ToString(), stderr.ToString(), TimedOut: true);
+            }
+
+            // Bounded drain: collect whatever output is buffered, but never wait on a pipe an
+            // inherited grandchild is still holding open.
+            Task.WhenAny(Task.WhenAll(outTask, errTask), Task.Delay(DrainGrace)).Wait();
+
+            // Readers must be fully stopped — cancelled and awaited — before ToString() below;
+            // reading the StringBuilder while a reader task might still be appending is a race.
+            cts.Cancel();
+            Task.WhenAll(outTask, errTask).Wait();
+
+            return new ShellResult(proc.ExitCode, stdout.ToString(), stderr.ToString(), false);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or SystemException)
+        {
+            return new ShellResult(127, "", ex.Message, false);
+        }
+    }
 
     public static async Task<ShellResult> RunAsync(
         string command, string workingDirectory, int timeoutSeconds = 300, CancellationToken ct = default)
@@ -166,7 +238,7 @@ public static class Shell
             while ((n = await reader.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
             {
                 // Bound retained output: verification only needs the tail to explain a failure.
-                if (sink.Length < 64_000) sink.Append(buffer, 0, n);
+                if (sink.Length < MaxCapturedOutputChars) sink.Append(buffer, 0, n);
             }
         }
         catch (OperationCanceledException) { }

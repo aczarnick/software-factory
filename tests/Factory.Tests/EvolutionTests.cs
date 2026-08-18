@@ -1,4 +1,5 @@
 using Factory.Core;
+using Factory.Agents;
 using Factory.Evolution;
 
 namespace Factory.Tests;
@@ -226,5 +227,47 @@ public class PromptRegistryTests : IDisposable
         registry.SetChampion("plan", 1);
 
         Assert.Equal("v1 text", registry.Champion("plan").Text);
+    }
+}
+
+public class EvolutionImprovementTests : IDisposable
+{
+    private readonly string _dir = TempDir.Create();
+    public void Dispose() => TempDir.Delete(_dir);
+
+    private static RunRecord Run(string version) => new()
+    {
+        RunId = Ids.New("run"),
+        ItemId = "item",
+        StationId = "plan",
+        PromptVersion = version,
+        GatePassed = true,
+        Success = true,
+        CostUsd = 0.01m,
+        Turns = 2,
+        Usage = new TokenUsage(100, 50, 0, 0)
+    };
+
+    [Fact]
+    public async Task Work_the_factory_files_against_itself_sorts_last()
+    {
+        var prompts = new PromptRegistry(_dir);
+        var champion = prompts.EnsureSeed("plan", "plan carefully");
+        prompts.EnsureSeed("evolve", "evolve carefully");
+
+        var transport = new FakeTransport().Respond("evolve",
+            """{"proposeChange":false,"rationale":"fine","workItems":[{"title":"fix the flaky gate","intent":"it wastes runs"}]}""");
+
+        var loop = new EvolutionLoop(prompts, new AgentRunner(transport, cache: null));
+
+        var outcome = await loop.RunStationAsync(
+            "plan",
+            ModelTier.Haiku,
+            [.. Enumerable.Range(0, 10).Select(_ => Run(champion.Id))],
+            failureTraces: [],
+            budgetUsd: 1m);
+
+        var improvement = Assert.Single(outcome.ImprovementItems);
+        Assert.Equal(Priorities.Lowest, improvement.Priority);
     }
 }

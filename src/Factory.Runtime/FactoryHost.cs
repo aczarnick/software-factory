@@ -84,6 +84,7 @@ public sealed class FactoryHost : IDisposable
 
         var log2 = log ?? (_ => { });
         var pluginLog = (string message) => log2($"  [plugin] {message}");
+        var backlogLog = (string message) => log2($"  [backlog] {message}");
         var sinkLog = (string message) => log2($"  [sink] {message}");
 
         var registry = new ProviderRegistry(pluginLog);
@@ -103,8 +104,25 @@ public sealed class FactoryHost : IDisposable
 
         registry.Register<IWorkItemStore>("ledger", _ => new LedgerWorkItemStore(history, state));
 
+        registry.Register<IWorkItemStore>("beads", reference =>
+        {
+            var cli = new BeadsCli(paths.RepoRoot);
+            BeadsDeployment.EnsureInitialised(cli, reference.Options.GetValueOrDefault("prefix", "wi"), backlogLog);
+            return new BeadsWorkItemStore(cli, config.Name);
+        });
+
         var items = new GuardedWorkItemStore(
-            ResolveStore(registry, config.WorkItemStore), config.WorkItemStore.Provider);
+            WithAuditCopy(ResolveStore(registry, config.WorkItemStore), history, state, backlogLog),
+            config.WorkItemStore.Provider);
+
+        // The backlog store is the authority, so the fold is corrected from it before anything
+        // reads state. Sync and reclaim are best-effort by contract: beads holds a complete local
+        // database, so an absent or unreachable remote degrades sharing, not working.
+        items.Sync();
+        BacklogReconciler.Reconcile(items, state, history, backlogLog);
+
+        foreach (var reclaimed in items.Reclaim(Leases.ObservedShortest * 2))
+            backlogLog($"reclaimed {reclaimed.Id} from a stale lease");
 
         var prompts = new PromptRegistry(paths.PromptsDir);
         foreach (var (stationId, text) in KitPrompts.All)
@@ -159,6 +177,14 @@ public sealed class FactoryHost : IDisposable
             return null;
         }
     }
+
+    // The ledger provider's own writes already are the audit copy; every other provider needs one
+    // made for it, in backlog-then-ledger order.
+    private static IWorkItemStore WithAuditCopy(
+        IWorkItemStore store, IRunHistory history, FactoryState state, Action<string> log) =>
+        store is LedgerWorkItemStore
+            ? store
+            : new LedgerMirroringWorkItemStore(store, history, state, log);
 
     // Construction sits inside the store's failure boundary too: a provider that fails while
     // connecting must halt as the typed failure the port promises, not as a raw plugin exception.
