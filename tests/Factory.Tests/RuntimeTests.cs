@@ -445,3 +445,50 @@ public class CompositionTests : IDisposable
         Assert.True(report.Failed + report.Blocked > 0);
     }
 }
+
+public class RemediationRunnerTests : IDisposable
+{
+    private readonly string _dir = TempDir.Create();
+    public void Dispose() => TempDir.Delete(_dir);
+
+    private sealed class FakeRemediationRunner : IRemediationRunner
+    {
+        public Task<RemediationResult> RemediateAsync(ToolchainRequirement requirement, CancellationToken ct = default) =>
+            Task.FromResult(new RemediationResult(Found: true, Attempted: true, Succeeded: true, "fixed it", null));
+    }
+
+    [Fact]
+    public async Task A_fake_runner_can_stand_in_via_constructor_injection()
+    {
+        IRemediationRunner runner = new FakeRemediationRunner();
+
+        var result = await runner.RemediateAsync(new ToolchainRequirement("dotnet"));
+
+        Assert.True(result.Found);
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public async Task Default_runner_reports_not_found_when_no_script_is_present()
+    {
+        var runner = new DefaultRemediationRunner(_dir);
+
+        var result = await runner.RemediateAsync(new ToolchainRequirement("dotnet"));
+
+        Assert.False(result.Found);
+        Assert.False(result.Attempted);
+    }
+
+    [Fact]
+    public async Task Default_runner_executes_the_discovered_install_script()
+    {
+        File.WriteAllText(Path.Combine(_dir, "install.sh"), "#!/bin/sh\necho remediated\n");
+        var runner = new DefaultRemediationRunner(_dir);
+
+        var result = await runner.RemediateAsync(new ToolchainRequirement("dotnet"));
+
+        Assert.True(result.Found);
+        Assert.True(result.Succeeded);
+        Assert.Contains("remediated", result.Output);
+    }
+}
