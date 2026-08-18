@@ -143,14 +143,17 @@ public class PluginCatalogTests : IDisposable
     public void A_broken_assembly_is_reported_and_does_not_stop_the_scan()
     {
         var plugins = PluginsDirWithFixture();
-        File.WriteAllText(Path.Combine(plugins, "broken.dll"), "not an assembly");
+
+        // Named to sort first: the scan is ordered, so a broken file discovered last would prove
+        // nothing about whether the scan continues past it.
+        File.WriteAllText(Path.Combine(plugins, "AAA-broken.dll"), "not an assembly");
         var registry = new ProviderRegistry();
         var log = new List<string>();
 
         PluginCatalog.LoadInto(registry, plugins, log.Add);
 
         Assert.Equal("CountingSink", registry.Resolve<IRunHistorySink>(new ProviderRef("counting")).GetType().Name);
-        Assert.Contains(log, line => line.Contains("broken.dll") && line.Contains("could not be loaded"));
+        Assert.Contains(log, line => line.Contains("AAA-broken.dll") && line.Contains("could not be loaded"));
     }
 
     [Fact]
