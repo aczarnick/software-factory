@@ -167,7 +167,9 @@ public sealed class FactoryHost : IDisposable
         StationRole.Decompose => new DecomposeStation(),
         StationRole.Plan => new PlanStation(),
         StationRole.Implement => new ImplementStation(),
-        StationRole.Check => new CheckStation(new DefaultRemediationRunner(Services.Workspace.RepoRoot)),
+        StationRole.Check => new CheckStation(
+            new DefaultRemediationRunner(Services.Workspace.RepoRoot),
+            repoStateProvider: new GitRepoStateProvider(Services.Workspace.RepoRoot)),
         StationRole.Verify => new VerifyStation(),
         StationRole.Review => new ReviewStation(),
         StationRole.Integrate => new IntegrateStation(),

@@ -89,7 +89,8 @@ public sealed class Orchestrator : IDisposable
         {
             try
             {
-                await CheckStation.CaptureBaselineAsync(_s, ct).ConfigureAwait(false);
+                await CheckStation.CaptureBaselineAsync(
+                    _s, ct, repoStateProvider: new GitRepoStateProvider(_s.Workspace.RepoRoot)).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)

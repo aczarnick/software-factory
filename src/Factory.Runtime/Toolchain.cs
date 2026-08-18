@@ -144,8 +144,9 @@ public sealed record ToolchainBaseline
     public Dictionary<string, bool> Passing { get; init; } = [];
     public DateTimeOffset CapturedAt { get; init; } = DateTimeOffset.UtcNow;
 
-    /// <summary>The commit SHA this baseline was captured against. Not yet wired up to any
-    /// staleness comparison — <see cref="Commit"/> remains the source of truth for that.</summary>
+    /// <summary>The commit SHA this baseline was captured against, as reported by <see
+    /// cref="IRepoStateProvider"/> at capture time. Not wired up to any staleness comparison —
+    /// <see cref="Commit"/> remains the source of truth for that.</summary>
     public string CapturedCommitSha { get; init; } = "";
 }
 
@@ -458,9 +459,6 @@ public static class ToolchainRunner
         return $"`{check.Command}` exited {run.ExitCode}:\n{output}";
     }
 
-    public static async Task<string> HeadCommitAsync(string repoRoot, CancellationToken ct = default) =>
-        (await Shell.GitAsync(repoRoot, ct, "rev-parse", "HEAD").ConfigureAwait(false)).Stdout.Trim();
-
     /// <summary>Reads a cached baseline if one was taken at this commit.</summary>
     public static ToolchainBaseline? TryLoadBaseline(string cachePath, string commit)
     {
@@ -495,9 +493,10 @@ public static class ToolchainRunner
     /// already broken no longer blocks anything.
     /// </summary>
     public static async Task<ToolchainBaseline> BaselineAsync(
-        Toolchain toolchain, string repoRoot, string cachePath, CancellationToken ct = default)
+        Toolchain toolchain, string repoRoot, string cachePath, IRepoStateProvider repoStateProvider,
+        CancellationToken ct = default)
     {
-        var commit = await HeadCommitAsync(repoRoot, ct).ConfigureAwait(false);
+        var commit = await repoStateProvider.GetCurrentMasterShaAsync(ct).ConfigureAwait(false);
 
         if (TryLoadBaseline(cachePath, commit) is { } cached) return cached;
 
@@ -505,6 +504,7 @@ public static class ToolchainRunner
         var baseline = new ToolchainBaseline
         {
             Commit = commit,
+            CapturedCommitSha = commit,
             Passing = results.ToDictionary(r => r.Name, r => r.Passed)
         };
 
@@ -536,6 +536,7 @@ public static class ToolchainRunner
         var fresh = new ToolchainBaseline
         {
             Commit = currentSha,
+            CapturedCommitSha = currentSha,
             Passing = results.ToDictionary(r => r.Name, r => r.Passed)
         };
 

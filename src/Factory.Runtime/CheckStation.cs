@@ -113,7 +113,8 @@ public sealed class CheckStation(
     /// is only blamed for what it broke. Called once by the orchestrator before any dispatch,
     /// because a baseline taken while agents are compiling is not a baseline.</summary>
     public static async Task<ToolchainBaseline?> CaptureBaselineAsync(
-        FactoryServices services, CancellationToken ct = default, IToolchainProbe? probe = null)
+        FactoryServices services, CancellationToken ct = default, IToolchainProbe? probe = null,
+        IRepoStateProvider? repoStateProvider = null)
     {
         var toolchain = Toolchain.Detect(services.Workspace.RepoRoot);
         if (toolchain.IsEmpty) return null;
@@ -130,13 +131,14 @@ public sealed class CheckStation(
             return null;
         }
 
-        var commit = await ToolchainRunner.HeadCommitAsync(services.Workspace.RepoRoot, ct).ConfigureAwait(false);
+        var repoState = repoStateProvider ?? new GitRepoStateProvider(services.Workspace.RepoRoot);
+        var commit = await repoState.GetCurrentMasterShaAsync(ct).ConfigureAwait(false);
         if (ToolchainRunner.TryLoadBaseline(services.Paths.BaselineFile, commit) is { } cached) return cached;
 
         services.Log($"  [check] baselining {toolchain.Describe} on the mainline…");
 
         var baseline = await ToolchainRunner.BaselineAsync(
-            toolchain, services.Workspace.RepoRoot, services.Paths.BaselineFile, ct).ConfigureAwait(false);
+            toolchain, services.Workspace.RepoRoot, services.Paths.BaselineFile, repoState, ct).ConfigureAwait(false);
 
         // A baseline that cannot establish a healthy mainline is worth saying out loud: from
         // here on, those checks stop blocking anything.
