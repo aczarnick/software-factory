@@ -14,10 +14,9 @@ namespace Factory.Runtime;
 /// </summary>
 public sealed class CheckStation(
     IRemediationRunner remediationRunner,
-    Func<string, CancellationToken, Task<ToolchainCompatibility>>? checkCompatibility = null) : IStation
+    IToolchainProbe? probe = null) : IStation
 {
-    private readonly Func<string, CancellationToken, Task<ToolchainCompatibility>> _checkCompatibility =
-        checkCompatibility ?? ToolchainRunner.CheckCompatibilityAsync;
+    private readonly IToolchainProbe _probe = probe ?? new DotnetToolchainProbe();
 
     public StationRole Role => StationRole.Check;
 
@@ -25,10 +24,10 @@ public sealed class CheckStation(
     {
         var s = ctx.Services;
 
-        // Compatibility is checked regardless of what toolchain is detected: a pinned SDK
+        // Compatibility is probed regardless of what toolchain is detected: a pinned SDK
         // version can be wrong even before there is anything to build.
-        var compatibility = await _checkCompatibility(ctx.Run.WorkDir, ctx.Ct).ConfigureAwait(false);
-        if (!compatibility.Compatible)
+        var compatibility = await _probe.ProbeAsync(ctx.Run.WorkDir, ctx.Ct).ConfigureAwait(false);
+        if (!compatibility.IsCompatible)
         {
             var blocked = await ResolveMismatchAsync(ctx, compatibility).ConfigureAwait(false);
             if (blocked is not null) return blocked;
@@ -74,25 +73,27 @@ public sealed class CheckStation(
     /// it again.
     /// </summary>
     private async Task<StationResult?> ResolveMismatchAsync(
-        StationContext ctx, ToolchainCompatibility mismatch)
+        StationContext ctx, ToolchainCompatibilityResult mismatch)
     {
-        ctx.Log($"toolchain mismatch: requires {mismatch.Required}, found {mismatch.Installed ?? "none"}");
+        var toolchainMismatch = new ToolchainMismatch(mismatch.RequiredVersions, mismatch.InstalledVersions);
+        ctx.Log($"toolchain mismatch: {toolchainMismatch.Message}");
 
-        var requirement = new ToolchainRequirement("dotnet", mismatch.Required);
+        var requirement = new ToolchainRequirement("dotnet", string.Join(", ", mismatch.RequiredVersions));
         var remediation = await remediationRunner.RemediateAsync(requirement, ctx.Ct).ConfigureAwait(false);
 
         var recheck = remediation.Found
-            ? await _checkCompatibility(ctx.Run.WorkDir, ctx.Ct).ConfigureAwait(false)
+            ? await _probe.ProbeAsync(ctx.Run.WorkDir, ctx.Ct).ConfigureAwait(false)
             : mismatch;
 
-        if (remediation.Found && remediation.Succeeded && recheck.Compatible)
+        if (remediation.Found && remediation.Succeeded && recheck.IsCompatible)
         {
             ctx.Log("remediation resolved the toolchain mismatch; proceeding");
             return null;
         }
 
         var attempted = remediation.Found ? "remediation attempted and failed" : "no remediation available";
-        var reason = $"requires {mismatch.Required}, {recheck.Installed ?? "none"} installed; {attempted}";
+        toolchainMismatch = new ToolchainMismatch(recheck.RequiredVersions, recheck.InstalledVersions);
+        var reason = $"{toolchainMismatch.Message}; {attempted}";
         ctx.Log($"blocked: {reason}");
 
         return new StationResult

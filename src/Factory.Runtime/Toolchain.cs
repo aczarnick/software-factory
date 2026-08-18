@@ -130,14 +130,6 @@ public sealed record Toolchain
     }
 }
 
-/// <summary>Whether the toolchain actually installed satisfies what the repository pins.
-/// Cheap enough to run twice: once to detect a mismatch, once to confirm a remediation fixed
-/// it, without paying for a full build either time.</summary>
-public sealed record ToolchainCompatibility(bool Compatible, string? Required, string? Installed)
-{
-    public static readonly ToolchainCompatibility Ok = new(true, null, null);
-}
-
 public sealed record CheckOutcome(string Name, bool Passed, string Detail, long DurationMs, int Attempts = 1)
 {
     /// <summary>True when the check only succeeded on a retry — worth surfacing, because a
@@ -281,8 +273,7 @@ public sealed record ToolchainCompatibilityResult
     };
 }
 
-/// <summary>Determines whether a repo's toolchain requirement is met by the installed SDKs.
-/// Not yet implemented — this child only declares the shape dotnet-specific probes will fill.</summary>
+/// <summary>Determines whether a repo's toolchain requirement is met by the installed SDKs.</summary>
 public interface IToolchainProbe
 {
     Task<ToolchainCompatibilityResult> ProbeAsync(string repoPath, CancellationToken ct = default);
@@ -295,6 +286,57 @@ public sealed record ToolchainMismatch(IReadOnlyList<string> RequiredVersions, I
 {
     public string Message =>
         $"requires SDK {string.Join(", ", RequiredVersions)} but found {string.Join(", ", InstalledVersions)} installed";
+}
+
+/// <summary>Reports installed SDKs by shelling to `dotnet --list-sdks`, the same host the
+/// factory itself runs on.</summary>
+public sealed class DotnetInstalledSdkProvider : IInstalledSdkProvider
+{
+    public async Task<IReadOnlyList<string>> GetInstalledVersionsAsync(CancellationToken ct = default)
+    {
+        if (!Shell.Which("dotnet")) return [];
+
+        var result = await Shell.RunAsync("dotnet --list-sdks", Directory.GetCurrentDirectory(), 60, ct)
+            .ConfigureAwait(false);
+        if (!result.Ok) return [];
+
+        return result.Stdout
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Split(' ')[0].Trim())
+            .Where(v => v.Length > 0)
+            .ToList();
+    }
+}
+
+/// <summary>The default toolchain probe: compares the SDK version(s) a dotnet repo pins in
+/// global.json against what is actually installed. The only probe the factory ships with,
+/// since dotnet is the toolchain it runs on itself; other ecosystems can supply their own
+/// <see cref="IToolchainProbe"/>.</summary>
+public sealed class DotnetToolchainProbe(
+    IToolchainRequirementReader? requirementReader = null,
+    IInstalledSdkProvider? installedSdkProvider = null) : IToolchainProbe
+{
+    private readonly IToolchainRequirementReader _requirementReader =
+        requirementReader ?? new DotnetToolchainRequirementReader();
+    private readonly IInstalledSdkProvider _installedSdkProvider =
+        installedSdkProvider ?? new DotnetInstalledSdkProvider();
+
+    public async Task<ToolchainCompatibilityResult> ProbeAsync(string repoPath, CancellationToken ct = default)
+    {
+        var requirement = await _requirementReader.ReadRequirementsAsync(repoPath, ct).ConfigureAwait(false);
+        if (requirement.RequiredSdkVersions.Count == 0) return ToolchainCompatibilityResult.Compatible();
+
+        var installed = await _installedSdkProvider.GetInstalledVersionsAsync(ct).ConfigureAwait(false);
+
+        // A pin of "9.0.100" is satisfied by any installed 9.x SDK; patch-level drift is not
+        // a mismatch worth blocking on.
+        var compatible = requirement.RequiredSdkVersions.All(required =>
+            installed.Any(i => i.Split('.')[0] == required.Split('.')[0]));
+
+        return compatible
+            ? ToolchainCompatibilityResult.Compatible()
+            : ToolchainCompatibilityResult.Incompatible(requirement.RequiredSdkVersions, installed);
+    }
 }
 
 public static class ToolchainRunner
@@ -357,35 +399,6 @@ public static class ToolchainRunner
         const int max = 2500;
         if (output.Length > max) output = "…\n" + output[^max..];
         return $"`{check.Command}` exited {run.ExitCode}:\n{output}";
-    }
-
-    /// <summary>Checks the pinned SDK version against what is actually installed, without
-    /// running a build. Only .NET's `global.json` is understood today, since that is the
-    /// toolchain this factory itself runs on; a repository with no pin is always compatible.</summary>
-    public static async Task<ToolchainCompatibility> CheckCompatibilityAsync(string root, CancellationToken ct = default)
-    {
-        var globalJson = Path.Combine(root, "global.json");
-        if (!File.Exists(globalJson)) return ToolchainCompatibility.Ok;
-
-        string? required;
-        try
-        {
-            using var doc = JsonDocument.Parse(File.ReadAllText(globalJson));
-            required = doc.RootElement.TryGetProperty("sdk", out var sdk) &&
-                       sdk.TryGetProperty("version", out var v) ? v.GetString() : null;
-        }
-        catch (Exception ex) when (ex is IOException or JsonException) { return ToolchainCompatibility.Ok; }
-
-        if (string.IsNullOrWhiteSpace(required)) return ToolchainCompatibility.Ok;
-        if (!Shell.Which("dotnet")) return new ToolchainCompatibility(false, required, null);
-
-        var result = await Shell.RunAsync("dotnet --version", root, 60, ct).ConfigureAwait(false);
-        var installed = result.Ok ? result.Stdout.Trim() : null;
-
-        // A pin of "9.0.100" is satisfied by any installed 9.x SDK; patch-level drift is not
-        // a mismatch worth blocking on.
-        var compatible = installed is not null && installed.Split('.')[0] == required.Split('.')[0];
-        return new ToolchainCompatibility(compatible, required, installed);
     }
 
     public static async Task<string> HeadCommitAsync(string repoRoot, CancellationToken ct = default) =>
