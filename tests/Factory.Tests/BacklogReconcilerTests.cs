@@ -182,4 +182,23 @@ public class BacklogReconcilerTests : IDisposable
 
         Assert.Contains(messages, m => m.Contains('1'));
     }
+
+    [Fact]
+    public void A_bead_deleted_from_the_backlog_is_reported_but_kept_in_the_fold()
+    {
+        using var history = History();
+        var item = WorkItem.Create("thing") with { State = WorkItemState.Ready };
+        history.Append(new WorkItemFiled(item));
+        var state = history.Replay();
+        var messages = new List<string>();
+
+        // store.All() no longer returns this id at all -- it was deleted, not merely closed
+        // (bd list --all --limit 0 still returns closed beads, so this only happens on a genuine
+        // deletion of a row the fold still remembers).
+        BacklogReconciler.Reconcile(new StubStore([]), state, history, messages.Add);
+
+        Assert.True(state.Items.ContainsKey(item.Id));
+        Assert.Equal(WorkItemState.Ready, state.Items[item.Id].State);
+        Assert.Contains(messages, m => m.Contains(item.Id));
+    }
 }

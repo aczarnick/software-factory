@@ -12,10 +12,12 @@ public static class BacklogReconciler
         IWorkItemStore store, FactoryState state, IRunHistory history, Action<string> log)
     {
         var local = state.Items;
+        var seenIds = new HashSet<string>();
         var corrected = 0;
 
         foreach (var authoritative in store.All())
         {
+            seenIds.Add(authoritative.Id);
             var known = local.GetValueOrDefault(authoritative.Id);
             if (known is not null && SharedState(known) == SharedState(authoritative)) continue;
 
@@ -28,6 +30,13 @@ public static class BacklogReconciler
             state.Apply(correction);
             corrected++;
         }
+
+        // Beads is authoritative for existence too (spec D1): a bead this fold still remembers but
+        // that store.All() no longer returns at all was deleted, not merely closed (bd list --all
+        // --limit 0 still returns closed beads). Reported and left alone rather than tombstoned:
+        // that decision belongs to the sync-gate plan, not to a minors bundle.
+        foreach (var vanished in local.Keys.Except(seenIds))
+            log($"{vanished} is in the fold but no longer exists in the backlog store, and was left as is");
 
         if (corrected > 0) log($"reconciled {corrected} item(s) from the backlog store");
     }
