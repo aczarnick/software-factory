@@ -16,6 +16,10 @@ public interface IWorkItemStore
     WorkItem? TryClaim(string owner);
 
     void Heartbeat(string id);
+
+    /// <summary>Returns a claimed item to the queue. Silently does nothing when no item
+    /// has that id; throws <see cref="InvalidOperationException"/> when the item exists but
+    /// its current state cannot reach Ready.</summary>
     void Release(string id, string reason);
 
     void Sync();

@@ -12,6 +12,25 @@
 
 **Depends on:** Phase 1 (`docs/superpowers/plans/2026-08-13-storage-ports-phase-1.md`) must be complete and merged.
 
+## Carried Forward From Phase 1
+
+Found during phase 1's final whole-branch review; read before Task 4 (plugin load context and
+catalog) and Task 5 (wire provider selection into `FactoryHost`).
+
+- **Providers cannot be constructed uniformly.** `LedgerWorkItemStore`'s constructor is
+  `(IRunHistory, FactoryState)`, and a beads-backed store's will be something else entirely.
+  `ProviderRegistry` therefore needs a per-provider factory or a shared context object — a
+  uniform `Activator.CreateInstance` over discovered types will not work.
+
+- **`FactoryHost.Open` calls `history.Replay()`, which is not on the port.** `Replay()` is a
+  `JsonlRunHistory` member; once the writer is loaded as `IRunHistory` it disappears. The
+  substitute is already on the interface and is what `Replay()` does internally:
+  `FactoryState.Replay(history.ReadFrom(0))`. One line, one call site.
+
+- **`IRunHistory.ReadFrom` returns a lazy iterator that holds a file handle** for the life of
+  the enumeration. Every phase-1 consumer enumerates to completion in a single expression, so
+  nothing leaks today. A plugin author implementing the port should be told this explicitly.
+
 ## Global Constraints
 
 - .NET 10 SDK pinned to `10.0.400` by `global.json`. Do not change the pin.

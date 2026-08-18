@@ -12,6 +12,39 @@
 
 **Depends on:** Phases 1 and 2 complete and merged.
 
+## Carried Forward From Phase 1
+
+Found during phase 1's final whole-branch review. Read before Task 5 (deployment, reconcile,
+and heartbeat).
+
+- **`Orchestrator.RequeueOrphans` must be routed through `IWorkItemStore.Release`.**
+  `src/Factory.Runtime/Orchestrator.cs` still requeues crashed work inline:
+
+  ```csharp
+  var requeued = host.Transition(item, WorkItemState.Ready, "requeued after restart");
+  host.Update(requeued);
+  ```
+
+  `Release` is the port member built for exactly this, and today it has **no production
+  caller at all**. It was deliberately not routed in phase 1: `Release` emits only the
+  `WorkItemStateChanged`, so swapping it in would drop the `WorkItemUpdated` event and break
+  phase 1's no-observable-behaviour-change contract. In phase 3 the two stop being equivalent
+  for a second and more important reason — `Release` is where a beads store drops the lease and
+  clears the assignee, while a bare `Transition` only changes status. Left unrouted, a
+  requeued orphan keeps its beads lease and no other machine can take it.
+
+  Decide deliberately whether the redundant `Update` is still wanted once `Release` owns the
+  transition.
+
+- **`IRunHistory.Champions()` is implemented but has no caller.** `EvolutionService` still
+  reads `_s.State.Champions`. Correct for phase 1 — routing it through the port would trade a
+  dictionary lookup for a full ledger re-read — but it means the spec's D4 claim that every
+  port member traces to a real call site is not yet literally true of `Champions()`.
+
+- **`FactoryState.Dispatchable()` still has a non-dispatch reader** at `src/Factory.Cli/Commands.cs`,
+  which counts it for `factory up`'s "N item(s) ready" header and its no-work early exit. Under
+  beads that reads the local fold rather than the authority; reconcile-on-open is what closes it.
+
 ## Global Constraints
 
 - .NET 10 SDK pinned to `10.0.400`. Do not change the pin.

@@ -132,6 +132,25 @@ public class BudgetRestoreTests
         Assert.Equal(4m, guard.DailySpent);
         Assert.Equal(1m, guard.EvolutionSpent);
     }
+
+    [Fact]
+    public void Restore_replaces_prior_per_item_spend_rather_than_adding_to_it()
+    {
+        var guard = new BudgetGuard(new BudgetSpec { DailyUsd = 10m, PerItemUsd = 5m });
+
+        guard.Restore(new BudgetRestoreView(
+            new Dictionary<string, decimal> { ["wi-a"] = 2.50m, ["wi-stale"] = 1m },
+            DailyUsd: 4m,
+            EvolutionDailyUsd: 1m));
+
+        guard.Restore(new BudgetRestoreView(
+            new Dictionary<string, decimal> { ["wi-a"] = 0.75m },
+            DailyUsd: 0.75m,
+            EvolutionDailyUsd: 0m));
+
+        Assert.Equal(0.75m, guard.SpentOn("wi-a"));
+        Assert.Equal(0m, guard.SpentOn("wi-stale"));
+    }
 }
 
 public class FactoryStateTests
