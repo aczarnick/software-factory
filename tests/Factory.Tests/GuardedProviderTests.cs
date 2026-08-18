@@ -26,6 +26,32 @@ public class GuardedProviderTests
         public IReadOnlyList<WorkItem> Reclaim(TimeSpan olderThan) => throw new InvalidOperationException("store down");
     }
 
+    private sealed class ThrowingFlushSink : IRunHistorySink
+    {
+        public void Emit(FactoryEvent evt) { }
+        public void Flush() => throw new InvalidOperationException("flush down");
+    }
+
+    private sealed class RecordingHistory : IRunHistory
+    {
+        public bool Disposed;
+        public void Append(FactoryEvent evt) { }
+        public IEnumerable<FactoryEvent> ReadFrom(long afterSeq) => [];
+        public IReadOnlyList<RunRecord> RunsForItem(string itemId) => [];
+        public IReadOnlyList<RunRecord> RunsForStation(string stationId) => [];
+        public SpendTotals Totals() => SpendTotals.Empty;
+        public BudgetRestoreView ForBudget() => BudgetRestoreView.Empty;
+        public IReadOnlyDictionary<string, string> Champions() => new Dictionary<string, string>();
+        public void Dispose() => Disposed = true;
+    }
+
+    private sealed class ObservingSink(IRunHistory history) : IRunHistorySink
+    {
+        public int RecordsVisibleAtEmit = -1;
+        public void Emit(FactoryEvent evt) => RecordsVisibleAtEmit = history.ReadFrom(0).Count();
+        public void Flush() { }
+    }
+
     [Fact]
     public void A_failing_store_halts_with_a_named_exception()
     {
@@ -63,6 +89,34 @@ public class GuardedProviderTests
             history.Append(new FactoryNote("survives"));
 
             Assert.Single(history.ReadFrom(0));
+        }
+        finally { TempDir.Delete(dir); }
+    }
+
+    [Fact]
+    public void Dispose_still_disposes_the_writer_when_a_sink_flush_throws()
+    {
+        var writer = new RecordingHistory();
+        var history = new FanOutRunHistory(writer, [new ThrowingFlushSink()]);
+
+        Assert.Throws<InvalidOperationException>(() => history.Dispose());
+
+        Assert.True(writer.Disposed);
+    }
+
+    [Fact]
+    public void Fan_out_writes_durably_before_offering_the_event_to_sinks()
+    {
+        var dir = TempDir.Create();
+        try
+        {
+            using var writer = new JsonlRunHistory(Path.Combine(dir, "ledger.jsonl"));
+            var sink = new ObservingSink(writer);
+            var history = new FanOutRunHistory(writer, [sink]);
+
+            history.Append(new FactoryNote("ordering"));
+
+            Assert.Equal(1, sink.RecordsVisibleAtEmit);
         }
         finally { TempDir.Delete(dir); }
     }

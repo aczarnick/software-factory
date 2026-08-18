@@ -21,7 +21,13 @@ public sealed class FanOutRunHistory(IRunHistory writer, IReadOnlyList<IRunHisto
 
     public void Dispose()
     {
-        foreach (var sink in sinks) sink.Flush();
-        writer.Dispose();
+        try
+        {
+            foreach (var sink in sinks) sink.Flush();
+        }
+        finally
+        {
+            writer.Dispose();
+        }
     }
 }
