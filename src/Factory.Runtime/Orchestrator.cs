@@ -59,11 +59,16 @@ public sealed class Orchestrator : IDisposable
     private readonly Lock _tally = new();
     private int _disposed;
 
-    public Orchestrator(FactoryHost host)
+    /// <summary>How long an item may sit in the same station before it is considered stalled.
+    /// Not yet consulted anywhere — reserved for a later change.</summary>
+    public TimeSpan StallThreshold { get; }
+
+    public Orchestrator(FactoryHost host, TimeSpan? stallThreshold = null)
     {
         this.host = host;
         _s = host.Services;
         _heartbeat = new HeartbeatWriter(host.Paths);
+        StallThreshold = stallThreshold ?? TimeSpan.FromSeconds(120);
 
         // Best-effort net so a killed or crashing process still leaves the heartbeat file
         // saying 'stopped' rather than stuck on the last 'running' write.

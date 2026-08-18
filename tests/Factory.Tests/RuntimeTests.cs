@@ -388,6 +388,30 @@ public class HeartbeatStoppedTests : IDisposable
     }
 }
 
+public class OrchestratorStallThresholdTests : IDisposable
+{
+    private readonly string _dir = TempDir.Create();
+    public void Dispose() => TempDir.Delete(_dir);
+
+    [Fact]
+    public void StallThreshold_defaults_to_120_seconds()
+    {
+        using var host = FactoryHost.Init(_dir, transport: new FakeTransport());
+        using var orchestrator = new Orchestrator(host);
+
+        Assert.Equal(TimeSpan.FromSeconds(120), orchestrator.StallThreshold);
+    }
+
+    [Fact]
+    public void StallThreshold_is_settable_via_the_constructor()
+    {
+        using var host = FactoryHost.Init(_dir, transport: new FakeTransport());
+        using var orchestrator = new Orchestrator(host, TimeSpan.FromSeconds(45));
+
+        Assert.Equal(TimeSpan.FromSeconds(45), orchestrator.StallThreshold);
+    }
+}
+
 public class DotnetToolchainRequirementReaderTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
