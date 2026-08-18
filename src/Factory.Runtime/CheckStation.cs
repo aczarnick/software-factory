@@ -12,13 +12,28 @@ namespace Factory.Runtime;
 /// output, which is fed verbatim into the next implementation attempt — the error text a
 /// compiler emits is already the most useful possible description of what to fix.
 /// </summary>
-public sealed class CheckStation : IStation
+public sealed class CheckStation(
+    IRemediationRunner remediationRunner,
+    Func<string, CancellationToken, Task<ToolchainCompatibility>>? checkCompatibility = null) : IStation
 {
+    private readonly Func<string, CancellationToken, Task<ToolchainCompatibility>> _checkCompatibility =
+        checkCompatibility ?? ToolchainRunner.CheckCompatibilityAsync;
+
     public StationRole Role => StationRole.Check;
 
     public async Task<StationResult> ExecuteAsync(StationContext ctx)
     {
         var s = ctx.Services;
+
+        // Compatibility is checked regardless of what toolchain is detected: a pinned SDK
+        // version can be wrong even before there is anything to build.
+        var compatibility = await _checkCompatibility(ctx.Run.WorkDir, ctx.Ct).ConfigureAwait(false);
+        if (!compatibility.Compatible)
+        {
+            var blocked = await ResolveMismatchAsync(ctx, compatibility).ConfigureAwait(false);
+            if (blocked is not null) return blocked;
+        }
+
         var toolchain = Toolchain.Detect(ctx.Run.WorkDir);
 
         if (toolchain.IsEmpty)
@@ -47,6 +62,46 @@ public sealed class CheckStation : IStation
         return verdict.Passed
             ? StationResult.Ok(verdict.Summary)
             : StationResult.GateFailed(string.Join("\n", verdict.Regressions.Select(r => r.Detail)));
+    }
+
+    /// <summary>
+    /// Attempts one bounded remediation for a toolchain version mismatch and re-checks
+    /// compatibility only — never a full build — to see whether it worked. Returns null to let
+    /// the normal build/check path proceed once the environment is confirmed to satisfy
+    /// requirements; otherwise a Blocked result naming what is required, what is installed, and
+    /// whether remediation was tried. There is no retry loop: a remediation gets exactly one
+    /// attempt, because a script that fails once is not made more likely to succeed by running
+    /// it again.
+    /// </summary>
+    private async Task<StationResult?> ResolveMismatchAsync(
+        StationContext ctx, ToolchainCompatibility mismatch)
+    {
+        ctx.Log($"toolchain mismatch: requires {mismatch.Required}, found {mismatch.Installed ?? "none"}");
+
+        var requirement = new ToolchainRequirement("dotnet", mismatch.Required);
+        var remediation = await remediationRunner.RemediateAsync(requirement, ctx.Ct).ConfigureAwait(false);
+
+        var recheck = remediation.Found
+            ? await _checkCompatibility(ctx.Run.WorkDir, ctx.Ct).ConfigureAwait(false)
+            : mismatch;
+
+        if (remediation.Found && remediation.Succeeded && recheck.Compatible)
+        {
+            ctx.Log("remediation resolved the toolchain mismatch; proceeding");
+            return null;
+        }
+
+        var attempted = remediation.Found ? "remediation attempted and failed" : "no remediation available";
+        var reason = $"requires {mismatch.Required}, {recheck.Installed ?? "none"} installed; {attempted}";
+        ctx.Log($"blocked: {reason}");
+
+        return new StationResult
+        {
+            Success = true,
+            GatePassed = false,
+            Detail = reason,
+            Item = ctx.Item with { State = WorkItemState.Blocked, LastError = reason }
+        };
     }
 
     /// <summary>Establishes which checks passed before the factory touched anything, so an item

@@ -129,6 +129,14 @@ public sealed record Toolchain
     }
 }
 
+/// <summary>Whether the toolchain actually installed satisfies what the repository pins.
+/// Cheap enough to run twice: once to detect a mismatch, once to confirm a remediation fixed
+/// it, without paying for a full build either time.</summary>
+public sealed record ToolchainCompatibility(bool Compatible, string? Required, string? Installed)
+{
+    public static readonly ToolchainCompatibility Ok = new(true, null, null);
+}
+
 public sealed record CheckOutcome(string Name, bool Passed, string Detail, long DurationMs, int Attempts = 1)
 {
     /// <summary>True when the check only succeeded on a retry — worth surfacing, because a
@@ -230,6 +238,35 @@ public static class ToolchainRunner
         const int max = 2500;
         if (output.Length > max) output = "…\n" + output[^max..];
         return $"`{check.Command}` exited {run.ExitCode}:\n{output}";
+    }
+
+    /// <summary>Checks the pinned SDK version against what is actually installed, without
+    /// running a build. Only .NET's `global.json` is understood today, since that is the
+    /// toolchain this factory itself runs on; a repository with no pin is always compatible.</summary>
+    public static async Task<ToolchainCompatibility> CheckCompatibilityAsync(string root, CancellationToken ct = default)
+    {
+        var globalJson = Path.Combine(root, "global.json");
+        if (!File.Exists(globalJson)) return ToolchainCompatibility.Ok;
+
+        string? required;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(globalJson));
+            required = doc.RootElement.TryGetProperty("sdk", out var sdk) &&
+                       sdk.TryGetProperty("version", out var v) ? v.GetString() : null;
+        }
+        catch (Exception ex) when (ex is IOException or JsonException) { return ToolchainCompatibility.Ok; }
+
+        if (string.IsNullOrWhiteSpace(required)) return ToolchainCompatibility.Ok;
+        if (!Shell.Which("dotnet")) return new ToolchainCompatibility(false, required, null);
+
+        var result = await Shell.RunAsync("dotnet --version", root, 60, ct).ConfigureAwait(false);
+        var installed = result.Ok ? result.Stdout.Trim() : null;
+
+        // A pin of "9.0.100" is satisfied by any installed 9.x SDK; patch-level drift is not
+        // a mismatch worth blocking on.
+        var compatible = installed is not null && installed.Split('.')[0] == required.Split('.')[0];
+        return new ToolchainCompatibility(compatible, required, installed);
     }
 
     public static async Task<string> HeadCommitAsync(string repoRoot, CancellationToken ct = default) =>
