@@ -26,19 +26,35 @@ public static class BacklogReconciler
                 : new WorkItemUpdated(
                     LocalRunState.CarriedInto(authoritative, known) with { UpdatedAt = DateTimeOffset.UtcNow });
 
-            history.Append(correction);
-            state.Apply(correction);
-            corrected++;
+            if (TryAppend(correction, state, history, log, authoritative.Id)) corrected++;
         }
 
-        // Beads is authoritative for existence too (spec D1): a bead this fold still remembers but
-        // that store.All() no longer returns at all was deleted, not merely closed (bd list --all
-        // --limit 0 still returns closed beads). Reported and left alone rather than tombstoned:
-        // that decision belongs to the sync-gate plan, not to a minors bundle.
         foreach (var vanished in local.Keys.Except(seenIds))
             log($"{vanished} is in the fold but no longer exists in the backlog store, and was left as is");
 
         if (corrected > 0) log($"reconciled {corrected} item(s) from the backlog store");
+    }
+
+    // Mirrors LedgerMirroringWorkItemStore.Mirror's tolerance for the identical append, so the two
+    // agree deliberately rather than by accident: a backlog write already committed before reconcile
+    // ever runs, so a ledger this process cannot write should degrade the factory, not stop it from
+    // starting, and the next reconcile repeats the correction. See that decorator's catch for why the
+    // set is exactly these two and not wider.
+    private static bool TryAppend(
+        FactoryEvent correction, FactoryState state, IRunHistory history, Action<string> log, string itemId)
+    {
+        try
+        {
+            history.Append(correction);
+            state.Apply(correction);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log($"the correction to {itemId} could not be written to the ledger and will be " +
+                $"attempted again at the next open: {ex.Message}");
+            return false;
+        }
     }
 
     /// <summary>Everything the backlog store is authoritative for, in a form that compares by

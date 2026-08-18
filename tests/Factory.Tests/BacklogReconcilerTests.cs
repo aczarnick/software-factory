@@ -201,4 +201,46 @@ public class BacklogReconcilerTests : IDisposable
         Assert.Equal(WorkItemState.Ready, state.Items[item.Id].State);
         Assert.Contains(messages, m => m.Contains(item.Id));
     }
+
+    /// <summary>A ledger file this process may not write, in a temp directory of its own. Mirrors
+    /// <c>LedgerMirroringWorkItemStoreTests.UnwritableLedger</c>: each test file keeps its own copy
+    /// of this fixture rather than sharing one, the same way each already keeps its own store
+    /// double.</summary>
+    private sealed class UnwritableLedger : IDisposable
+    {
+        private readonly string _root = TempDir.Create();
+
+        public UnwritableLedger()
+        {
+            LedgerPath = Path.Combine(_root, "ledger.jsonl");
+            File.WriteAllText(LedgerPath, "");
+            File.SetAttributes(LedgerPath, FileAttributes.ReadOnly);
+        }
+
+        public string LedgerPath { get; }
+
+        public void Dispose()
+        {
+            File.SetAttributes(LedgerPath, FileAttributes.Normal);
+            TempDir.Delete(_root);
+        }
+    }
+
+    [Fact]
+    public void A_correction_the_ledger_refuses_to_write_does_not_stop_reconcile()
+    {
+        var item = WorkItem.Create("thing") with { State = WorkItemState.Ready };
+        using var ledger = new UnwritableLedger();
+        using var history = new JsonlRunHistory(ledger.LedgerPath);
+        var state = history.Replay();
+        var logged = new List<string>();
+
+        // Every item in the store looks new to an empty fold, so the correction reconcile attempts
+        // is exactly the WorkItemFiled append this read-only ledger refuses -- the same fault
+        // LedgerMirroringWorkItemStore already tolerates for the identical call.
+        BacklogReconciler.Reconcile(new StubStore([item]), state, history, logged.Add);
+
+        Assert.False(state.Items.ContainsKey(item.Id));
+        Assert.Contains(logged, m => m.Contains(item.Id));
+    }
 }
