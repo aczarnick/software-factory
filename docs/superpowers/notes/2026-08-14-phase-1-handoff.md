@@ -86,3 +86,23 @@ One deliberate exception: `RunCompleted` mutates a work item's `SpentUsd` inside
   (two items writing the same filename, so a merge-order artifact masked the real assertion).
 - Do not run `factory up` or `factory build` against this checkout while implementing —
   phase 2 task 5 modifies `FactoryHost.Open` and the queued items are live.
+
+## OPERATIONAL: the factory is running against this checkout
+
+At the time of writing, `factory up` is live (it integrated four work items onto `master`
+between 22:26 and 22:33 on 2026-08-14, while phase 1 was being merged). It commits to
+`master` every few minutes, in pairs — the work commit, then a `factory: integrate wi_...`
+commit. The test count moves as it works; it went 142 → 154 during a docs-only commit of
+mine, which is alarming until you look at `git log`.
+
+Consequences for phase 2:
+
+- **Do phase 2 on its own branch**, as phase 1 was done on `storage-adapters`. Implementing
+  directly on `master` races an autonomous committer.
+- **Do not trust a remembered test count.** Re-baseline with `dotnet test` at the start of
+  the session and treat any jump as "check `git log` first", not "I broke something".
+- **`FactoryHost.cs` is contended.** The factory already edited it once (`Resolve`, the
+  `StationRole.Check` arm) and phase 2 Task 5 rewrites `Open`. They did not overlap this time.
+  A conflict here is plausible, not hypothetical.
+- Stopping the factory (or letting it drain to an empty backlog) before phase 2 is the
+  cleanest option, but that is the operator's call — it is doing real work.
