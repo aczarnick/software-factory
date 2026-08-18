@@ -19,6 +19,9 @@ public sealed class FactoryPaths(string repoRoot)
     public string WorktreesDir => Path.Combine(Root, "worktrees");
     public string LockFile => Path.Combine(Root, "factory.lock");
 
+    /// <summary>Third-party provider assemblies, loaded at open.</summary>
+    public string PluginsDir => Path.Combine(Root, "plugins");
+
     /// <summary>Observed model usage windows, so a restart inside an exhausted window does
     /// not immediately spend its way back into the same rejection.</summary>
     public string UsageFile => Path.Combine(Root, "usage.json");
@@ -38,6 +41,7 @@ public sealed class FactoryPaths(string repoRoot)
         Directory.CreateDirectory(CacheDir);
         Directory.CreateDirectory(RunsDir);
         Directory.CreateDirectory(WorktreesDir);
+        Directory.CreateDirectory(PluginsDir);
     }
 
     /// <summary>Walks up from a directory to find the nearest deployed factory.</summary>
@@ -72,4 +76,9 @@ public sealed record FactoryConfig
     public int EvolveEveryRuns { get; init; } = 20;
 
     public string CreatedAt { get; init; } = DateTimeOffset.UtcNow.ToString("O");
+
+    /// <summary>Backlog provider. Exactly one is active.</summary>
+    public ProviderRef WorkItemStore { get; init; } = new("ledger");
+
+    public RunHistoryConfig RunHistory { get; init; } = new();
 }
