@@ -19,6 +19,7 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string
     public WorkItem Update(WorkItem item)
     {
         Write(BeadMapper.UpdateArgs(item, owner), $"update {item.Id}");
+        ReconcileDependencies(item);
 
         // A Ready-bound write just cleared the bead's assignee (BeadMapper.UpdateArgs), so the
         // returned item has to say the same thing — otherwise the mirror carries a stale Owner
@@ -112,6 +113,37 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string
             "reports it rather than being forced back to a proposal");
 
         return Get(item.Id) ?? item;
+    }
+
+    /// <summary>Makes the bead's blocking edges match the item's. <c>bd update</c> has no
+    /// <c>--deps</c> flag, so edges are a separate mechanism from every other field: without this an
+    /// edge added after filing never reaches beads, and — because reconcile compares the whole mapped
+    /// projection and lets beads win — the next open reverts the edit locally too. An edge dropped
+    /// locally survives in beads the same way, holding work back everywhere.</summary>
+    ///
+    /// <remarks>The read costs one extra <c>bd</c> invocation per update. It cannot be avoided:
+    /// <c>bd update --json</c> returns the bead without its <c>dependencies</c> array, and the only
+    /// other candidate — comparing against the caller's own previous copy of the item — is exactly
+    /// the local-authority assumption this method exists to remove. The writes are skipped entirely
+    /// when the two agree, which is every update that is not an edge edit.
+    ///
+    /// Driving both halves from <see cref="WorkItem.DependsOn"/> is what keeps another tool's data
+    /// safe. That projection carries only the edge types beads itself treats as blocking, so a
+    /// <c>related</c> or <c>parent-child</c> edge a human filed is never in either set and is never
+    /// named to <c>bd dep remove</c> — which has no <c>--type</c> flag and would delete it.</remarks>
+    private void ReconcileDependencies(WorkItem item)
+    {
+        // Read after the field write, not before: an id beads does not know has already failed loudly
+        // there, so a null here would mean the bead vanished mid-update and there is nothing to diff.
+        if (Get(item.Id) is not { } stored) return;
+
+        foreach (var blocker in item.DependsOn.Except(stored.DependsOn))
+            Write(BeadMapper.DependencyAddArgs(item.Id, blocker, owner),
+                  $"add the dependency {item.Id} -> {blocker}");
+
+        foreach (var blocker in stored.DependsOn.Except(item.DependsOn))
+            Write(BeadMapper.DependencyRemoveArgs(item.Id, blocker, owner),
+                  $"remove the dependency {item.Id} -> {blocker}");
     }
 
     private void Write(IReadOnlyList<string> args, string what)

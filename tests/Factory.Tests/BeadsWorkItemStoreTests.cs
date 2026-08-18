@@ -73,6 +73,23 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
             store.Update(claimed with { State = WorkItemState.Cancelled });
     }
 
+    /// <summary>A ledger and fold of their own under a temp directory, so a reconcile in one test
+    /// cannot see another's corrections. <c>Open</c> is what the orchestrator does at run start.</summary>
+    private sealed class Fold : IDisposable
+    {
+        private readonly JsonlRunHistory _history =
+            new(Path.Combine(TempDir.Create(), "ledger.jsonl"));
+
+        public Fold() => State = _history.Replay();
+
+        public FactoryState State { get; }
+
+        public void Open(IWorkItemStore store) =>
+            BacklogReconciler.Reconcile(store, State, _history, _ => { });
+
+        public void Dispose() => _history.Dispose();
+    }
+
     private const string ForeignType = "epic";
     private const string ForeignCriterion = "- a criterion a human wrote";
 
@@ -508,10 +525,8 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
             Kind = WorkItemKind.Chore
         });
 
-        var ledger = Path.Combine(TempDir.Create(), "ledger.jsonl");
-        using var history = new JsonlRunHistory(ledger);
-        var state = history.Replay();
-        BacklogReconciler.Reconcile(store, state, history, _ => { });
+        using var fold = new Fold();
+        fold.Open(store);
 
         store.Update(filed with
         {
@@ -520,11 +535,11 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
             Intent = "the intent after editing",
             AcceptanceCriteria = [AcceptanceCriterion.Command("builds after editing", "dotnet build")]
         });
-        BacklogReconciler.Reconcile(store, state, history, _ => { });
+        fold.Open(store);
 
         // The fold is corrected from beads on every open, so a field the update never sent to beads
         // is not merely unsaved — the next reconcile actively reverts the edit here.
-        var reconciled = state.Items[filed.Id];
+        var reconciled = fold.State.Items[filed.Id];
         Assert.Equal("the title after editing", reconciled.Title);
         Assert.Equal(WorkItemKind.Bug, reconciled.Kind);
         Assert.Equal("the intent after editing", reconciled.Intent);
@@ -597,5 +612,118 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         // grows by the whole backlog on every single open.
         Assert.Equal(afterFirst, history.ReadFrom(0).Count());
         Assert.Contains(filed.Id, state.Items.Keys);
+    }
+
+    private const string BlockingType = "blocks";
+
+    /// <summary>The ids beads reports as blocking the named bead, read from bd's own output rather
+    /// than through the mapper's projection — the projection is what these tests put on trial.</summary>
+    private IReadOnlyList<string> BlockersInBeads(string id) =>
+    [
+        .. Bead(id).Dependencies
+            .Where(dependency => dependency.Type == BlockingType)
+            .Select(dependency => dependency.DependsOnId!)
+    ];
+
+    private IReadOnlyList<string> ReadyInBeads() =>
+        [.. Cli().Json<BeadRecord>("ready", "--json", "--limit", "0").Select(bead => bead.Id)];
+
+    [Fact]
+    public void An_edge_added_after_filing_reaches_beads_and_survives_a_reconcile()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var blocker = store.Add(WorkItem.Create("the blocker, filed first") with { State = WorkItemState.Ready });
+        var dependent = store.Add(WorkItem.Create("dependent, filed with no edges") with { State = WorkItemState.Ready });
+
+        using var fold = new Fold();
+        fold.Open(store);
+
+        store.Update(dependent with { DependsOn = [blocker.Id] });
+        fold.Open(store);
+
+        // bd's own output, and the type literal this test chose: an edge stored as anything but
+        // `blocks` is an edge beads does not withhold the dependent for.
+        Assert.Equal([blocker.Id], BlockersInBeads(dependent.Id));
+
+        // The fold is corrected from beads on every open, so an edge the update never sent is not
+        // merely unsaved in beads — this reconcile reverts it locally too.
+        Assert.Equal([blocker.Id], fold.State.Items[dependent.Id].DependsOn);
+
+        // And the post-condition dispatch actually depends on, in both authorities: the dependent is
+        // withheld while its blocker is open, and the blocker itself is still offered.
+        var readyInBeads = ReadyInBeads();
+        var dispatchable = fold.State.Dispatchable().Select(item => item.Id).ToList();
+        Assert.DoesNotContain(dependent.Id, readyInBeads);
+        Assert.Contains(blocker.Id, readyInBeads);
+        Assert.DoesNotContain(dependent.Id, dispatchable);
+        Assert.Contains(blocker.Id, dispatchable);
+    }
+
+    [Fact]
+    public void An_edge_removed_after_filing_is_removed_in_beads()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var blocker = store.Add(WorkItem.Create("a blocker that stops mattering") with { State = WorkItemState.Ready });
+        var dependent = store.Add(WorkItem.Create("dependent, filed with an edge") with
+        {
+            State = WorkItemState.Ready,
+            DependsOn = [blocker.Id]
+        });
+        Assert.Equal([blocker.Id], BlockersInBeads(dependent.Id));
+
+        store.Update(dependent with { DependsOn = [] });
+
+        Assert.Empty(BlockersInBeads(dependent.Id));
+
+        // The post-condition: beads offers the item again. An edge dropped from the item but left in
+        // beads holds the work back everywhere, and the next reconcile puts the edge back locally.
+        Assert.Contains(dependent.Id, ReadyInBeads());
+    }
+
+    [Fact]
+    public void An_update_leaves_a_non_blocking_edge_another_tool_added_in_place()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var context = store.Add(WorkItem.Create("background reading, linked by a human") with { State = WorkItemState.Ready });
+        var dependent = store.Add(WorkItem.Create("work a human merely linked") with { State = WorkItemState.Ready });
+
+        var added = Cli().Exec("dep", "add", dependent.Id, context.Id, "--type", "related");
+        Assert.True(added.Ok, added.Combined);
+
+        // The item carries no DependsOn, because a `related` edge is not a blocker and the mapper
+        // never reads one as one. `bd dep remove` is type-blind — it deletes whatever edge joins the
+        // pair — so a removal pass driven from "every edge not in DependsOn" erases this silently.
+        store.Update(dependent with { DependsOn = [] });
+
+        var edge = Assert.Single(Bead(dependent.Id).Dependencies);
+        Assert.Equal("related", edge.Type);
+        Assert.Equal(context.Id, edge.DependsOnId);
+
+
+        // And the item it is on is still dispatchable, so nothing about keeping the edge holds work back.
+        Assert.Contains(dependent.Id, ReadyInBeads());
+    }
+
+    [Fact]
+    public void An_edge_beads_refuses_fails_loudly_rather_than_leaving_the_two_disagreeing()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var first = store.Add(WorkItem.Create("first half of a cycle") with { State = WorkItemState.Ready });
+        var second = store.Add(WorkItem.Create("second half of a cycle") with { State = WorkItemState.Ready });
+        store.Update(second with { DependsOn = [first.Id] });
+
+        // bd checks each edge for a cycle and refuses one that closes a loop. Swallowing that would
+        // leave Dispatchable() withholding an item bd ready hands straight out — the authority
+        // disagreeing with itself, which is the defect this whole diff exists to close.
+        Assert.Throws<InvalidOperationException>(() => store.Update(first with { DependsOn = [second.Id] }));
+
+        // Nothing written: bd rejects the edge before storing it, so the refusal must not have left
+        // a half-applied graph behind either.
+        Assert.Empty(BlockersInBeads(first.Id));
+        Assert.Equal([first.Id], BlockersInBeads(second.Id));
     }
 }

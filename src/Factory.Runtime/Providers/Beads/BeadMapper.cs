@@ -264,6 +264,35 @@ public static class BeadMapper
         return args;
     }
 
+    /// <summary>Adds one blocking edge. The dependent is named first: <c>bd dep add &lt;dependent&gt;
+    /// &lt;blocker&gt;</c>, and reversing the pair files a valid edge pointing the other way while still
+    /// exiting 0, so the order is the only thing that distinguishes the two.
+    ///
+    /// No <c>--type</c> is passed. bd has ten dependency types and withholds a dependent for exactly
+    /// one of them, <c>blocks</c> — which is also bd's own default here — so naming nothing is both
+    /// the shortest and the only safe shape; <c>blocked-by</c> and <c>depends-on</c> are aliases bd
+    /// normalises to <c>blocks</c> before storing, as <see cref="CreateArgs"/>' <c>--deps</c> does.
+    ///
+    /// Adding an edge that already exists is idempotent (exit 0, one row). bd refuses, with exit 1
+    /// and nothing written, an edge that would close a cycle, an edge from a bead to itself, an edge
+    /// naming an id it does not know, and an edge onto a pair some other type already occupies —
+    /// beads allows at most one edge per ordered pair.</summary>
+    public static IReadOnlyList<string> DependencyAddArgs(string dependent, string blocker, string owner) =>
+        ["dep", "add", dependent, blocker, "--actor", owner];
+
+    /// <summary>Drops one edge. The dependent is named first for the same reason as
+    /// <see cref="DependencyAddArgs"/>, but getting it wrong is worse here: <c>bd dep remove
+    /// &lt;blocker&gt; &lt;dependent&gt;</c> prints <c>✓ Removed dependency</c> and exits 0 having
+    /// removed nothing, and so does removing an edge that never existed, so no exit code or output
+    /// can catch a reversed pair — only the order can.
+    ///
+    /// There is no <c>--type</c> on <c>bd dep remove</c> and it deletes whatever single edge joins
+    /// the pair, of any type. That makes the caller responsible for never naming a pair joined by a
+    /// non-blocking edge: see <see cref="ToWorkItem"/>, which reads only blocking edges, and the diff
+    /// in <c>BeadsWorkItemStore.Update</c>, which is driven from that read.</summary>
+    public static IReadOnlyList<string> DependencyRemoveArgs(string dependent, string blocker, string owner) =>
+        ["dep", "remove", dependent, blocker, "--actor", owner];
+
     /// <summary>The second write that gives a freshly created bead its real status. <c>bd create</c>
     /// has no status flag, so filing anything but Ready takes two writes and the bead is claimable
     /// in the window between them. <c>--if-status open</c> makes this write refuse — nothing written,

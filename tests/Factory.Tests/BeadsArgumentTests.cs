@@ -184,6 +184,42 @@ public class BeadsArgumentTests
         Assert.Null(response.Reclaimed);
     }
 
+    [Fact]
+    public void Adding_an_edge_names_the_dependent_before_the_blocker()
+    {
+        var args = BeadMapper.DependencyAddArgs("wi-dependent0001", "wi-blocker000001", "node-a");
+
+        // `bd dep add <dependent> <blocker>`. Reversed, the edge is still created and still exits 0 —
+        // it just points the other way, so the wrong item is the one beads withholds.
+        Assert.Equal(["dep", "add", "wi-dependent0001", "wi-blocker000001"], args.Take(4));
+        Assert.Equal("node-a", ValueAfter(args, "--actor"));
+    }
+
+    [Fact]
+    public void Removing_an_edge_names_the_dependent_before_the_blocker()
+    {
+        var args = BeadMapper.DependencyRemoveArgs("wi-dependent0001", "wi-blocker000001", "node-a");
+
+        // Reversed here is worse than on add: `bd dep remove <blocker> <dependent>` prints
+        // "✓ Removed dependency" and exits 0 while removing nothing at all, so the exit code cannot
+        // be trusted to catch it and only the argument order can.
+        Assert.Equal(["dep", "remove", "wi-dependent0001", "wi-blocker000001"], args.Take(4));
+        Assert.Equal("node-a", ValueAfter(args, "--actor"));
+    }
+
+    [Fact]
+    public void An_edge_is_added_as_a_type_beads_actually_treats_as_blocking()
+    {
+        var args = BeadMapper.DependencyAddArgs("wi-dependent0001", "wi-blocker000001", "node-a");
+
+        // bd has ten dependency types and withholds a dependent for exactly one of them. Any --type
+        // this passed other than `blocks` (or its `blocked-by`/`depends-on` aliases) would file an
+        // edge the factory reads as a blocker and bd ready ignores. bd's own default is `blocks`,
+        // so the safe shape is to name no type at all.
+        Assert.DoesNotContain("--type", args);
+        Assert.DoesNotContain("-t", args);
+    }
+
     private static string ValueAfter(IReadOnlyList<string> args, string flag)
     {
         var index = args.ToList().IndexOf(flag);
