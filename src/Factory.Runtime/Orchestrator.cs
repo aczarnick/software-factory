@@ -46,14 +46,29 @@ public sealed record OrchestratorReport
 /// with bounded concurrency, enforces budget before every model call, and routes gate
 /// failures back to the station that can fix them. Idles cheaply when there is nothing to do.
 /// </summary>
-public sealed class Orchestrator(FactoryHost host)
+public sealed class Orchestrator : IDisposable
 {
-    private readonly FactoryServices _s = host.Services;
+    private readonly FactoryHost host;
+    private readonly FactoryServices _s;
+    private readonly HeartbeatWriter _heartbeat;
+    private readonly DateTime _startedAtUtc = DateTime.UtcNow;
 
     private int _completed, _failed, _blocked, _delegatedCalls;
     private decimal _delegatedCost;
     private TokenUsage _delegatedUsage = TokenUsage.Zero;
     private readonly Lock _tally = new();
+    private int _disposed;
+
+    public Orchestrator(FactoryHost host)
+    {
+        this.host = host;
+        _s = host.Services;
+        _heartbeat = new HeartbeatWriter(host.Paths);
+
+        // Best-effort net so a killed or crashing process still leaves the heartbeat file
+        // saying 'stopped' rather than stuck on the last 'running' write.
+        AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+    }
 
     public async Task<OrchestratorReport> RunAsync(
         OrchestratorOptions? options = null, CancellationToken ct = default)
@@ -344,5 +359,36 @@ public sealed class Orchestrator(FactoryHost host)
     {
         s = s.Replace('\n', ' ').Trim();
         return s.Length <= 160 ? s : s[..160] + "…";
+    }
+
+    private void OnProcessExit(object? sender, EventArgs e) => TryWriteStoppedHeartbeat();
+
+    /// <summary>Overwrites the heartbeat file with a 'stopped' status. Safe to call more than
+    /// once — the write is a full overwrite, so a repeat is a no-op in effect — and never
+    /// throws, since callers include Dispose and a process-exit handler.</summary>
+    private void TryWriteStoppedHeartbeat()
+    {
+        try
+        {
+            _heartbeat.WriteAsync(new HeartbeatStatus
+            {
+                Pid = Environment.ProcessId,
+                StartedAtUtc = _startedAtUtc,
+                Status = "stopped",
+                StoppedAtUtc = DateTime.UtcNow
+            }).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // Best-effort: a failed heartbeat write must not crash Dispose or process teardown.
+        }
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+
+        AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
+        TryWriteStoppedHeartbeat();
     }
 }

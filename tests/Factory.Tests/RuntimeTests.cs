@@ -367,6 +367,27 @@ public class PipelineTests : IDisposable
     }
 }
 
+public class HeartbeatStoppedTests : IDisposable
+{
+    private readonly string _dir = TempDir.Create();
+    public void Dispose() => TempDir.Delete(_dir);
+
+    [Fact]
+    public void HeartbeatStopped_OnDispose()
+    {
+        using var host = FactoryHost.Init(_dir, transport: new FakeTransport());
+        var orchestrator = host.CreateOrchestrator();
+
+        orchestrator.Dispose();
+
+        var json = File.ReadAllText(host.Paths.StatusFile);
+        var status = FactoryJson.Read<HeartbeatStatus>(json);
+
+        Assert.Equal("stopped", status!.Status);
+        Assert.NotNull(status.StoppedAtUtc);
+    }
+}
+
 public class DotnetToolchainRequirementReaderTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
