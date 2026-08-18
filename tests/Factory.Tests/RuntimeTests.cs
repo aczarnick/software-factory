@@ -367,6 +367,68 @@ public class PipelineTests : IDisposable
     }
 }
 
+public class DotnetToolchainRequirementReaderTests : IDisposable
+{
+    private readonly string _dir = TempDir.Create();
+    public void Dispose() => TempDir.Delete(_dir);
+
+    private readonly DotnetToolchainRequirementReader _reader = new();
+
+    [Fact]
+    public async Task Global_json_sdk_version_is_extracted()
+    {
+        File.WriteAllText(Path.Combine(_dir, "global.json"), """{"sdk":{"version":"8.0.100"}}""");
+
+        var requirement = await _reader.ReadRequirementsAsync(_dir);
+
+        Assert.Equal(["8.0.100"], requirement.RequiredSdkVersions);
+    }
+
+    [Fact]
+    public async Task A_missing_global_json_yields_no_required_sdk_version_rather_than_throwing()
+    {
+        var requirement = await _reader.ReadRequirementsAsync(_dir);
+
+        Assert.Empty(requirement.RequiredSdkVersions);
+    }
+
+    [Fact]
+    public async Task A_global_json_without_sdk_version_yields_no_required_sdk_version()
+    {
+        File.WriteAllText(Path.Combine(_dir, "global.json"), """{"sdk":{"rollForward":"latestMinor"}}""");
+
+        var requirement = await _reader.ReadRequirementsAsync(_dir);
+
+        Assert.Empty(requirement.RequiredSdkVersions);
+    }
+
+    [Fact]
+    public async Task Single_target_framework_is_read_from_a_csproj()
+    {
+        File.WriteAllText(Path.Combine(_dir, "a.csproj"),
+            "<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+
+        var requirement = await _reader.ReadRequirementsAsync(_dir);
+
+        Assert.Equal(["net8.0"], requirement.TargetFrameworks);
+    }
+
+    [Fact]
+    public async Task Semicolon_separated_target_frameworks_are_split_and_deduplicated_across_files()
+    {
+        File.WriteAllText(Path.Combine(_dir, "multi.csproj"),
+            "<Project><PropertyGroup><TargetFrameworks>net8.0;net9.0</TargetFrameworks></PropertyGroup></Project>");
+        File.WriteAllText(Path.Combine(_dir, "single.csproj"),
+            "<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
+
+        var requirement = await _reader.ReadRequirementsAsync(_dir);
+
+        Assert.Equal(2, requirement.TargetFrameworks.Count);
+        Assert.Contains("net8.0", requirement.TargetFrameworks);
+        Assert.Contains("net9.0", requirement.TargetFrameworks);
+    }
+}
+
 public class CompositionTests : IDisposable
 {
     private readonly string _parent = TempDir.Create();

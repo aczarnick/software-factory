@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Xml.Linq;
 using Factory.Core;
 
 namespace Factory.Runtime;
@@ -181,6 +182,68 @@ public sealed record RepoToolchainRequirement(
 public interface IToolchainRequirementReader
 {
     Task<RepoToolchainRequirement> ReadRequirementsAsync(string repoPath, CancellationToken ct = default);
+}
+
+/// <summary>Reads a dotnet repo's own declared requirements: the SDK pinned by global.json,
+/// and the target framework(s) declared by its csproj files. Only ever reads the paths it is
+/// given, so it stays fakeable in tests and never depends on what happens to be installed.</summary>
+public sealed class DotnetToolchainRequirementReader : IToolchainRequirementReader
+{
+    public Task<RepoToolchainRequirement> ReadRequirementsAsync(string repoPath, CancellationToken ct = default)
+    {
+        var sdkVersions = ReadSdkVersions(repoPath);
+        var targetFrameworks = ReadTargetFrameworks(repoPath);
+
+        return Task.FromResult(new RepoToolchainRequirement(sdkVersions, targetFrameworks));
+    }
+
+    private static IReadOnlyList<string> ReadSdkVersions(string repoPath)
+    {
+        var globalJsonPath = Path.Combine(repoPath, "global.json");
+        if (!File.Exists(globalJsonPath)) return [];
+
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(globalJsonPath));
+            if (doc.RootElement.TryGetProperty("sdk", out var sdk) &&
+                sdk.TryGetProperty("version", out var version) &&
+                version.ValueKind == JsonValueKind.String &&
+                version.GetString() is { Length: > 0 } pinned)
+                return [pinned];
+        }
+        catch (Exception ex) when (ex is IOException or JsonException) { }
+
+        return [];
+    }
+
+    private static IReadOnlyList<string> ReadTargetFrameworks(string repoPath)
+    {
+        var frameworks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        IEnumerable<string> csprojFiles;
+        try
+        {
+            csprojFiles = Directory.EnumerateFiles(repoPath, "*.csproj", SearchOption.AllDirectories);
+        }
+        catch (IOException) { return []; }
+
+        foreach (var csproj in csprojFiles)
+        {
+            try
+            {
+                var doc = XDocument.Load(csproj);
+                foreach (var element in doc.Descendants("TargetFramework"))
+                    if (!string.IsNullOrWhiteSpace(element.Value)) frameworks.Add(element.Value.Trim());
+
+                foreach (var element in doc.Descendants("TargetFrameworks"))
+                    foreach (var tfm in element.Value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                        frameworks.Add(tfm);
+            }
+            catch (Exception ex) when (ex is IOException or System.Xml.XmlException) { }
+        }
+
+        return frameworks.ToList();
+    }
 }
 
 /// <summary>Reports the SDK/toolchain versions installed on the host. Injectable so
