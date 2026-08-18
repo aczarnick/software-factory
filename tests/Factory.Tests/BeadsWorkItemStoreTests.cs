@@ -126,6 +126,23 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
+    public void TryClaim_stamps_the_lease_with_this_checkouts_node_id()
+    {
+        if (Unavailable) return;
+        DrainReadyQueue();
+        var store = Store();
+        store.Add(WorkItem.Create("claimable, cross-replica guard") with { State = WorkItemState.Ready });
+
+        var claimed = store.TryClaim(Owner)!;
+
+        // BEADS_NODE_ID has to reach bd at claim time, not only at reclaim time: bd stamps the
+        // granting node onto the lease when it is taken, and a later reclaim on another replica
+        // skips only a lease whose granting node differs from its own. A lease with no granting
+        // node recorded is an unguarded lease, so this is the post-condition Reclaim depends on.
+        Assert.Equal(Owner, Bead(claimed.Id).LeaseGrantedNode);
+    }
+
+    [Fact]
     public void TryClaim_takes_a_lease_the_factory_can_refresh()
     {
         if (Unavailable) return;

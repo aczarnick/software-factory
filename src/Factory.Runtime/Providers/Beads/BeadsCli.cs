@@ -5,13 +5,23 @@ namespace Factory.Runtime;
 /// <summary>Thin synchronous wrapper over the <c>bd</c> executable.</summary>
 ///
 /// <remarks><c>owner</c> is set as <c>BEADS_NODE_ID</c> on every invocation, arming bd's
-/// cross-replica guard for this checkout. Deliberately not <c>bd config set node_id</c>: that
-/// writes the machine-global <c>~/.config/bd/config.yaml</c>, shared by every beads project on
-/// the machine, and a value instead committed to the git-tracked <c>.beads/config.yaml</c> would
-/// leave the guard armed but inert, since every clone would read the same name. The environment
-/// variable is per-process and per-store instead. The id is one per <em>store</em>, not per host —
-/// machines that are clients of the same shared Dolt database are one replica and must be given
-/// the same <c>owner</c>, or the guard will treat them as distinct nodes racing each other.</remarks>
+/// cross-replica guard for this checkout. It has to be set at claim time, not only at reclaim
+/// time: bd stamps the granting node onto the lease when the claim is taken, and a reclaim later
+/// skips only a lease whose granting node differs from its own. Deliberately not <c>bd config set
+/// node_id</c>: that writes the machine-global <c>~/.config/bd/config.yaml</c>, shared by every
+/// beads project on the machine, and a value instead committed to the git-tracked
+/// <c>.beads/config.yaml</c> would leave the guard armed but inert, since every clone would read
+/// the same name. The environment variable is per-process and per-store instead.
+///
+/// The id is one per <em>store</em>, not per host — but "one store" means one <c>dolt
+/// sql-server</c>: machines that are clients of the same server share one value, because they
+/// share one lease table. This deployment mode has no such server (<c>bd dolt status</c> reports
+/// <c>embedded (in-process, no server)</c>), so two machines syncing their own embedded copies of
+/// a shared remote are <em>two</em> replicas and must be given <em>different</em> values of
+/// <c>owner</c> — the same value here would make the guard treat a foreign lease as its own and
+/// skip nothing, the same armed-but-inert failure described above for a committed config file.
+/// <c>owner</c> comes from <see cref="Factory.Core.FactoryConfig.Name"/>, so that value must be
+/// unique per machine wherever the backlog is shared.</remarks>
 public sealed class BeadsCli(string workingDirectory, string owner)
 {
     private readonly Dictionary<string, string> _environment =
