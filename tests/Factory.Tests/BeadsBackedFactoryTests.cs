@@ -115,21 +115,31 @@ public class BeadsBackedFactoryTests : IDisposable
     public async Task An_orphan_is_requeued_with_its_claim_dropped_so_another_machine_can_take_it()
     {
         if (!Available) return;
-        using var host = OpenBeadsBacked(Scripted());
-        var store = host.Services.Items;
 
-        // Stand in for a crash: claimed, in progress, lease held, then the process died.
-        store.Add(WorkItem.Create("interrupted") with { State = WorkItemState.Ready });
-        var claimed = store.TryClaim(Owner)!;
-        Assert.Equal(Owner, Bead(claimed.Id).Assignee);
+        using (var host = OpenBeadsBacked(Scripted()))
+        {
+            var store = host.Services.Items;
 
-        await host.CreateOrchestrator().RunAsync(new OrchestratorOptions { StopWhenIdle = true, MaxItems = 0 });
+            // Stand in for a crash: claimed, in progress, lease held, then the process died.
+            store.Add(WorkItem.Create("interrupted") with { State = WorkItemState.Ready });
+            var claimed = store.TryClaim(Owner)!;
+            Assert.Equal(Owner, Bead(claimed.Id).Assignee);
 
-        var bead = Bead(claimed.Id);
-        Assert.Equal(WorkItemState.Ready, BeadMapper.StateFor(bead.Status));
-        Assert.True(string.IsNullOrEmpty(bead.Assignee),
-            $"a requeued orphan that keeps its assignee cannot be taken by another machine, was '{bead.Assignee}'");
-        Assert.Null(bead.LeaseExpiresAt);
+            await host.CreateOrchestrator().RunAsync(new OrchestratorOptions { StopWhenIdle = true, MaxItems = 0 });
+
+            var bead = Bead(claimed.Id);
+            Assert.Equal(WorkItemState.Ready, BeadMapper.StateFor(bead.Status));
+            Assert.True(string.IsNullOrEmpty(bead.Assignee),
+                $"a requeued orphan that keeps its assignee cannot be taken by another machine, was '{bead.Assignee}'");
+            Assert.Null(bead.LeaseExpiresAt);
+        }
+
+        // The requeue above released this checkout's own orphan through the same Release path a
+        // reopen has to agree with. If Release never told the fold the owner was cleared, the
+        // fold's stale copy would disagree with the now-unassigned bead on every open from here on.
+        var log = new List<string>();
+        using var reopened = FactoryHost.Open(_dir, log.Add, transport: new FakeTransport());
+        Assert.DoesNotContain(log, message => message.Contains("reconciled"));
     }
 
     [Fact]

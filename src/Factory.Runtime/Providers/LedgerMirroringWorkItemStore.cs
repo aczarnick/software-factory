@@ -45,7 +45,13 @@ public sealed class LedgerMirroringWorkItemStore(
     public void Release(string id, string reason)
     {
         inner.Release(id, reason);
-        if (StateOf(id) is { } from) Mirror(new WorkItemStateChanged(id, from, WorkItemState.Ready, reason));
+
+        // A release always returns the item to Ready and drops the claim (BeadMapper.ReleaseArgs),
+        // the same Ready-bound write MirrorChange already handles — but inner.Release returns
+        // nothing, so the fold's own copy has to stand in for the "after" item MirrorChange is
+        // normally handed by the store.
+        if (ItemOf(id) is { } known)
+            MirrorChange(known with { State = WorkItemState.Ready, Owner = null, UpdatedAt = DateTimeOffset.UtcNow }, known.State, reason);
     }
 
     public IReadOnlyList<WorkItem> Reclaim(TimeSpan olderThan)

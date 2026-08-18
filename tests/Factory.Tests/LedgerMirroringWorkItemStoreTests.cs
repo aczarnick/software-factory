@@ -55,4 +55,26 @@ public class LedgerMirroringWorkItemStoreTests
         // chose WorkItemUpdated instead.
         Assert.Equal("claimant", state.Items[item.Id].Owner);
     }
+
+    [Fact]
+    public void Releasing_a_claimed_item_clears_its_owner_in_the_fold()
+    {
+        var state = FactoryState.Replay([]);
+        var item = WorkItem.Create("claimed then released") with
+        {
+            State = WorkItemState.InProgress,
+            Owner = "claimant"
+        };
+        state.Apply(new WorkItemFiled(item));
+
+        var mirror = new LedgerMirroringWorkItemStore(new FakeStore(), new NullHistory(), state, _ => { });
+
+        // inner.Release returns nothing, so unlike every other mutating call, the mirror has no
+        // "after" item from the store to compare against — only its own fold copy to correct.
+        mirror.Release(item.Id, "requeued after restart");
+
+        var released = state.Items[item.Id];
+        Assert.Null(released.Owner);
+        Assert.Equal(WorkItemState.Ready, released.State);
+    }
 }
