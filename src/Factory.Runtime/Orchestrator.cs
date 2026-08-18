@@ -74,6 +74,13 @@ public sealed class Orchestrator : IDisposable
     /// stall check against <see cref="StallThreshold"/>.</summary>
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastProgressUtc = new();
 
+    /// <summary>The claims this run took itself and is still working, which is exactly the set whose
+    /// leases it has to keep alive. Written from the claim rather than read back out of the fold: the
+    /// mirror's ledger append is best-effort, so a swallowed one leaves a bead claimed under a live
+    /// lease that the fold has never heard of — and a shared backlog puts other machines' in-flight
+    /// items in the fold, whose leases are not this checkout's to refresh.</summary>
+    private readonly ConcurrentDictionary<string, bool> _claimsHeld = new();
+
     public Orchestrator(FactoryHost host, TimeSpan? stallThreshold = null)
     {
         this.host = host;
@@ -164,6 +171,10 @@ public sealed class Orchestrator : IDisposable
             {
                 if (_s.Items.TryClaim(_s.Config.Name) is not { } claimed) break;
 
+                // Before anything else can fail: from here on there is a lease out in the backlog
+                // with this checkout's name on it, and the refresh loop is the only thing keeping it.
+                _claimsHeld[claimed.Id] = true;
+
                 claimed = _s.Items.Update(claimed with
                 {
                     Station = claimed.Station ?? _s.Blueprint.Pipeline.FirstOrDefault()
@@ -206,14 +217,13 @@ public sealed class Orchestrator : IDisposable
             };
     }
 
-    /// <summary>Holds this checkout's claims open while their stations work. Only items actually
-    /// in progress have a claim to refresh — a store drops the lease once a station moves an item
-    /// on to review — and a refusal is not a backlog failure, so failures are left to the timer to
-    /// swallow.</summary>
+    /// <summary>Holds this run's own claims open while their stations work. A store refuses a
+    /// heartbeat once the item has moved past in progress and has no lease left, which is best-effort
+    /// by contract rather than a backlog failure, so failures are left to the timer to swallow.</summary>
     private Task RefreshClaimsAsync()
     {
-        foreach (var item in _s.State.Items.Values.Where(i => i.State == WorkItemState.InProgress))
-            _s.Items.Heartbeat(item.Id);
+        foreach (var id in _claimsHeld.Keys)
+            _s.Items.Heartbeat(id);
 
         return Task.CompletedTask;
     }
@@ -366,6 +376,9 @@ public sealed class Orchestrator : IDisposable
         }
         finally
         {
+            // However this pass ended, the item is no longer being worked here, so its lease is no
+            // longer this run's to hold open.
+            _claimsHeld.TryRemove(item.Id, out _);
             Shell.CurrentItemId.Value = null;
         }
     }

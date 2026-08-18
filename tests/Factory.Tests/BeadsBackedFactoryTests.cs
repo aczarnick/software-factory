@@ -111,6 +111,117 @@ public class BeadsBackedFactoryTests : IDisposable
             $"last heartbeat {observed.HeartbeatAt:O}");
     }
 
+    /// <summary>Reads the bead until its lease has been pushed out past <paramref name="since"/>,
+    /// giving up after a bound generous enough that only a refresh that never comes ends the wait.
+    /// The window a refresh has to land in is fixed at 2.5 seconds by design, so that the converse
+    /// assertion — nothing sent for a claim this run does not hold — is measured over the same
+    /// window; this grace on top of it is there so a loaded machine costs the suite time rather
+    /// than a false failure.</summary>
+    private BeadRecord WaitForARefresh(string id, DateTimeOffset? since)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
+
+        var bead = Bead(id);
+        while (!(bead.HeartbeatAt > since) && DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(300);
+            bead = Bead(id);
+        }
+
+        return bead;
+    }
+
+    [Fact]
+    public async Task A_refresh_follows_this_runs_own_claims_rather_than_the_folds_in_progress_items()
+    {
+        if (!Available) return;
+
+        // Observed from inside the run, either side of a window wide enough for several refresh
+        // ticks: once the run finishes there is no lease left to observe.
+        string? runItemId = null, bystanderId = null;
+        BeadRecord? mineAtWindowStart = null, mineAfterWindow = null;
+        BeadRecord? bystanderAtWindowStart = null, bystanderAfterWindow = null;
+        FactoryHost? opened = null;
+        var observed = false;
+
+        var transport = new FakeTransport()
+            .Respond("decompose", SingleChild)
+            .Respond("plan", Plan)
+            .Respond("implement", request =>
+            {
+                // A failed gate routes the pipeline back through implement, and the window below is
+                // only meaningful the first time.
+                if (!observed)
+                {
+                    observed = true;
+                    ObserveARefreshWindow();
+                }
+
+                File.WriteAllText(Path.Combine(request.WorkingDirectory!, "hello.txt"), "hi\n");
+                return FakeTransport.Success("wrote the file", cost: 0.02m);
+            });
+
+        void ObserveARefreshWindow()
+        {
+            var store = opened!.Services.Items;
+
+            // Exactly what a swallowed mirror append leaves behind: the bead is claimed under a live
+            // five-minute lease and the fold still holds its pre-claim copy. The mirror tolerates a
+            // failed ledger append by design (D2), so this is a state the factory really reaches —
+            // and the claim is still this run's to keep alive.
+            var folded = opened.Services.State.Items[runItemId!];
+            opened.Services.State.Apply(new WorkItemUpdated(folded with { State = WorkItemState.Ready }));
+
+            // A claim this run did not take. Held by this checkout so bd would accept a heartbeat for
+            // it, and InProgress in the fold so a fold-driven refresh would send one: a genuinely
+            // foreign claim cannot show the difference, because bd refuses a heartbeat on a bead
+            // another actor holds (probed against 1.2.1: exit 1, nothing written).
+            var filed = store.Add(WorkItem.Create("claimed outside this run") with { State = WorkItemState.Ready });
+            bystanderId = store.TryClaim(Owner)?.Id;
+            if (bystanderId != filed.Id) return;
+
+            // bd stamps heartbeat_at to the second, so the window has to span one.
+            Thread.Sleep(1000);
+            mineAtWindowStart = Bead(runItemId!);
+            bystanderAtWindowStart = Bead(bystanderId);
+            Thread.Sleep(2500);
+            bystanderAfterWindow = Bead(bystanderId);
+            mineAfterWindow = WaitForARefresh(runItemId!, mineAtWindowStart.HeartbeatAt);
+        }
+
+        using var host = OpenBeadsBacked(transport);
+        opened = host;
+
+        // The one Ready bead in the backlog, so it is the one item the run below claims — read from
+        // here rather than from whatever bd currently lists as in progress, which stops identifying
+        // it uniquely the moment the window opens a second claim.
+        runItemId = host.Submit(WorkItem.Create("held across a run the fold lost track of")).Id;
+
+        await host.CreateOrchestrator().RunAsync(new OrchestratorOptions
+        {
+            StopWhenIdle = true,
+            MaxItems = 1,
+            LeaseRefreshInterval = TimeSpan.FromMilliseconds(200)
+        });
+
+        Assert.NotNull(mineAtWindowStart);
+        Assert.NotEqual(runItemId, bystanderId);
+
+        // Refreshed even though the fold never learned about the claim. Refreshing what the fold
+        // calls InProgress instead leaves a lost append running the item with no heartbeats at all,
+        // its lease expiring mid-run, and the next Reclaim handing the work to a second claimant
+        // while the first is still working on it.
+        Assert.True(mineAfterWindow!.HeartbeatAt > mineAtWindowStart.HeartbeatAt,
+            "the claim this run holds should have been refreshed: window opened at " +
+            $"{mineAtWindowStart.HeartbeatAt:O}, closed at {mineAfterWindow.HeartbeatAt:O}");
+
+        // And nothing sent for a claim this run does not hold, in the very window that just proved
+        // the refresh pass was running. A fold-driven pass spends a bd subprocess per tick on it.
+        Assert.Equal(WorkItemState.InProgress, BeadMapper.StateFor(bystanderAtWindowStart!.Status));
+        Assert.Equal(bystanderAtWindowStart.HeartbeatAt, bystanderAfterWindow!.HeartbeatAt);
+        Assert.Equal(bystanderAtWindowStart.LeaseExpiresAt, bystanderAfterWindow.LeaseExpiresAt);
+    }
+
     [Fact]
     public async Task An_orphan_is_requeued_with_its_claim_dropped_so_another_machine_can_take_it()
     {
