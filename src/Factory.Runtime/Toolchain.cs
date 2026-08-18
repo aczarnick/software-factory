@@ -308,18 +308,64 @@ public sealed class DotnetInstalledSdkProvider : IInstalledSdkProvider
     }
 }
 
+/// <summary>Compares dotnet SDK versions using the same roll-forward semantics the `dotnet`
+/// host itself applies when no explicit `rollForward` policy is pinned in global.json
+/// (`latestPatch`): an installed SDK satisfies a requirement only when its major, minor, and
+/// feature band (the version's hundreds-digit, e.g. 100 for "9.0.1xx") match, and its patch is
+/// greater than or equal to the one required. A "9.0.100" pin is satisfied by an installed
+/// "9.0.108" but not by "9.0.200" (a different feature band) or "10.0.100" (a different
+/// major).</summary>
+public static class DotnetSdkRollForwardComparer
+{
+    public static bool IsCompatible(string requiredVersion, string installedVersion)
+    {
+        if (!TryParse(requiredVersion, out var required) || !TryParse(installedVersion, out var installed))
+            return requiredVersion == installedVersion;
+
+        return required.Major == installed.Major
+            && required.Minor == installed.Minor
+            && required.FeatureBand == installed.FeatureBand
+            && installed.Patch >= required.Patch;
+    }
+
+    private readonly record struct SdkVersion(int Major, int Minor, int Patch)
+    {
+        public int FeatureBand => Patch / 100 * 100;
+    }
+
+    private static bool TryParse(string version, out SdkVersion parsed)
+    {
+        parsed = default;
+        var parts = version.Split('.');
+        if (parts.Length < 3) return false;
+        if (!int.TryParse(parts[0], out var major)) return false;
+        if (!int.TryParse(parts[1], out var minor)) return false;
+
+        var patchDigits = new string(parts[2].TakeWhile(char.IsDigit).ToArray());
+        if (patchDigits.Length == 0 || !int.TryParse(patchDigits, out var patch)) return false;
+
+        parsed = new SdkVersion(major, minor, patch);
+        return true;
+    }
+}
+
 /// <summary>The default toolchain probe: compares the SDK version(s) a dotnet repo pins in
-/// global.json against what is actually installed. The only probe the factory ships with,
-/// since dotnet is the toolchain it runs on itself; other ecosystems can supply their own
-/// <see cref="IToolchainProbe"/>.</summary>
+/// global.json against what is actually installed, using .NET's own roll-forward semantics.
+/// The only probe the factory ships with, since dotnet is the toolchain it runs on itself;
+/// other ecosystems can plug in their own <see cref="IToolchainRequirementReader"/> and <see
+/// cref="IInstalledSdkProvider"/> pair — via a new <see cref="IToolchainProbe"/> — without
+/// touching how the factory selects or invokes a probe.</summary>
 public sealed class DotnetToolchainProbe(
     IToolchainRequirementReader? requirementReader = null,
-    IInstalledSdkProvider? installedSdkProvider = null) : IToolchainProbe
+    IInstalledSdkProvider? installedSdkProvider = null,
+    Func<string, string, bool>? versionComparer = null) : IToolchainProbe
 {
     private readonly IToolchainRequirementReader _requirementReader =
         requirementReader ?? new DotnetToolchainRequirementReader();
     private readonly IInstalledSdkProvider _installedSdkProvider =
         installedSdkProvider ?? new DotnetInstalledSdkProvider();
+    private readonly Func<string, string, bool> _versionComparer =
+        versionComparer ?? DotnetSdkRollForwardComparer.IsCompatible;
 
     public async Task<ToolchainCompatibilityResult> ProbeAsync(string repoPath, CancellationToken ct = default)
     {
@@ -328,15 +374,22 @@ public sealed class DotnetToolchainProbe(
 
         var installed = await _installedSdkProvider.GetInstalledVersionsAsync(ct).ConfigureAwait(false);
 
-        // A pin of "9.0.100" is satisfied by any installed 9.x SDK; patch-level drift is not
-        // a mismatch worth blocking on.
         var compatible = requirement.RequiredSdkVersions.All(required =>
-            installed.Any(i => i.Split('.')[0] == required.Split('.')[0]));
+            installed.Any(i => _versionComparer(required, i)));
 
         return compatible
             ? ToolchainCompatibilityResult.Compatible()
             : ToolchainCompatibilityResult.Incompatible(requirement.RequiredSdkVersions, installed);
     }
+}
+
+/// <summary>Named, selectable toolchain probes — one per ecosystem. Adding support for a new
+/// ecosystem (Node, Python, ...) means adding a factory method here that wires up that
+/// ecosystem's own <see cref="IToolchainRequirementReader"/> and <see
+/// cref="IInstalledSdkProvider"/>, never changing how a station picks or calls a probe.</summary>
+public static class ToolchainProbes
+{
+    public static IToolchainProbe ForDotnet() => new DotnetToolchainProbe();
 }
 
 public static class ToolchainRunner
