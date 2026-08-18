@@ -165,8 +165,11 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         var item = WorkItem.Create("filed while another checkout was claiming");
         var otherCheckout = new BeadsCli(database.Directory, elsewhere);
         var store = new BeadsWorkItemStore(
-            new InterposesAfterCreate(database.Directory, Owner,
-                id => otherCheckout.Exec("update", id, "--claim", "--actor", elsewhere)),
+            new InterposesAfterCreate(database.Directory, Owner, id =>
+            {
+                var claim = otherCheckout.Exec("update", id, "--claim", "--actor", elsewhere);
+                Assert.True(claim.Ok, claim.Combined);
+            }),
             Owner,
             logged.Add);
 
@@ -192,8 +195,11 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         if (Unavailable) return;
         var cli = Cli();
         var store = new BeadsWorkItemStore(
-            new InterposesAfterCreate(database.Directory, Owner,
-                id => cli.Exec("delete", id, "--force")),
+            new InterposesAfterCreate(database.Directory, Owner, id =>
+            {
+                var deleted = cli.Exec("delete", id, "--force");
+                Assert.True(deleted.Ok, deleted.Combined);
+            }),
             Owner,
             _ => { });
 

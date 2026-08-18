@@ -271,5 +271,12 @@ public static class BeadMapper
     /// that window back to <c>draft</c> and dropping the lease it is working under, which bd
     /// otherwise does while exiting 0.</summary>
     public static IReadOnlyList<string> FilingStatusArgs(WorkItem item, string owner) =>
-        [.. UpdateArgs(item, owner), "--if-status", StatusFor(WorkItemState.Ready)];
+        [.. UpdateArgs(item, owner), "--if-status", StatusAfterCreate];
+
+    // What bd leaves a freshly created bead in — it has no status flag on create at all. Not borrowed
+    // from StatusFor(Ready), which is the same string only by coincidence: this is a fact about bd
+    // create, not about any WorkItemState. Getting it wrong fails silently, because FinishFiling
+    // deliberately does not throw on exit 13, so every non-Ready Add would report a collision that
+    // never happened and record the freshly created open bead instead of the intended Draft.
+    private const string StatusAfterCreate = "open";
 }
