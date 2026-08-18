@@ -81,11 +81,11 @@ public class BeadsCli(string workingDirectory, string owner)
         {
             return read();
         }
-        catch (JsonException) when (stdout.Length >= Shell.MaxCapturedOutputChars)
+        catch (JsonException ex) when (stdout.Length >= Shell.MaxCapturedOutputChars)
         {
             throw new InvalidOperationException(
                 $"bd {string.Join(' ', args)} produced more than {Shell.MaxCapturedOutputChars} " +
-                "characters, so its JSON was truncated before it could be read.");
+                "characters, so its JSON was truncated before it could be read.", ex);
         }
     }
 }

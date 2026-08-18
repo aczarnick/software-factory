@@ -29,17 +29,32 @@ public static class BacklogReconciler
             if (TryAppend(correction, state, history, log, authoritative.Id)) corrected++;
         }
 
-        foreach (var vanished in local.Keys.Except(seenIds))
-            log($"{vanished} is in the fold but no longer exists in the backlog store, and was left as is");
+        ReportVanished(local.Keys.Except(seenIds).ToList(), log);
 
         if (corrected > 0) log($"reconciled {corrected} item(s) from the backlog store");
     }
 
-    // Mirrors LedgerMirroringWorkItemStore.Mirror's tolerance for the identical append, so the two
-    // agree deliberately rather than by accident: a backlog write already committed before reconcile
-    // ever runs, so a ledger this process cannot write should degrade the factory, not stop it from
-    // starting, and the next reconcile repeats the correction. See that decorator's catch for why the
-    // set is exactly these two and not wider.
+    /// <summary>Above this many vanished ids in one pass, name only the first few and collapse the
+    /// rest into a count. A pass with more than this either means a healthy backlog lost one bead,
+    /// which is rare enough that naming every one of a handful is useful, or it means the whole
+    /// backlog was swapped out from under an unchanged fold -- a recreated database, or a switch of
+    /// providers -- where naming hundreds of ids one line each would bury the report it is part of.</summary>
+    private const int MaxNamedVanishedItems = 5;
+
+    private static void ReportVanished(IReadOnlyList<string> vanishedIds, Action<string> log)
+    {
+        foreach (var vanished in vanishedIds.Take(MaxNamedVanishedItems))
+            log($"{vanished} is in the fold but no longer exists in the backlog store, so it still " +
+                "shows in `factory ls` and still counts as an unmet dependency for anything blocked on it");
+
+        var remaining = vanishedIds.Count - MaxNamedVanishedItems;
+        if (remaining > 0)
+            log($"...and {remaining} more item(s) in the fold no longer exist in the backlog store");
+    }
+
+    // See LedgerFaultTolerance for what this catches and why -- the same predicate
+    // LedgerMirroringWorkItemStore.Mirror uses for the identical append, so the two agree by
+    // construction rather than by two comments promising they match.
     private static bool TryAppend(
         FactoryEvent correction, FactoryState state, IRunHistory history, Action<string> log, string itemId)
     {
@@ -49,7 +64,7 @@ public static class BacklogReconciler
             state.Apply(correction);
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (LedgerFaultTolerance.IsTolerable(ex))
         {
             log($"the correction to {itemId} could not be written to the ledger and will be " +
                 $"attempted again at the next open: {ex.Message}");

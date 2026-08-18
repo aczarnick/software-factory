@@ -465,9 +465,11 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         store.Transition(claimed, WorkItemState.Ready, "cancelled because the test rejected the note");
 
         // The reason is not authoritative state, so the transition itself must still have gone
-        // through even though beads refused to record why.
+        // through even though beads refused to record why -- state and owner both, the rest of a
+        // Ready-bound transition's post-condition.
         Assert.Equal(WorkItemState.Ready, store.Get(item.Id)!.State);
-        Assert.Contains(logged, message => message.Contains(item.Id));
+        Assert.Null(store.Get(item.Id)!.Owner);
+        Assert.Contains(logged, message => message.Contains(item.Id) && message.Contains("could not be recorded"));
     }
 
     [Fact]

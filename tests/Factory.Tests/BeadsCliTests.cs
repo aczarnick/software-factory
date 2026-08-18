@@ -52,6 +52,11 @@ public class BeadsCliTests
             () => new ReturnsCannedStdout(truncated).Json<IdOnly>("list"));
 
         Assert.Contains("truncated", ex.Message);
+
+        // The truncation report must not discard the parse failure that triggered it -- otherwise a
+        // genuinely malformed over-bound response is reported as "truncated" with nothing left to
+        // contradict that claim.
+        Assert.IsType<JsonException>(ex.InnerException);
     }
 
     [Fact]

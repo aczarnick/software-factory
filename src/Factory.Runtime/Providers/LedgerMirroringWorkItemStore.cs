@@ -104,25 +104,10 @@ public sealed class LedgerMirroringWorkItemStore(
             history.Append(evt);
             state.Apply(evt);
         }
-        // Exactly the two ways the *file-backed* ledger refuses an append the backlog write has
-        // already outrun: the device would not take it, or this process may not write the file. Both
-        // are D2's tolerable loss, corrected at the next reconcile. UnauthorizedAccessException is
-        // named separately because it is a SystemException and not an IOException, and a read-only
-        // ledger — owned by another user, or on a mount that denies writes — is how it arrives.
-        //
-        // The rest are let out on purpose. ObjectDisposedException says the ledger is closed rather
-        // than broken: no reconcile heals that and every later append repeats it, so swallowing it
-        // would drop the whole audit trail without saying so. InvalidOperationException can only
-        // reach here from state.Apply, whose failure is a defect in the fold. A mirror that swallowed
-        // either would be hiding a bug in the factory to survive a fault in the environment.
-        //
-        // Scoped to JsonlRunHistory on purpose, because that is the only writer that ships: IRunHistory
-        // is resolved by provider name, and a plugin ledger over a database or an HTTP endpoint reports
-        // its transport faults as the very types let through above — InvalidOperationException for a
-        // closed connection, ObjectDisposedException for a recycled client, and others again. Those
-        // stay loud rather than being folded in here: whether D2's tolerance should be
-        // provider-agnostic is a spec question, not this decorator's to answer.
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        // See LedgerFaultTolerance for what this catches and why -- the same predicate
+        // BacklogReconciler.TryAppend uses for the identical append, so the two agree by
+        // construction rather than by two comments promising they match.
+        catch (Exception ex) when (LedgerFaultTolerance.IsTolerable(ex))
         {
             log($"the audit copy of {Describe(evt)} could not be written and will be corrected at the next open: {ex.Message}");
         }
