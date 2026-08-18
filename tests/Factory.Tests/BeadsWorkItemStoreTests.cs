@@ -444,6 +444,32 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
             store.Transition(item, WorkItemState.Verified, "skipping the pipeline"));
     }
 
+    /// <summary>Fails every <c>bd note</c> call while letting everything else through to the real
+    /// backlog, the same seam shape as <see cref="InterposesAfterCreate"/> above.</summary>
+    private sealed class FailsNoteCalls(string directory, string owner) : BeadsCli(directory, owner)
+    {
+        public override ShellResult Exec(params string[] args) =>
+            args is ["note", ..] ? new ShellResult(1, "", "note rejected for the test", false) : base.Exec(args);
+    }
+
+    [Fact]
+    public void A_transitions_note_that_beads_refuses_is_logged_rather_than_dropped_in_silence()
+    {
+        if (Unavailable) return;
+        DrainReadyQueue();
+        var logged = new List<string>();
+        var store = new BeadsWorkItemStore(new FailsNoteCalls(database.Directory, Owner), Owner, logged.Add);
+        var item = store.Add(WorkItem.Create("noted") with { State = WorkItemState.Ready });
+        var claimed = store.TryClaim(Owner)!;
+
+        store.Transition(claimed, WorkItemState.Ready, "cancelled because the test rejected the note");
+
+        // The reason is not authoritative state, so the transition itself must still have gone
+        // through even though beads refused to record why.
+        Assert.Equal(WorkItemState.Ready, store.Get(item.Id)!.State);
+        Assert.Contains(logged, message => message.Contains(item.Id));
+    }
+
     [Fact]
     public void All_reports_work_in_every_status_including_closed_and_draft()
     {

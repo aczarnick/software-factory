@@ -167,8 +167,18 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string
             throw new InvalidOperationException($"Could not {what} in beads: {result.Combined}");
     }
 
+    // The reason is not authoritative state -- the transition it explains already committed -- so a
+    // failure here must not throw. It must not vanish in silence either: without a log line, the
+    // ledger records a reason beads never got, and nothing says the two disagree.
+    // The reason is not authoritative state -- the transition it explains already committed -- so a
+    // failure here must not throw. It must not vanish in silence either: without a log line, the
+    // ledger records a reason beads never got, and nothing says the two disagree.
     private void Note(string id, string? reason)
     {
-        if (!string.IsNullOrWhiteSpace(reason)) cli.Exec("note", id, reason, "--actor", owner);
+        if (string.IsNullOrWhiteSpace(reason)) return;
+
+        var result = cli.Exec("note", id, reason, "--actor", owner);
+        if (!result.Ok)
+            log($"the reason for {id}'s transition ('{reason}') could not be recorded in beads: {result.Combined}");
     }
 }
