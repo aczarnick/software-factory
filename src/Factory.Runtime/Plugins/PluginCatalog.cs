@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using Factory.Core;
 
@@ -8,6 +9,11 @@ namespace Factory.Runtime;
 /// a factory whose configured providers are all built in.</summary>
 public static class PluginCatalog
 {
+    // One context per assembly for the life of the process. FactoryHost.Open runs once per
+    // delegated work item, and PluginLoadContext is not collectible, so a context per open
+    // would pin another copy of every plugin assembly for as long as the factory runs.
+    private static readonly ConcurrentDictionary<string, PluginLoadContext> Contexts = new();
+
     public static void LoadInto(ProviderRegistry registry, string pluginsDir, Action<string> log)
     {
         if (!Directory.Exists(pluginsDir)) return;
@@ -29,8 +35,9 @@ public static class PluginCatalog
 
     private static void RegisterAssembly(ProviderRegistry registry, string dll, Action<string> log)
     {
-        var context = new PluginLoadContext(dll);
-        var assembly = context.LoadFromAssemblyPath(Path.GetFullPath(dll));
+        var path = Path.GetFullPath(dll);
+        var context = Contexts.GetOrAdd(path, static resolved => new PluginLoadContext(resolved));
+        var assembly = context.LoadFromAssemblyPath(path);
         var yieldedProvider = false;
 
         foreach (var type in assembly.GetExportedTypes())
@@ -69,23 +76,21 @@ public static class PluginCatalog
     {
         if (!typeof(T).IsAssignableFrom(type)) return false;
 
-        if (registry.Has<T>(name))
-        {
-            log($"plugin provider '{name}' is shadowed by a built-in — skipped");
-            return true;
-        }
-
         var withOptions = type.GetConstructor([typeof(ProviderRef)]);
-        if (withOptions is null && type.GetConstructor(Type.EmptyTypes) is null)
+        var parameterless = type.GetConstructor(Type.EmptyTypes);
+        if (withOptions is null && parameterless is null)
         {
             log($"plugin provider '{name}' ({type.FullName}) needs a constructor taking a " +
                 $"{nameof(ProviderRef)}, or a parameterless one — skipped");
             return true;
         }
 
-        registry.Register<T>(name, reference => (T)(withOptions is not null
+        // Both paths refuse the reflection wrapper: a provider that fails while constructing
+        // must reach the host's boundary as its own exception, not as a TargetInvocationException
+        // whose message says only that an invocation target threw.
+        registry.RegisterPlugin<T>(name, reference => (T)(withOptions is not null
             ? withOptions.Invoke(BindingFlags.DoNotWrapExceptions, binder: null, [reference], culture: null)
-            : Activator.CreateInstance(type)!));
+            : parameterless!.Invoke(BindingFlags.DoNotWrapExceptions, binder: null, [], culture: null)));
 
         return true;
     }

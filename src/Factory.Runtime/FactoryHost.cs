@@ -82,18 +82,20 @@ public sealed class FactoryHost : IDisposable
         if (config.Factories.Count > 0)
             blueprint = blueprint with { Factories = config.Factories };
 
-        var registry = new ProviderRegistry();
         var log2 = log ?? (_ => { });
+        var pluginLog = (string message) => log2($"  [plugin] {message}");
+        var sinkLog = (string message) => log2($"  [sink] {message}");
+
+        var registry = new ProviderRegistry(pluginLog);
 
         registry.Register<IRunHistory>("jsonl", _ => new JsonlRunHistory(paths.LedgerFile));
-        PluginCatalog.LoadInto(registry, paths.PluginsDir, message => log2($"  [plugin] {message}"));
+        PluginCatalog.LoadInto(registry, paths.PluginsDir, pluginLog);
 
         var writer = registry.Resolve<IRunHistory>(new ProviderRef(config.RunHistory.Writer));
 
         var sinks = config.RunHistory.Sinks
-            .Select(reference => (IRunHistorySink)new GuardedRunHistorySink(
-                registry.Resolve<IRunHistorySink>(reference), reference.Provider, maxFailures: 3,
-                message => log2($"  [sink] {message}")))
+            .Select(reference => BuildSink(registry, reference, sinkLog))
+            .OfType<IRunHistorySink>()
             .ToList();
 
         var history = new FanOutRunHistory(writer, sinks);
@@ -102,7 +104,7 @@ public sealed class FactoryHost : IDisposable
         registry.Register<IWorkItemStore>("ledger", _ => new LedgerWorkItemStore(history, state));
 
         var items = new GuardedWorkItemStore(
-            registry.Resolve<IWorkItemStore>(config.WorkItemStore), config.WorkItemStore.Provider);
+            ResolveStore(registry, config.WorkItemStore), config.WorkItemStore.Provider);
 
         var prompts = new PromptRegistry(paths.PromptsDir);
         foreach (var (stationId, text) in KitPrompts.All)
@@ -138,6 +140,38 @@ public sealed class FactoryHost : IDisposable
         };
 
         return new FactoryHost(services, history, paths);
+    }
+
+    // A sink that cannot be built is the same class of event as one that cannot be reached:
+    // logged and dropped. That covers a name no provider answers to as well — a mistyped
+    // tracing backend must not stop a factory whose durable writer is fine.
+    private static IRunHistorySink? BuildSink(
+        ProviderRegistry registry, ProviderRef reference, Action<string> log)
+    {
+        try
+        {
+            return new GuardedRunHistorySink(
+                registry.Resolve<IRunHistorySink>(reference), reference.Provider, maxFailures: 3, log);
+        }
+        catch (Exception ex)
+        {
+            log($"sink '{reference.Provider}' could not be created and is dropped: {ex.Message}");
+            return null;
+        }
+    }
+
+    // Construction sits inside the store's failure boundary too: a provider that fails while
+    // connecting must halt as the typed failure the port promises, not as a raw plugin exception.
+    private static IWorkItemStore ResolveStore(ProviderRegistry registry, ProviderRef reference)
+    {
+        try
+        {
+            return registry.Resolve<IWorkItemStore>(reference);
+        }
+        catch (Exception ex) when (ex is not WorkItemStoreException)
+        {
+            throw new WorkItemStoreException(reference.Provider, "Create", ex);
+        }
     }
 
     /// <summary>Files work into the factory. This is the <c>in</c> port: the intake agent,

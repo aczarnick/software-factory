@@ -18,8 +18,10 @@ public interface IWorkItemStore
     void Heartbeat(string id);
 
     /// <summary>Returns a claimed item to the queue. Silently does nothing when no item
-    /// has that id; throws <see cref="InvalidOperationException"/> when the item exists but
-    /// its current state cannot reach Ready.</summary>
+    /// has that id; rejects an item whose current state cannot reach Ready. Providers raise
+    /// that as <see cref="InvalidOperationException"/>, but the host wraps every store in a
+    /// guard, so the exception a caller of <c>Services.Items</c> observes is always
+    /// <see cref="WorkItemStoreException"/> with the provider's own exception inside.</summary>
     void Release(string id, string reason);
 
     void Sync();

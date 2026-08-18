@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Factory.Core;
 using Factory.Runtime;
 
@@ -24,6 +25,19 @@ public class GuardedProviderTests
         public void Release(string id, string reason) => throw new InvalidOperationException("store down");
         public void Sync() => throw new InvalidOperationException("store down");
         public IReadOnlyList<WorkItem> Reclaim(TimeSpan olderThan) => throw new InvalidOperationException("store down");
+    }
+
+    /// <summary>Holds every caller inside <see cref="Emit"/> until all of them have arrived,
+    /// so they enter the guard's failure bookkeeping at the same moment.</summary>
+    private sealed class SimultaneouslyFailingSink(Barrier rendezvous) : IRunHistorySink
+    {
+        public void Emit(FactoryEvent evt)
+        {
+            rendezvous.SignalAndWait();
+            throw new InvalidOperationException("sink down");
+        }
+
+        public void Flush() { }
     }
 
     private sealed class ThrowingFlushSink : IRunHistorySink
@@ -119,5 +133,26 @@ public class GuardedProviderTests
             Assert.Equal(1, sink.RecordsVisibleAtEmit);
         }
         finally { TempDir.Delete(dir); }
+    }
+
+    [Fact]
+    public void Concurrent_failures_are_counted_once_each_and_disable_the_sink_once()
+    {
+        const int callers = 8;
+        using var rendezvous = new Barrier(callers);
+        var warnings = new ConcurrentBag<string>();
+        var sink = new GuardedRunHistorySink(
+            new SimultaneouslyFailingSink(rendezvous), "tracer", maxFailures: callers, warnings.Add);
+
+        var threads = Enumerable.Range(0, callers)
+            .Select(_ => new Thread(() => sink.Emit(new FactoryNote("x"))))
+            .ToList();
+        foreach (var thread in threads) thread.Start();
+        foreach (var thread in threads) thread.Join();
+
+        var counted = warnings.Where(w => w.Contains("failed (")).ToList();
+        Assert.Equal(callers, counted.Count);
+        Assert.Equal(callers, counted.Distinct().Count());
+        Assert.Single(warnings, w => w.Contains("disabled"));
     }
 }

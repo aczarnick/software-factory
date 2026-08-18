@@ -8,29 +8,10 @@ public class PluginCatalogTests : IDisposable
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);
 
-    /// <summary>Copies the built fixture plugin into a temp plugins directory, alongside a
-    /// copy of <c>Factory.Core</c> — as a third-party plugin that packaged the contract
-    /// assembly would ship. That sibling copy is what the load context has to refuse.</summary>
     private string PluginsDirWithFixture()
     {
         var plugins = Path.Combine(_dir, "plugins");
-        Directory.CreateDirectory(plugins);
-
-        // The test binary runs from bin/<configuration>/<framework>; the fixture builds to its own.
-        var output = new DirectoryInfo(AppContext.BaseDirectory);
-        var source = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..", "fixtures", "Factory.TestPlugin",
-            "bin", output.Parent!.Name, output.Name, "Factory.TestPlugin.dll"));
-
-        if (!File.Exists(source))
-            throw new InvalidOperationException(
-                $"Fixture plugin not built: {source}. Run 'dotnet build' at the solution root first.");
-
-        File.Copy(source, Path.Combine(plugins, "Factory.TestPlugin.dll"));
-        File.Copy(
-            Path.Combine(AppContext.BaseDirectory, "Factory.Core.dll"),
-            Path.Combine(plugins, "Factory.Core.dll"));
-
+        PluginFixture.InstallWithContractAssemblyInto(plugins);
         return plugins;
     }
 
@@ -88,16 +69,31 @@ public class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void A_built_in_of_the_same_name_shadows_the_plugin_provider()
+    public void A_built_in_registered_before_the_scan_shadows_the_plugin_provider()
     {
-        var registry = new ProviderRegistry();
-        registry.Register<IRunHistorySink>("counting", _ => new NoopSink());
         var log = new List<string>();
+        var registry = new ProviderRegistry(log.Add);
+        registry.Register<IRunHistorySink>("counting", _ => new NoopSink());
 
         PluginCatalog.LoadInto(registry, PluginsDirWithFixture(), log.Add);
 
         Assert.IsType<NoopSink>(registry.Resolve<IRunHistorySink>(new ProviderRef("counting")));
-        Assert.Contains(log, line => line.Contains("counting") && line.Contains("shadowed by a built-in"));
+        Assert.Contains(log, line => line.Contains("counting") && line.Contains(nameof(IRunHistorySink))
+                                     && line.Contains("shadowed by a built-in"));
+    }
+
+    [Fact]
+    public void A_built_in_registered_after_the_scan_displaces_the_plugin_provider_by_name()
+    {
+        var log = new List<string>();
+        var registry = new ProviderRegistry(log.Add);
+
+        PluginCatalog.LoadInto(registry, PluginsDirWithFixture(), log.Add);
+        registry.Register<IRunHistorySink>("counting", _ => new NoopSink());
+
+        Assert.IsType<NoopSink>(registry.Resolve<IRunHistorySink>(new ProviderRef("counting")));
+        Assert.Contains(log, line => line.Contains("counting") && line.Contains(nameof(IRunHistorySink))
+                                     && line.Contains("displaced by the built-in"));
     }
 
     [Fact]
@@ -165,6 +161,36 @@ public class PluginCatalogTests : IDisposable
         PluginCatalog.LoadInto(registry, PluginsDirWithFixture(), log.Add);
 
         Assert.Contains(log, line => line.Contains("Factory.Core.dll") && line.Contains("registered no providers"));
+    }
+
+    [Fact]
+    public void A_provider_built_against_another_contract_version_is_refused_and_named()
+    {
+        var registry = new ProviderRegistry();
+        var log = new List<string>();
+
+        PluginCatalog.LoadInto(registry, PluginsDirWithFixture(), log.Add);
+
+        Assert.Throws<InvalidOperationException>(
+            () => registry.Resolve<IRunHistorySink>(new ProviderRef("future")));
+        Assert.Contains(log, line => line.Contains("future") && line.Contains("v2") && line.Contains("v1"));
+    }
+
+    [Fact]
+    public void Scanning_the_same_directory_twice_reuses_one_load_context_per_assembly()
+    {
+        var plugins = PluginsDirWithFixture();
+        var first = new ProviderRegistry();
+        var second = new ProviderRegistry();
+
+        PluginCatalog.LoadInto(first, plugins, _ => { });
+        PluginCatalog.LoadInto(second, plugins, _ => { });
+
+        // A second context would load a second copy of the assembly, so the same plugin class
+        // would resolve as two distinct types.
+        Assert.Same(
+            first.Resolve<IRunHistorySink>(new ProviderRef("counting")).GetType(),
+            second.Resolve<IRunHistorySink>(new ProviderRef("counting")).GetType());
     }
 
     [Fact]
