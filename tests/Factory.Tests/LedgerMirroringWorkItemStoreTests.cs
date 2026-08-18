@@ -14,6 +14,7 @@ public class LedgerMirroringWorkItemStoreTests
     private sealed class FakeStore : IWorkItemStore
     {
         public WorkItem? ClaimResult;
+        public IReadOnlyList<WorkItem> ReclaimResult = [];
         public WorkItem Add(WorkItem item) => item;
         public WorkItem Update(WorkItem item) => item;
         public WorkItem Transition(WorkItem item, WorkItemState to, string? reason) => item with { State = to };
@@ -23,7 +24,7 @@ public class LedgerMirroringWorkItemStoreTests
         public void Heartbeat(string id) { }
         public void Release(string id, string reason) { }
         public void Sync() { }
-        public IReadOnlyList<WorkItem> Reclaim(TimeSpan olderThan) => [];
+        public IReadOnlyList<WorkItem> Reclaim(TimeSpan olderThan) => ReclaimResult;
     }
 
     private sealed class NullHistory : IRunHistory
@@ -76,5 +77,46 @@ public class LedgerMirroringWorkItemStoreTests
         var released = state.Items[item.Id];
         Assert.Null(released.Owner);
         Assert.Equal(WorkItemState.Ready, released.State);
+    }
+
+    [Fact]
+    public void Reclaiming_a_stale_lease_keeps_the_run_state_the_backlog_does_not_store()
+    {
+        var state = FactoryState.Replay([]);
+        var item = WorkItem.Create("stalled mid-flight") with
+        {
+            State = WorkItemState.InProgress,
+            Owner = "claimant",
+            Attempts = 2,
+            LastError = "the station died",
+            SpentUsd = 0.75m,
+            Worktree = "/tmp/worktrees/stalled"
+        };
+        state.Apply(new WorkItemFiled(item));
+
+        // What the backlog store hands back: reclaim re-reads the bead, so the item arrives mapped
+        // out of beads with its lease dropped and none of this checkout's run state.
+        var inner = new FakeStore
+        {
+            ReclaimResult = [new WorkItem { Id = item.Id, Title = item.Title, State = WorkItemState.Ready }]
+        };
+        var mirror = new LedgerMirroringWorkItemStore(inner, new NullHistory(), state, _ => { });
+
+        var reclaimed = mirror.Reclaim(TimeSpan.FromMinutes(15)).Single();
+
+        Assert.Equal(2, reclaimed.Attempts);
+        Assert.Equal("the station died", reclaimed.LastError);
+        Assert.Equal(0.75m, reclaimed.SpentUsd);
+        Assert.Equal("/tmp/worktrees/stalled", reclaimed.Worktree);
+
+        // The reaped lease is still the store's news to deliver.
+        Assert.Equal(WorkItemState.Ready, reclaimed.State);
+        Assert.Null(reclaimed.Owner);
+
+        var folded = state.Items[item.Id];
+        Assert.Equal(2, folded.Attempts);
+        Assert.Equal(0.75m, folded.SpentUsd);
+        Assert.Equal("the station died", folded.LastError);
+        Assert.Equal("/tmp/worktrees/stalled", folded.Worktree);
     }
 }

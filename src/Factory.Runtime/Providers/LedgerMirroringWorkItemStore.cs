@@ -37,9 +37,11 @@ public sealed class LedgerMirroringWorkItemStore(
 
     public WorkItem? TryClaim(string owner)
     {
-        var claimed = inner.TryClaim(owner);
-        if (claimed is not null) MirrorChange(claimed, StateOf(claimed.Id) ?? WorkItemState.Ready, $"claimed by {owner}");
-        return claimed;
+        if (inner.TryClaim(owner) is not { } claimed) return null;
+
+        var merged = WithLocalRunState(claimed);
+        MirrorChange(merged, StateOf(merged.Id) ?? WorkItemState.Ready, $"claimed by {owner}");
+        return merged;
     }
 
     public void Release(string id, string reason)
@@ -56,7 +58,7 @@ public sealed class LedgerMirroringWorkItemStore(
 
     public IReadOnlyList<WorkItem> Reclaim(TimeSpan olderThan)
     {
-        var reclaimed = inner.Reclaim(olderThan);
+        var reclaimed = inner.Reclaim(olderThan).Select(WithLocalRunState).ToList();
         foreach (var item in reclaimed)
             MirrorChange(item, StateOf(item.Id) ?? WorkItemState.InProgress, "reclaimed from a stale lease");
 
@@ -70,6 +72,14 @@ public sealed class LedgerMirroringWorkItemStore(
 
     private WorkItem? ItemOf(string id) => state.Items.GetValueOrDefault(id);
     private WorkItemState? StateOf(string id) => ItemOf(id)?.State;
+
+    // TryClaim and Reclaim are the two calls that hand back an item the store built rather than one
+    // the caller passed in, so they are the two that arrive with this checkout's run state blank.
+    // Mirroring one of those verbatim would blank the fold's copy — the spend and attempt columns
+    // `factory ls` and `factory show` read — and the claim loop then hands the same item to the
+    // station, whose run record stamps the attempt number off it.
+    private WorkItem WithLocalRunState(WorkItem fromStore) =>
+        ItemOf(fromStore.Id) is { } known ? LocalRunState.CarriedInto(fromStore, known) : fromStore;
 
     // A state change is the more useful audit record because it carries the reason, but the fold
     // can only apply one to an item it already holds — work another machine filed arrives here

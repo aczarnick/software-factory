@@ -290,4 +290,65 @@ public class BeadsBackedFactoryTests : IDisposable
         // Reported, not reaped — and this checkout's own orphan is still requeued and claimable.
         Assert.Equal(mineId, reopened.Services.Items.TryClaim(Owner)?.Id);
     }
+
+    // Beads stores no Attempts, LastError, SpentUsd or Worktree — those are this checkout's own run
+    // state — so an item it hands back carries them blank, and writing one of those into the fold
+    // verbatim erases them.
+
+    [Fact]
+    public void A_claim_keeps_the_run_state_the_backlog_does_not_store()
+    {
+        if (!Available) return;
+        using var host = OpenBeadsBacked(new FakeTransport());
+        var store = host.Services.Items;
+
+        var filed = store.Add(WorkItem.Create("failed three times already") with { State = WorkItemState.Ready });
+        store.Update(filed with
+        {
+            Attempts = 3,
+            LastError = "verify gate failed",
+            SpentUsd = 1.25m,
+            Worktree = "/tmp/worktrees/failed-three-times"
+        });
+
+        var claimed = store.TryClaim(Owner)!;
+
+        // The claim loop hands this very item to the station, whose run record reads Attempts off it.
+        Assert.Equal(filed.Id, claimed.Id);
+        Assert.Equal(3, claimed.Attempts);
+        Assert.Equal("verify gate failed", claimed.LastError);
+        Assert.Equal(1.25m, claimed.SpentUsd);
+        Assert.Equal("/tmp/worktrees/failed-three-times", claimed.Worktree);
+
+        // What beads is authoritative for still wins over the fold's copy.
+        Assert.Equal(WorkItemState.InProgress, claimed.State);
+        Assert.Equal(Owner, claimed.Owner);
+
+        // And the fold's own copy, which is what `factory ls` prints in its cost column and
+        // `factory show` prints as spend and attempts.
+        var folded = host.Services.State.Items[filed.Id];
+        Assert.Equal(3, folded.Attempts);
+        Assert.Equal("verify gate failed", folded.LastError);
+        Assert.Equal(1.25m, folded.SpentUsd);
+        Assert.Equal("/tmp/worktrees/failed-three-times", folded.Worktree);
+    }
+
+    [Fact]
+    public async Task A_station_working_a_retried_item_is_told_which_attempt_it_is_on()
+    {
+        if (!Available) return;
+        using var host = OpenBeadsBacked(Scripted());
+
+        var item = host.Submit(WorkItem.Create("failed three times already"));
+        host.Update(item with { Attempts = 3, LastError = "verify gate failed" });
+
+        await host.CreateOrchestrator().RunAsync(new OrchestratorOptions { StopWhenIdle = true, MaxItems = 1 });
+
+        // Read out of the ledger's run records, not the fold: this is the number the evolution
+        // evaluator counts retries from, and the first record is appended before any failure inside
+        // the run could have incremented it.
+        var runs = host.Services.History.RunsForItem(item.Id);
+        Assert.NotEmpty(runs);
+        Assert.Equal(3, runs[0].Attempt);
+    }
 }

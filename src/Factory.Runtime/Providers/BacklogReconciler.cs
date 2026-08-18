@@ -21,7 +21,8 @@ public static class BacklogReconciler
 
             FactoryEvent correction = known is null
                 ? new WorkItemFiled(authoritative)
-                : new WorkItemUpdated(WithLocalRunState(authoritative, known));
+                : new WorkItemUpdated(
+                    LocalRunState.CarriedInto(authoritative, known) with { UpdatedAt = DateTimeOffset.UtcNow });
 
             history.Append(correction);
             state.Apply(correction);
@@ -34,29 +35,9 @@ public static class BacklogReconciler
     /// <summary>Everything the backlog store is authoritative for, in a form that compares by
     /// value. Serialising rather than listing fields means a field added to the mapping is
     /// compared automatically, and it sidesteps records comparing their list members by
-    /// reference.</summary>
-    private static string SharedState(WorkItem item) => FactoryJson.Write(StripLocalRunState(item));
-
-    // Volatile per-run state belongs to this checkout, not to the shared backlog: the station and
-    // worktree are how a blocked item resumes without redoing verified work, and spend is measured
-    // from this machine's own ledger. A correction must not blank them.
-    private static WorkItem StripLocalRunState(WorkItem item) => item with
-    {
-        Station = null,
-        Worktree = null,
-        Attempts = 0,
-        LastError = null,
-        SpentUsd = 0m,
-        UpdatedAt = default
-    };
-
-    private static WorkItem WithLocalRunState(WorkItem authoritative, WorkItem local) => authoritative with
-    {
-        Station = local.Station,
-        Worktree = local.Worktree,
-        Attempts = local.Attempts,
-        LastError = local.LastError,
-        SpentUsd = local.SpentUsd,
-        UpdatedAt = DateTimeOffset.UtcNow
-    };
+    /// reference. <see cref="WorkItem.UpdatedAt"/> is dropped alongside the local run state
+    /// because the store restamps it on every write, so comparing it would report every item as
+    /// diverged.</summary>
+    private static string SharedState(WorkItem item) =>
+        FactoryJson.Write(LocalRunState.Cleared(item) with { UpdatedAt = default });
 }
