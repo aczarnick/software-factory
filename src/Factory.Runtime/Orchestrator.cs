@@ -238,7 +238,14 @@ public sealed class Orchestrator : IDisposable
     /// fold, and a backlog store is entitled to refuse a release of a claim it does not hold — which
     /// would take the whole run start down with it. Another checkout's item is reported and left
     /// alone, never forced: its holder may be working on it right now, and only its own restart or
-    /// an expired lease can safely return it.</summary>
+    /// an expired lease can safely return it.
+    ///
+    /// One orphan that cannot be requeued is reported and stepped over rather than allowed to end the
+    /// pass. The targets come from the fold while the backlog decides whether a release is legal, so
+    /// the two can disagree — a bead another machine closed between this host's open and now is
+    /// released as a Done item, which the port is right to refuse — and a single refusal must not stop
+    /// a factory before it has started or cost every other orphan its requeue. The log line is the
+    /// report: nothing is retried and nothing is forced.</summary>
     private void RequeueOrphans()
     {
         foreach (var item in _s.State.InFlight().ToList())
@@ -249,7 +256,16 @@ public sealed class Orchestrator : IDisposable
                 continue;
             }
 
-            _s.Items.Release(item.Id, "requeued after restart");
+            try
+            {
+                _s.Items.Release(item.Id, "requeued after restart");
+            }
+            catch (WorkItemStoreException ex)
+            {
+                _s.Log($"could not requeue {item.Id} ({item.Title}) — the backlog refused it: {ex.Message}");
+                continue;
+            }
+
             _s.Log($"requeued {item.Id} ({item.Title})");
         }
     }

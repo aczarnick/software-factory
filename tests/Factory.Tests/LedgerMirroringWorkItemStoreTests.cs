@@ -131,19 +131,35 @@ public class LedgerMirroringWorkItemStoreTests
     // next reconcile puts it back. What makes it a live risk rather than a theoretical one is the
     // exception's type, pinned below.
 
-    private static string AReadOnlyLedger()
+    /// <summary>A ledger file this process may not write, in a temp directory of its own. Disposing
+    /// clears the attribute before deleting, because <see cref="TempDir.Delete"/> tolerates only
+    /// <see cref="IOException"/> and a recursive delete over a read-only tree can raise
+    /// <see cref="UnauthorizedAccessException"/> instead.</summary>
+    private sealed class UnwritableLedger : IDisposable
     {
-        var path = Path.Combine(TempDir.Create(), "ledger.jsonl");
-        File.WriteAllText(path, "");
-        File.SetAttributes(path, FileAttributes.ReadOnly);
+        private readonly string _root = TempDir.Create();
 
-        return path;
+        public UnwritableLedger()
+        {
+            LedgerPath = Path.Combine(_root, "ledger.jsonl");
+            File.WriteAllText(LedgerPath, "");
+            File.SetAttributes(LedgerPath, FileAttributes.ReadOnly);
+        }
+
+        public string LedgerPath { get; }
+
+        public void Dispose()
+        {
+            File.SetAttributes(LedgerPath, FileAttributes.Normal);
+            TempDir.Delete(_root);
+        }
     }
 
     [Fact]
     public void Appending_to_a_ledger_this_process_may_not_write_reports_access_denied()
     {
-        using var history = new JsonlRunHistory(AReadOnlyLedger());
+        using var ledger = new UnwritableLedger();
+        using var history = new JsonlRunHistory(ledger.LedgerPath);
 
         // The type is the whole point of the mirror's catch set, so it is pinned against a real
         // FileStream rather than assumed: UnauthorizedAccessException is a SystemException and not
@@ -160,7 +176,8 @@ public class LedgerMirroringWorkItemStoreTests
         state.Apply(new WorkItemFiled(item));
 
         var logged = new List<string>();
-        using var history = new JsonlRunHistory(AReadOnlyLedger());
+        using var ledger = new UnwritableLedger();
+        using var history = new JsonlRunHistory(ledger.LedgerPath);
         var inner = new FakeStore { ClaimResult = item with { State = WorkItemState.InProgress, Owner = "claimant" } };
         var mirror = new LedgerMirroringWorkItemStore(inner, history, state, logged.Add);
 

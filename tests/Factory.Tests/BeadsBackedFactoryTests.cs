@@ -37,14 +37,14 @@ public class BeadsBackedFactoryTests : IDisposable
                 return FakeTransport.Success("wrote the file", cost: 0.02m);
             });
 
-    private FactoryHost OpenBeadsBacked(FakeTransport transport) =>
+    private FactoryHost OpenBeadsBacked(FakeTransport transport, Action<string>? log = null) =>
         FactoryHost.Init(_dir, config: new FactoryConfig
         {
             Name = Owner,
             BlueprintName = Blueprint.Standard().Name,
             MaxConcurrency = 1,
             WorkItemStore = new ProviderRef("beads")
-        }, transport: transport);
+        }, log: log, transport: transport);
 
     private BeadRecord Bead(string id) =>
         new BeadsCli(_dir, Owner).Json<BeadRecord>([.. BeadMapper.GetArgs(id)]).Single();
@@ -113,10 +113,10 @@ public class BeadsBackedFactoryTests : IDisposable
 
     /// <summary>Reads the bead until its lease has been pushed out past <paramref name="since"/>,
     /// giving up after a bound generous enough that only a refresh that never comes ends the wait.
-    /// The window a refresh has to land in is fixed at 2.5 seconds by design, so that the converse
-    /// assertion — nothing sent for a claim this run does not hold — is measured over the same
-    /// window; this grace on top of it is there so a loaded machine costs the suite time rather
-    /// than a false failure.</summary>
+    /// The fallback for a loaded machine that has not landed a refresh inside the fixed window, so it
+    /// costs the suite time rather than a false failure; the caller re-reads the item it compares
+    /// against afterwards, so extending the window never leaves the two halves measuring different
+    /// spans.</summary>
     private BeadRecord WaitForARefresh(string id, DateTimeOffset? since)
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(20);
@@ -185,8 +185,18 @@ public class BeadsBackedFactoryTests : IDisposable
             mineAtWindowStart = Bead(runItemId!);
             bystanderAtWindowStart = Bead(bystanderId);
             Thread.Sleep(2500);
+            mineAfterWindow = Bead(runItemId!);
             bystanderAfterWindow = Bead(bystanderId);
-            mineAfterWindow = WaitForARefresh(runItemId!, mineAtWindowStart.HeartbeatAt);
+
+            // Both halves are measured over one window, so the negative half can never pass because
+            // the positive one was satisfied somewhere the negative one was not looking. A machine too
+            // loaded to have landed a refresh yet extends the window rather than failing the run, and
+            // the bystander is then re-read over that same longer window.
+            if (!(mineAfterWindow.HeartbeatAt > mineAtWindowStart.HeartbeatAt))
+            {
+                mineAfterWindow = WaitForARefresh(runItemId!, mineAtWindowStart.HeartbeatAt);
+                bystanderAfterWindow = Bead(bystanderId);
+            }
         }
 
         using var host = OpenBeadsBacked(transport);
@@ -251,6 +261,42 @@ public class BeadsBackedFactoryTests : IDisposable
         var log = new List<string>();
         using var reopened = FactoryHost.Open(_dir, log.Add, transport: new FakeTransport());
         Assert.DoesNotContain(log, message => message.Contains("reconciled"));
+    }
+
+    [Fact]
+    public async Task An_orphan_the_backlog_will_not_take_back_is_reported_and_the_rest_are_requeued()
+    {
+        if (!Available) return;
+
+        var log = new List<string>();
+        using var host = OpenBeadsBacked(new FakeTransport(), log.Add);
+        var store = host.Services.Items;
+
+        store.Add(WorkItem.Create("closed behind the fold's back") with { State = WorkItemState.Ready });
+        var closedElsewhere = store.TryClaim(Owner)!;
+        store.Add(WorkItem.Create("my other interrupted work") with { State = WorkItemState.Ready });
+        var mine = store.TryClaim(Owner)!;
+
+        // Straight through bd, so the fold keeps calling it in flight: the orphan requeue picks its
+        // targets from the fold while the backlog decides whether a release is legal, and this is the
+        // divergence between the two — another machine finishing the item between this host's open and
+        // the run start below.
+        var closed = new BeadsCli(_dir, Owner).Exec("update", closedElsewhere.Id, "--status", "closed", "--actor", Owner);
+        Assert.True(closed.Ok, closed.Combined);
+        Assert.Equal(WorkItemState.InProgress, host.Services.State.Items[closedElsewhere.Id].State);
+
+        // A release beads refuses arrives here as a WorkItemStoreException, and one orphan that
+        // cannot go back on the queue must not stop the factory before it has started.
+        await host.CreateOrchestrator().RunAsync(new OrchestratorOptions { StopWhenIdle = true, MaxItems = 0 });
+
+        Assert.Contains(log, message => message.Contains(closedElsewhere.Id));
+
+        // Integrated work stays integrated — the failure is reported, not forced through.
+        Assert.Equal(WorkItemState.Done, store.Get(closedElsewhere.Id)!.State);
+
+        // And the orphan that could be requeued was, which is what makes this tolerance rather than
+        // an abandoned pass: claimable again, not merely Ready.
+        Assert.Equal(mine.Id, store.TryClaim(Owner)?.Id);
     }
 
     [Fact]
