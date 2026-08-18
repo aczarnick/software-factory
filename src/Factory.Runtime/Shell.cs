@@ -87,7 +87,11 @@ public static class Shell
 
             return new ShellResult(proc.ExitCode, stdout.ToString(), stderr.ToString(), false);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException or SystemException)
+        // IOException and InvalidOperationException both already derive from SystemException, so
+        // naming them separately catches nothing the bare type does not: this is every environment
+        // fault Process.Start and its waiters can raise (a missing executable, a denied fork, a
+        // process table full) short of an actual bug in this method.
+        catch (SystemException ex)
         {
             return new ShellResult(127, "", ex.Message, false);
         }
@@ -137,7 +141,11 @@ public static class Shell
             try { proc.Kill(entireProcessTree: true); } catch { /* already gone */ }
             return false;
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException or SystemException)
+        // IOException and InvalidOperationException both already derive from SystemException, so
+        // naming them separately catches nothing the bare type does not: this is every environment
+        // fault Process.Start and its waiters can raise (a missing executable, a denied fork, a
+        // process table full) short of an actual bug in this method.
+        catch (SystemException)
         {
             return false;
         }
