@@ -75,7 +75,8 @@ public static class BeadMapper
         ParentId = item.ParentId,
         BudgetUsd = item.BudgetUsd,
         ProvenanceKind = item.Provenance.Kind,
-        ProvenanceSource = item.Provenance.Source
+        ProvenanceSource = item.Provenance.Source,
+        CreatedAt = item.CreatedAt
     });
 
     public static WorkItem ToWorkItem(BeadRecord bead)
@@ -101,10 +102,11 @@ public static class BeadMapper
             BudgetUsd = metadata.BudgetUsd,
             Provenance = new Provenance(metadata.ProvenanceKind, metadata.ProvenanceSource),
 
-            // Read from the bead rather than defaulted to now: dispatch order breaks ties on
-            // CreatedAt, and reconcile compares it, so a fresh value on every read would both
-            // reshuffle the queue and make an unchanged backlog look changed.
-            CreatedAt = bead.CreatedAt ?? DateTimeOffset.UtcNow,
+            // The filing time the factory recorded, falling back to the bead's own stamp for work
+            // some other tool filed. Never defaulted to now: dispatch order breaks priority ties on
+            // this, and reconcile compares it, so a fresh value on every read would both reshuffle
+            // the queue and make an unchanged backlog look changed on every open.
+            CreatedAt = metadata.CreatedAt ?? bead.CreatedAt ?? DateTimeOffset.UtcNow,
             UpdatedAt = bead.UpdatedAt ?? DateTimeOffset.UtcNow
         };
     }

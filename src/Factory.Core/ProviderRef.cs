@@ -9,4 +9,10 @@ namespace Factory.Core;
 public sealed record ProviderRef(string Provider, IReadOnlyDictionary<string, string> Options)
 {
     public ProviderRef(string provider) : this(provider, new Dictionary<string, string>()) { }
+
+    /// <summary>Never null. A config entry that names a provider and nothing else — the common
+    /// case, and what the spec's own example writes — deserialises with no options at all, and a
+    /// provider reading its own settings must not have to guard against that.</summary>
+    public IReadOnlyDictionary<string, string> Options { get; init; } =
+        Options ?? new Dictionary<string, string>();
 }

@@ -15,4 +15,9 @@ public sealed record BeadMetadata
     public decimal? BudgetUsd { get; init; }
     public ProvenanceKind ProvenanceKind { get; init; } = ProvenanceKind.Human;
     public string? ProvenanceSource { get; init; }
+
+    /// <summary>When the factory filed the item. Kept here rather than read back from the bead's
+    /// own <c>created_at</c>, which beads stamps at write time: dispatch breaks priority ties on
+    /// this value, so it has to be the filing time and it has to round-trip exactly.</summary>
+    public DateTimeOffset? CreatedAt { get; init; }
 }

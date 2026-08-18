@@ -125,4 +125,21 @@ public class BeadsBackedFactoryTests : IDisposable
             $"a requeued orphan that keeps its assignee cannot be taken by another machine, was '{bead.Assignee}'");
         Assert.Null(bead.LeaseExpiresAt);
     }
+
+    [Fact]
+    public void Reopening_an_unchanged_backlog_reports_no_corrections()
+    {
+        if (!Available) return;
+
+        using (var host = OpenBeadsBacked(Scripted()))
+            host.Submit(WorkItem.Create("filed here", "and unchanged since"));
+
+        var log = new List<string>();
+        using var reopened = FactoryHost.Open(_dir, log.Add, transport: Scripted());
+
+        // An item filed by this checkout is already in the ledger, so a reopen has nothing to
+        // correct. If it corrects anyway, every open rewrites the whole backlog into the ledger
+        // for as long as the factory lives.
+        Assert.DoesNotContain(log, message => message.Contains("reconciled"));
+    }
 }
