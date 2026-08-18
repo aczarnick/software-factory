@@ -1,5 +1,14 @@
 # Storage Ports: Phase 3 Handoff
 
+> **STATUS CORRECTION (2026-08-18, after independent review): this branch is NOT mergeable.**
+> The suite is 282 green and the end-to-end run works, and both of those concealed **three critical
+> defects** in the beads provider. An independent correctness review found them by probing real `bd`
+> rather than by reading the code. Do not merge, and do not treat the "delivered" section below as
+> finished work. The defects and the reasoning are recorded in "Review findings" near the end of this
+> note. My own completion report for this phase was wrong, and the reason it was wrong is instructive:
+> every one of the three criticals is invisible to a test that asserts an item's *status* after an
+> operation, and all of my tests did exactly that.
+
 Phase 3 (beads backlog provider, spec decisions **D1-D3** and **D6**) implemented 2026-08-18 on
 branch `storage-ports-phase-3`, in a second checkout at `../software-factory-phase3`. **Not merged
 and not pushed.** Seven commits on top of `a0e536e`; suite **282 passing**, build clean apart from
@@ -123,6 +132,104 @@ The `integrate` sync gate (D7), `Degraded` in `factory status`, foreign-orphan r
 `factory doctor` dolt-server check, and the one-time migration of the existing items. Note the
 migration also has to rewrite `wi_` ids to `wi-`: `Ids.New` changed in this phase, so new work is
 already compatible, but the 23 existing items are not.
+
+## Review findings — why this branch is not mergeable
+
+An independent review (two reviewers, split between correctness and test quality) ran after the
+phase was reported complete. Standards and the reconciler came back clean and independently
+verified: `Factory.Core` has zero dependencies and no beads reference, 13/13 new production files
+declare one top-level type, and a re-run of the gate reproduced 282 passing with exactly the one
+pre-existing CA1416. `BacklogReconciler` was checked hard and holds — beads wins unconditionally, a
+correction cannot flow the wrong way, it cannot loop, and it cannot lose local run state.
+
+The three criticals are all in the store and the claim path.
+
+### Critical 1 — `Transition(→Ready)` strands work permanently
+
+`BeadMapper.UpdateArgs` never emits `--assignee`; only `ReleaseArgs` clears it. And `bd ready
+--claim` **skips an `open` bead that still carries an assignee — including for the actor named in
+that assignee.** Verified directly:
+
+```
+claim as machineA            -> assignee: machineA
+bd update -s open -p 1 ...   -> status: open, assignee: 'machineA'   (Transition's exact shape)
+bd ready                     -> lists wi-aaaa11112222
+bd ready --claim machineA    -> NOTHING CLAIMED
+bd ready --claim machineB    -> NOTHING CLAIMED
+```
+
+The item shows as Ready in both `factory ls` and `bd ready` and can never be worked again. Reachable
+from three ordinary paths: `factory activate` on a blocked item, Ctrl-C during a run
+(`Orchestrator` cancellation → `Transition(Ready, "cancelled")`), and a retried failure. Only
+`RequeueOrphans` escapes, because it is the single `Release` caller and `Release` does clear the
+assignee. This also blocks **D7**, which the spec builds on `factory activate` requeueing a
+`sync-required` block.
+
+### Critical 2 — `Reclaim` reaps leases other machines granted
+
+`ReclaimArgs` passes `--actor owner`, which is `bd`'s **audit-trail** flag. The scope filter is
+`-a/--assignee`. The pre-flight note recorded that distinction correctly and the code still got it
+wrong. The cross-replica guard that would otherwise catch it is opt-in via `BEADS_NODE_ID` /
+`bd config set node_id`, and `BeadsDeployment` never sets it, so it is inert — a reclaim response
+reports `"scoped": false`. `FactoryHost.Open` therefore reaps every stale lease in the shared store.
+Because heartbeats are node-local and do not replicate, machine B sees machine A's lease as long
+expired and re-runs work A is actively doing. That is the spec's limitation mitigation #3, which the
+spec **explicitly deferred** as "worse than leaving it stuck".
+
+Related: `bd reclaim --help` requires "grace window > sync interval, and lease TTL > sync interval".
+`Sync()` is called once, at `Open()`, so the effective sync interval is a whole factory run against
+a fixed 5-minute TTL. The spec's second sync point ("item completes → `Sync()`") is not implemented.
+
+### Critical 3 — claiming wipes local run state out of the fold
+
+The claim loop does `Update(claimed with { Station = ... })`, where `claimed` came from
+`BeadMapper.ToWorkItem` and therefore has no `Attempts`, `LastError`, `SpentUsd` or `Worktree` —
+correctly, since beads does not store them. The mirrored `WorkItemUpdated` then replaces the fold
+entry wholesale, resetting all four. `BacklogReconciler.WithLocalRunState` exists to prevent exactly
+this on the reconcile path; the claim path has no equivalent. Spend ceilings survive because
+`BudgetGuard` keeps its own accumulator, but `factory ls` reports `$0.000` and 0 attempts for
+anything claimed under beads, and the `Attempt` number handed to station prompts resets, so a
+station retrying thrice-failed work is told it is on attempt 1.
+
+### The importants, briefly
+
+- **`UpdateArgs` sends neither title, type, description nor dependencies**, so any `Update` that
+  changes them is lost in beads and then *reverted locally* by the next reconcile — the same shape
+  as the `CreatedAt` bug fixed in `1a2ec53`, not generalised. The bead's `description` and
+  `acceptance_criteria` cells also go stale after the first update, diverging from the spec's
+  mapping table.
+- **`LedgerMirroringWorkItemStore`'s catch is too narrow.** `JsonlRunHistory.Append` opens a
+  `FileStream`, which throws `UnauthorizedAccessException` (a `SystemException`, not an
+  `IOException`) on a read-only ledger, and `FactoryJson.Write` can throw `JsonException`. Both
+  escape, and `GuardedWorkItemStore` converts them into a factory-halting `WorkItemStoreException`
+  naming the *backlog* provider — after the beads write already committed. D2 says a failed ledger
+  write must be tolerated.
+- **A swallowed mirror of `TryClaim` leaks the claim.** Heartbeat targets are selected from the fold
+  by `State == InProgress`, so if that append fails the bead is claimed with a 5-minute lease that
+  nothing ever refreshes — P8 re-entering through the audit-copy path. Driving heartbeats from the
+  store's own claim bookkeeping rather than a fold query would close this.
+- **The fold and beads can diverge unrepairably** in the five local fields: reconcile's
+  `WithLocalRunState` deliberately copies the stale local value forward, so the mirror's log promise
+  ("will be corrected at the next open") is false for exactly those fields. Consequence: resuming at
+  a station the item had already passed.
+- **`Release` does not enforce the port's state-machine precondition** (`LedgerWorkItemStore` does),
+  and `bd update -s open` on a *closed* bead exits 0, so it can resurrect integrated work. No caller
+  does this today.
+- **`Add`'s second write can corrupt a bead another machine claimed** — forcing `--status draft` over
+  a live `in_progress` claim exits 0. `BeadRecord.Revision` is deserialised and documented as the
+  optimistic-concurrency check and is never read anywhere, so the collision is undetectable.
+- Minors: a bead deleted from beads is never removed from the fold; reconcile's own append is not
+  failure-tolerant while the mirror's identical call is; `Transition`'s note write is
+  fire-and-forget; `BeadsCli.Captured` rejects a complete 64,000-character document as truncated;
+  `dependency_type`/`type` are deserialised and never read, so an edge another tool added as
+  `related` or `parent-child` is treated as blocking.
+
+### The lesson worth carrying into phase 4
+
+Every critical here is invisible to a test that asserts an item's **status** after an operation, and
+every test I wrote did that. The question that finds them is "and is the item still *claimable*?" —
+i.e. assert the post-condition the next actor depends on, not the field the operation set. The one
+bug I did catch this way (`CreatedAt`) I caught by reading end-to-end output, not from an assertion.
 
 ## Repository state
 
