@@ -1,0 +1,69 @@
+using Factory.Core;
+using Factory.Runtime;
+
+namespace Factory.Tests;
+
+public class GuardedProviderTests
+{
+    private sealed class ThrowingSink : IRunHistorySink
+    {
+        public int EmitCount;
+        public void Emit(FactoryEvent evt) { EmitCount++; throw new InvalidOperationException("sink down"); }
+        public void Flush() { }
+    }
+
+    private sealed class ThrowingStore : IWorkItemStore
+    {
+        public WorkItem Add(WorkItem item) => throw new InvalidOperationException("store down");
+        public WorkItem Update(WorkItem item) => throw new InvalidOperationException("store down");
+        public WorkItem Transition(WorkItem item, WorkItemState to, string? reason) => throw new InvalidOperationException("store down");
+        public WorkItem? Get(string id) => throw new InvalidOperationException("store down");
+        public IReadOnlyList<WorkItem> All() => throw new InvalidOperationException("store down");
+        public WorkItem? TryClaim(string owner) => throw new InvalidOperationException("store down");
+        public void Heartbeat(string id) => throw new InvalidOperationException("store down");
+        public void Release(string id, string reason) => throw new InvalidOperationException("store down");
+        public void Sync() => throw new InvalidOperationException("store down");
+        public IReadOnlyList<WorkItem> Reclaim(TimeSpan olderThan) => throw new InvalidOperationException("store down");
+    }
+
+    [Fact]
+    public void A_failing_store_halts_with_a_named_exception()
+    {
+        var store = new GuardedWorkItemStore(new ThrowingStore(), "beads");
+
+        var ex = Assert.Throws<WorkItemStoreException>(() => store.All());
+
+        Assert.Contains("beads", ex.Message);
+        Assert.IsType<InvalidOperationException>(ex.InnerException);
+    }
+
+    [Fact]
+    public void A_failing_sink_is_disabled_after_the_failure_ceiling()
+    {
+        var inner = new ThrowingSink();
+        var warnings = new List<string>();
+        var sink = new GuardedRunHistorySink(inner, "tracer", maxFailures: 2, warnings.Add);
+
+        for (var i = 0; i < 5; i++) sink.Emit(new FactoryNote("x"));
+
+        Assert.Equal(2, inner.EmitCount);
+        Assert.Contains(warnings, w => w.Contains("disabled"));
+    }
+
+    [Fact]
+    public void Fan_out_still_writes_durably_when_every_sink_fails()
+    {
+        var dir = TempDir.Create();
+        try
+        {
+            using var writer = new JsonlRunHistory(Path.Combine(dir, "ledger.jsonl"));
+            var sink = new GuardedRunHistorySink(new ThrowingSink(), "tracer", 1, _ => { });
+            var history = new FanOutRunHistory(writer, [sink]);
+
+            history.Append(new FactoryNote("survives"));
+
+            Assert.Single(history.ReadFrom(0));
+        }
+        finally { TempDir.Delete(dir); }
+    }
+}
