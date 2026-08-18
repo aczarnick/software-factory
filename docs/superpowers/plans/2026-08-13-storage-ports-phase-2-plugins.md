@@ -22,10 +22,9 @@ catalog) and Task 5 (wire provider selection into `FactoryHost`).
   `ProviderRegistry` therefore needs a per-provider factory or a shared context object — a
   uniform `Activator.CreateInstance` over discovered types will not work.
 
-- **`FactoryHost.Open` calls `history.Replay()`, which is not on the port.** `Replay()` is a
-  `JsonlRunHistory` member; once the writer is loaded as `IRunHistory` it disappears. The
-  substitute is already on the interface and is what `Replay()` does internally:
-  `FactoryState.Replay(history.ReadFrom(0))`. One line, one call site.
+- **`FactoryHost.Open` calls `history.Replay()`, which is not on the port.** Settled — see the
+  ruling in Task 5 Step 3: use `FactoryState.Replay(history.ReadFrom(0))` and do not add
+  `Replay()` to `IRunHistory`.
 
 - **`IRunHistory.ReadFrom` returns a lazy iterator that holds a file handle** for the life of
   the enumeration. Every phase-1 consumer enumerates to completion in a single expression, so
@@ -841,24 +840,55 @@ Replace the three lines added in phase 1 Task 4 Step 6:
             registry.Resolve<IWorkItemStore>(config.WorkItemStore), config.WorkItemStore.Provider);
 ```
 
-The `(JsonlRunHistory)writer` cast is a known wart: `Replay()` is not on `IRunHistory`. Resolve it by moving state reconstruction behind the port — add `FactoryState Replay()` to `IRunHistory` implemented as a fold over `ReadFrom(0)` — **or** leave the cast and let phase 3 remove it when beads owns items. Prefer adding `Replay()` to the port; it is three lines and removes a downcast that would otherwise crash any non-JSONL writer.
+The `(JsonlRunHistory)writer` cast is a known wart: `Replay()` is not on `IRunHistory`, and
+the cast would crash any non-JSONL writer. **Step 4 resolves it — do not stop after Step 3.**
 
-- [ ] **Step 4: Add `Replay()` to `IRunHistory`**
-
-In `src/Factory.Core/IRunHistory.cs`:
-
-```csharp
-    /// <summary>Materialised fold of the whole history.</summary>
-    FactoryState Replay();
-```
-
-`JsonlRunHistory` already implements it. Add to `FanOutRunHistory`:
+**RULING (2026-08-14, after phase 1 shipped): do NOT add `Replay()` to `IRunHistory`.** This
+plan originally preferred that; it is overruled. Use the static fold that already exists:
 
 ```csharp
-    public FactoryState Replay() => writer.Replay();
+        var state = FactoryState.Replay(history.ReadFrom(0));
 ```
 
-Then simplify Step 3's state line to `var state = history.Replay();` and drop the cast.
+`FactoryState.Replay(IEnumerable<FactoryEvent>)` is already public in `Factory.Core`, and it
+is exactly what `JsonlRunHistory.Replay()` does internally. Reasons this beats a new port
+member:
+
+- `IRunHistory` is the **versioned plugin ABI**. A member added there is a contract every
+  third-party provider must satisfy forever — to write a body all of them would copy verbatim.
+  The ABI should carry what providers answer *differently*, not what they answer identically.
+- Reconstructing `FactoryState` is domain policy, not storage. `ReadFrom` is the storage
+  primitive; the fold belongs above it. Putting the fold on the port points the dependency the
+  wrong way.
+- The forwarding burden is already visible in this plan: `FanOutRunHistory` would have to add
+  `public FactoryState Replay() => writer.Replay();` purely to delegate.
+- It is one line at one call site, versus a permanent ABI change.
+
+**The one argument that would reverse this:** if a provider could reconstruct state materially
+faster than replaying every event — a database answering with a snapshot or a `GROUP BY` rather
+than a full scan — then `Replay()` is genuinely provider-specific and belongs on the port, the
+same reasoning that put `Totals()` and `ForBudget()` there under D4. Phase 1 shipped no such
+provider and phase 3's beads store replays events like the JSONL one does. **Revisit if and
+when a provider appears that can beat a full fold.**
+
+- [ ] **Step 4: Drop the cast in favour of the existing static fold**
+
+Per the ruling above, `IRunHistory` gains nothing. In Step 3's block, replace:
+
+```csharp
+        var state = ((JsonlRunHistory)writer).Replay();
+```
+
+with:
+
+```csharp
+        var state = FactoryState.Replay(history.ReadFrom(0));
+```
+
+Note it folds `history` (the `FanOutRunHistory`), not `writer` — reads flow through the
+fan-out, which delegates them to the durable writer. `JsonlRunHistory.Replay()` stays as a
+concrete convenience method; it keeps its existing callers and tests. Nothing is added to
+`Factory.Core`.
 
 - [ ] **Step 5: Run the full suite**
 

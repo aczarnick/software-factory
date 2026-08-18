@@ -1,7 +1,10 @@
 # Storage Adapters: Spec and Plans
 
-Work planned on 2026-08-13, branch `storage-adapters`. **Nothing is implemented yet** — this
-directory is design and plans only. Start at the spec, then execute the phases in order.
+Work planned on 2026-08-13, branch `storage-adapters`. **Phase 1 shipped 2026-08-14 and is
+merged to `master`**; phases 2-4 are design and plans only. Start at the spec, then execute
+the remaining phases in order. Read
+[`notes/2026-08-14-phase-1-handoff.md`](notes/2026-08-14-phase-1-handoff.md) before phase 2 —
+it carries what the diff cannot tell you.
 
 ## Read first
 
@@ -13,7 +16,7 @@ Each phase is independently buildable and verifiable, and leaves the factory wor
 
 | Phase | Plan | Delivers | Status |
 |---|---|---|---|
-| 1 | [`plans/2026-08-13-storage-ports-phase-1.md`](plans/2026-08-13-storage-ports-phase-1.md) | `IWorkItemStore`, `IRunHistory`, `IRunHistorySink`; `Ledger` becomes `JsonlRunHistory`; `LedgerWorkItemStore`; host routed through the ports. No behaviour change. | not started |
+| 1 | [`plans/2026-08-13-storage-ports-phase-1.md`](plans/2026-08-13-storage-ports-phase-1.md) | `IWorkItemStore`, `IRunHistory`, `IRunHistorySink`; `Ledger` becomes `JsonlRunHistory`; `LedgerWorkItemStore`; host routed through the ports. No behaviour change. | **shipped 2026-08-14** (`f1a3eb2..ecec44c`, 142 tests green) |
 | 2 | [`plans/2026-08-13-storage-ports-phase-2-plugins.md`](plans/2026-08-13-storage-ports-phase-2-plugins.md) | `FactoryProviderAttribute`, `PluginLoadContext`, `PluginCatalog`, `ProviderRegistry`, guard decorators, sink fan-out, provider config. | not started |
 | 3 | [`plans/2026-08-13-storage-ports-phase-3-beads.md`](plans/2026-08-13-storage-ports-phase-3-beads.md) | `BeadsWorkItemStore`, the mapping, claim/heartbeat, reconcile-on-open, id and priority narrowing. | not started |
 | 4 | [`plans/2026-08-13-storage-ports-phase-4-sync-gate.md`](plans/2026-08-13-storage-ports-phase-4-sync-gate.md) | Integrate sync gate, degraded reporting, doctor checks, backlog migration and cutover. | not started |
