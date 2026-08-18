@@ -291,9 +291,9 @@ public class BeadsBackedFactoryTests : IDisposable
         Assert.Equal(mineId, reopened.Services.Items.TryClaim(Owner)?.Id);
     }
 
-    // Beads stores no Attempts, LastError, SpentUsd or Worktree — those are this checkout's own run
-    // state — so an item it hands back carries them blank, and writing one of those into the fold
-    // verbatim erases them.
+    // Beads stores no Station, Worktree, Attempts, LastError or SpentUsd — those are this checkout's
+    // own run state — so an item it hands back carries them blank, and writing one of those into the
+    // fold verbatim erases them.
 
     [Fact]
     public void A_claim_keeps_the_run_state_the_backlog_does_not_store()
@@ -305,6 +305,9 @@ public class BeadsBackedFactoryTests : IDisposable
         var filed = store.Add(WorkItem.Create("failed three times already") with { State = WorkItemState.Ready });
         store.Update(filed with
         {
+            // Not the head of the standard pipeline, so surviving the claim is distinguishable from
+            // Orchestrator's `claimed.Station ?? Pipeline.First()` fallback.
+            Station = "verify",
             Attempts = 3,
             LastError = "verify gate failed",
             SpentUsd = 1.25m,
@@ -313,8 +316,10 @@ public class BeadsBackedFactoryTests : IDisposable
 
         var claimed = store.TryClaim(Owner)!;
 
-        // The claim loop hands this very item to the station, whose run record reads Attempts off it.
+        // The claim loop hands this very item to the station, whose run record reads Attempts off it,
+        // and decides which station to resume at from Station.
         Assert.Equal(filed.Id, claimed.Id);
+        Assert.Equal("verify", claimed.Station);
         Assert.Equal(3, claimed.Attempts);
         Assert.Equal("verify gate failed", claimed.LastError);
         Assert.Equal(1.25m, claimed.SpentUsd);
@@ -327,6 +332,7 @@ public class BeadsBackedFactoryTests : IDisposable
         // And the fold's own copy, which is what `factory ls` prints in its cost column and
         // `factory show` prints as spend and attempts.
         var folded = host.Services.State.Items[filed.Id];
+        Assert.Equal("verify", folded.Station);
         Assert.Equal(3, folded.Attempts);
         Assert.Equal("verify gate failed", folded.LastError);
         Assert.Equal(1.25m, folded.SpentUsd);
