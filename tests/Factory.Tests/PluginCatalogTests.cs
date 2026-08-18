@@ -167,6 +167,20 @@ public class PluginCatalogTests : IDisposable
         Assert.Contains(log, line => line.Contains("Factory.Core.dll") && line.Contains("registered no providers"));
     }
 
+    [Fact]
+    public void Host_falls_back_to_built_ins_when_no_plugins_are_present()
+    {
+        var dir = TempDir.Create();
+        try
+        {
+            using var host = FactoryHost.Init(dir, transport: new FakeTransport());
+
+            Assert.IsType<GuardedWorkItemStore>(host.Services.Items);
+            Assert.IsType<FanOutRunHistory>(host.Services.History);
+        }
+        finally { TempDir.Delete(dir); }
+    }
+
     private sealed class NoopSink : IRunHistorySink
     {
         public void Emit(FactoryEvent evt) { }

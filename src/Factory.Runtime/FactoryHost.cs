@@ -82,9 +82,27 @@ public sealed class FactoryHost : IDisposable
         if (config.Factories.Count > 0)
             blueprint = blueprint with { Factories = config.Factories };
 
-        var history = new JsonlRunHistory(paths.LedgerFile);
-        var state = history.Replay();
-        var items = new LedgerWorkItemStore(history, state);
+        var registry = new ProviderRegistry();
+        var log2 = log ?? (_ => { });
+
+        registry.Register<IRunHistory>("jsonl", _ => new JsonlRunHistory(paths.LedgerFile));
+        PluginCatalog.LoadInto(registry, paths.PluginsDir, message => log2($"  [plugin] {message}"));
+
+        var writer = registry.Resolve<IRunHistory>(new ProviderRef(config.RunHistory.Writer));
+
+        var sinks = config.RunHistory.Sinks
+            .Select(reference => (IRunHistorySink)new GuardedRunHistorySink(
+                registry.Resolve<IRunHistorySink>(reference), reference.Provider, maxFailures: 3,
+                message => log2($"  [sink] {message}")))
+            .ToList();
+
+        var history = new FanOutRunHistory(writer, sinks);
+        var state = FactoryState.Replay(history.ReadFrom(0));
+
+        registry.Register<IWorkItemStore>("ledger", _ => new LedgerWorkItemStore(history, state));
+
+        var items = new GuardedWorkItemStore(
+            registry.Resolve<IWorkItemStore>(config.WorkItemStore), config.WorkItemStore.Provider);
 
         var prompts = new PromptRegistry(paths.PromptsDir);
         foreach (var (stationId, text) in KitPrompts.All)
