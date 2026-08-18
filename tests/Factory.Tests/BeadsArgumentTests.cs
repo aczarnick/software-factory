@@ -87,6 +87,18 @@ public class BeadsArgumentTests
     }
 
     [Fact]
+    public void Reclaiming_is_scoped_to_this_checkouts_own_leases()
+    {
+        var args = BeadMapper.ReclaimArgs(TimeSpan.FromMinutes(15), "node-a");
+
+        // --actor is the audit trail and was already correct; --assignee is bd's scope filter
+        // and is what flips the reclaim response's "scoped" field from false to true. Without
+        // it, Reclaim reaps every stale lease in the shared store, not just this node's own.
+        Assert.Equal("node-a", ValueAfter(args, "--actor"));
+        Assert.Equal("node-a", ValueAfter(args, "--assignee"));
+    }
+
+    [Fact]
     public void A_reclaim_response_reports_the_leases_it_reverted()
     {
         // Captured verbatim from `bd reclaim --older-than 0s --json` after a lease expired.

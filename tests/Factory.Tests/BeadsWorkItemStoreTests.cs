@@ -20,7 +20,7 @@ public sealed class BeadsDatabase : IDisposable
         if (!Available) return;
 
         Shell.Run("git", ["init", "-q", "."], Directory);
-        var cli = new BeadsCli(Directory);
+        var cli = new BeadsCli(Directory, "test-machine");
         cli.Exec("init", "--init-if-missing", "--prefix", "wi");
         cli.Exec("config", "set", "status.custom", BeadMapper.CustomStatuses);
         cli.Exec("config", "set", "types.custom", BeadMapper.CustomTypes);
@@ -33,7 +33,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
 {
     private const string Owner = "test-machine";
 
-    private BeadsCli Cli() => new(database.Directory);
+    private BeadsCli Cli() => new(database.Directory, Owner);
     private BeadsWorkItemStore Store() => new(Cli(), Owner);
 
     // bd is on PATH in this environment, so these run for real. A machine without bd skips them
@@ -294,6 +294,21 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         // BeadsArgumentTests rather than by waiting here. What this pins is that a reclaim pass over
         // healthy leases is a no-op that neither throws nor invents items.
         Assert.Empty(Store().Reclaim(TimeSpan.FromMinutes(15)));
+    }
+
+    [Fact]
+    public void Reclaim_reports_itself_as_scoped_to_this_checkouts_assignee()
+    {
+        if (Unavailable) return;
+
+        // A live bd reclaim against the throwaway database: bd reports "scoped": true as soon as
+        // --assignee is passed, even with nothing stale, so this needs no wait on the 5-minute
+        // lease TTL. This is the live half of the scoping fix; a foreign lease actually surviving
+        // reclaim is probe-evidenced only, since producing one costs the fixed TTL.
+        var response = Cli().JsonObject<BeadsReclaimResponse>(
+            [.. BeadMapper.ReclaimArgs(TimeSpan.FromMinutes(15), Owner)]);
+
+        Assert.True(response!.Scoped);
     }
 
     [Fact]

@@ -173,10 +173,15 @@ public static class BeadMapper
     public static IReadOnlyList<string> ReleaseArgs(string id, string owner) =>
         ["update", id, "--status", StatusFor(WorkItemState.Ready), "--assignee", "", "--actor", owner];
 
-    /// <summary>Reverts this node's stale leases. The grace window is emitted in seconds because a
-    /// sub-minute window would truncate to <c>0m</c>.</summary>
+    /// <summary>Reverts this node's own stale leases. The grace window is emitted in seconds
+    /// because a sub-minute window would truncate to <c>0m</c>. <c>--assignee</c> is bd's scope
+    /// filter and is what restricts the reap to leases held by <paramref name="owner"/> — without
+    /// it, a stale lease anywhere in the shared store is fair game, including one another machine
+    /// is actively working under, because heartbeats are node-local and do not replicate.
+    /// <c>--actor</c> stays alongside it: that is the audit-trail flag, unrelated to scope.</summary>
     public static IReadOnlyList<string> ReclaimArgs(TimeSpan olderThan, string owner) =>
-        ["reclaim", "--older-than", $"{(long)olderThan.TotalSeconds}s", "--json", "--actor", owner];
+        ["reclaim", "--older-than", $"{(long)olderThan.TotalSeconds}s", "--json",
+         "--actor", owner, "--assignee", owner];
 
     /// <summary>Writes an item's mapped fields over the bead. Returning one to Ready also drops the
     /// claim, because <c>bd ready --claim</c> skips an open bead that still carries an assignee —

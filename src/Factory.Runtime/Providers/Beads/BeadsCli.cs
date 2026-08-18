@@ -3,13 +3,22 @@ using Factory.Core;
 namespace Factory.Runtime;
 
 /// <summary>Thin synchronous wrapper over the <c>bd</c> executable.</summary>
-public sealed class BeadsCli(string workingDirectory)
+///
+/// <remarks><c>owner</c> is set as <c>BEADS_NODE_ID</c> on every invocation, arming bd's
+/// cross-replica guard for this checkout. Deliberately not <c>bd config set node_id</c>: that
+/// writes the machine-global <c>~/.config/bd/config.yaml</c>, shared by every beads project on
+/// the machine, and a value instead committed to the git-tracked <c>.beads/config.yaml</c> would
+/// leave the guard armed but inert, since every clone would read the same name. The environment
+/// variable is per-process and per-store instead. The id is one per <em>store</em>, not per host —
+/// machines that are clients of the same shared Dolt database are one replica and must be given
+/// the same <c>owner</c>, or the guard will treat them as distinct nodes racing each other.</remarks>
+public sealed class BeadsCli(string workingDirectory, string owner)
 {
-    private static readonly Dictionary<string, string> NonInteractive =
-        new() { ["BD_NON_INTERACTIVE"] = "1" };
+    private readonly Dictionary<string, string> _environment =
+        new() { ["BD_NON_INTERACTIVE"] = "1", ["BEADS_NODE_ID"] = owner };
 
     public ShellResult Exec(params string[] args) =>
-        Shell.Run("bd", args, workingDirectory, NonInteractive);
+        Shell.Run("bd", args, workingDirectory, _environment);
 
     /// <summary>Runs a command expected to emit JSON, failing loudly when it does not. <c>bd</c>
     /// returns an array for <c>show</c> and <c>list</c> and an object for <c>create</c>, so both

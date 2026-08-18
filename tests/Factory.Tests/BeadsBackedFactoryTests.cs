@@ -47,10 +47,10 @@ public class BeadsBackedFactoryTests : IDisposable
         }, transport: transport);
 
     private BeadRecord Bead(string id) =>
-        new BeadsCli(_dir).Json<BeadRecord>([.. BeadMapper.GetArgs(id)]).Single();
+        new BeadsCli(_dir, Owner).Json<BeadRecord>([.. BeadMapper.GetArgs(id)]).Single();
 
     private BeadRecord? InProgressBead() =>
-        new BeadsCli(_dir)
+        new BeadsCli(_dir, Owner)
             .Json<BeadRecord>("list", "--status", "in_progress", "--limit", "0", "--json")
             .FirstOrDefault();
 
@@ -266,7 +266,7 @@ public class BeadsBackedFactoryTests : IDisposable
             var store = host.Services.Items;
 
             store.Add(WorkItem.Create("another checkout's work") with { State = WorkItemState.Ready });
-            foreignId = new BeadsWorkItemStore(new BeadsCli(_dir), elsewhere).TryClaim(elsewhere)!.Id;
+            foreignId = new BeadsWorkItemStore(new BeadsCli(_dir, elsewhere), elsewhere).TryClaim(elsewhere)!.Id;
 
             store.Add(WorkItem.Create("my interrupted work") with { State = WorkItemState.Ready });
             mineId = store.TryClaim(Owner)!.Id;

@@ -14,7 +14,7 @@ public class BeadsDeploymentTests : IDisposable
     public void Deploying_installs_the_vocabulary_the_mapping_needs()
     {
         if (!Available) return;
-        var cli = new BeadsCli(_dir);
+        var cli = new BeadsCli(_dir, "test-machine");
 
         BeadsDeployment.EnsureInitialised(cli, "wi", _ => { });
 
@@ -28,7 +28,7 @@ public class BeadsDeploymentTests : IDisposable
     public void Deploying_twice_is_not_an_error()
     {
         if (!Available) return;
-        var cli = new BeadsCli(_dir);
+        var cli = new BeadsCli(_dir, "test-machine");
 
         BeadsDeployment.EnsureInitialised(cli, "wi", _ => { });
 
@@ -40,7 +40,7 @@ public class BeadsDeploymentTests : IDisposable
     public void Deploying_keeps_work_that_is_already_filed()
     {
         if (!Available) return;
-        var cli = new BeadsCli(_dir);
+        var cli = new BeadsCli(_dir, "test-machine");
         BeadsDeployment.EnsureInitialised(cli, "wi", _ => { });
         cli.Exec("create", "existing work", "--id", "wi-aaaa11112222", "--json");
 
