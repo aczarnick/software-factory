@@ -14,9 +14,11 @@ namespace Factory.Runtime;
 /// </summary>
 public sealed class CheckStation(
     IRemediationRunner remediationRunner,
-    IToolchainProbe? probe = null) : IStation
+    IToolchainProbe? probe = null,
+    IRepoStateProvider? repoStateProvider = null) : IStation
 {
     private readonly IToolchainProbe _probe = probe ?? new DotnetToolchainProbe();
+    private readonly IRepoStateProvider? _repoStateProvider = repoStateProvider;
 
     public StationRole Role => StationRole.Check;
 
@@ -41,13 +43,15 @@ public sealed class CheckStation(
             return StationResult.Ok("no toolchain detected");
         }
 
-        // The baseline is taken once before dispatch, while nothing else is building. If none
-        // was recorded, assume everything was healthy: absent evidence that a check was
-        // already broken, a failure is attributed to the change rather than excused.
-        var commit = await ToolchainRunner.HeadCommitAsync(ctx.Services.Workspace.RepoRoot, ctx.Ct)
-            .ConfigureAwait(false);
-        var baseline = ToolchainRunner.TryLoadBaseline(ctx.Services.Paths.BaselineFile, commit)
-                       ?? new ToolchainBaseline { Commit = commit };
+        // The baseline is taken once before dispatch, while nothing else is building. If the
+        // repo has since moved to a different commit — whether from the factory's own work or
+        // an external push — the cached baseline no longer describes the mainline being
+        // checked against, so it is recaptured rather than trusted.
+        var cached = ToolchainRunner.TryLoadBaseline(ctx.Services.Paths.BaselineFile) ?? new ToolchainBaseline();
+        var repoState = _repoStateProvider ?? new GitRepoStateProvider(ctx.Services.Workspace.RepoRoot);
+        var baseline = await ToolchainRunner.GetOrRecaptureBaselineAsync(
+            cached, toolchain, ctx.Services.Workspace.RepoRoot, ctx.Services.Paths.BaselineFile,
+            repoState, ctx.Ct).ConfigureAwait(false);
 
         var results = await ToolchainRunner.RunAsync(toolchain, ctx.Run.WorkDir, ctx.Ct).ConfigureAwait(false);
         var verdict = ToolchainRunner.Compare(results, baseline);
