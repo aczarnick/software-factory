@@ -104,7 +104,18 @@ public sealed class LedgerMirroringWorkItemStore(
             history.Append(evt);
             state.Apply(evt);
         }
-        catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
+        // Exactly the two ways the ledger refuses an append the backlog write has already outrun: the
+        // device would not take it, or this process may not write the file. Both are D2's tolerable
+        // loss, corrected at the next reconcile. UnauthorizedAccessException is named separately
+        // because it is a SystemException and not an IOException, and a read-only ledger — owned by
+        // another user, or on a mount that denies writes — is how it arrives.
+        //
+        // The rest are let out on purpose. ObjectDisposedException says the ledger is closed rather
+        // than broken: no reconcile heals that and every later append repeats it, so swallowing it
+        // would drop the whole audit trail without saying so. InvalidOperationException can only
+        // reach here from state.Apply, whose failure is a defect in the fold. A mirror that swallowed
+        // either would be hiding a bug in the factory to survive a fault in the environment.
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             log($"the audit copy of {Describe(evt)} could not be written and will be corrected at the next open: {ex.Message}");
         }

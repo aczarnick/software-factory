@@ -27,9 +27,15 @@ public class LedgerMirroringWorkItemStoreTests
         public IReadOnlyList<WorkItem> Reclaim(TimeSpan olderThan) => ReclaimResult;
     }
 
-    private sealed class NullHistory : IRunHistory
+    /// <summary>A ledger that keeps nothing. <paramref name="fault"/> makes every append fail
+    /// with it, for the faults no real <see cref="IRunHistory"/> in this repository can be made to
+    /// raise.</summary>
+    private sealed class NullHistory(Exception? fault = null) : IRunHistory
     {
-        public void Append(FactoryEvent evt) { }
+        public void Append(FactoryEvent evt)
+        {
+            if (fault is not null) throw fault;
+        }
         public IEnumerable<FactoryEvent> ReadFrom(long afterSeq) => [];
         public IReadOnlyList<RunRecord> RunsForItem(string itemId) => [];
         public IReadOnlyList<RunRecord> RunsForStation(string stationId) => [];
@@ -118,5 +124,67 @@ public class LedgerMirroringWorkItemStoreTests
         Assert.Equal(0.75m, folded.SpentUsd);
         Assert.Equal("the station died", folded.LastError);
         Assert.Equal("/tmp/worktrees/stalled", folded.Worktree);
+    }
+
+    // A ledger this process may not write is D2's named tolerable failure: the backlog store has
+    // already committed by the time the mirror runs, so the append is the only thing lost and the
+    // next reconcile puts it back. What makes it a live risk rather than a theoretical one is the
+    // exception's type, pinned below.
+
+    private static string AReadOnlyLedger()
+    {
+        var path = Path.Combine(TempDir.Create(), "ledger.jsonl");
+        File.WriteAllText(path, "");
+        File.SetAttributes(path, FileAttributes.ReadOnly);
+
+        return path;
+    }
+
+    [Fact]
+    public void Appending_to_a_ledger_this_process_may_not_write_reports_access_denied()
+    {
+        using var history = new JsonlRunHistory(AReadOnlyLedger());
+
+        // The type is the whole point of the mirror's catch set, so it is pinned against a real
+        // FileStream rather than assumed: UnauthorizedAccessException is a SystemException and not
+        // an IOException, so a catch built around IOException alone does not hold this.
+        Assert.Throws<UnauthorizedAccessException>(
+            () => history.Append(new WorkItemFiled(WorkItem.Create("unwritable"))));
+    }
+
+    [Fact]
+    public void A_claim_survives_a_ledger_this_process_may_not_write()
+    {
+        var state = FactoryState.Replay([]);
+        var item = WorkItem.Create("claimed while the ledger is read-only");
+        state.Apply(new WorkItemFiled(item));
+
+        var logged = new List<string>();
+        using var history = new JsonlRunHistory(AReadOnlyLedger());
+        var inner = new FakeStore { ClaimResult = item with { State = WorkItemState.InProgress, Owner = "claimant" } };
+        var mirror = new LedgerMirroringWorkItemStore(inner, history, state, logged.Add);
+
+        // The bead is already claimed by the time this runs, so letting the local ledger's refusal
+        // out makes GuardedWorkItemStore halt the factory and blame the backlog provider for it.
+        var claimed = mirror.TryClaim("claimant");
+
+        Assert.Equal(item.Id, claimed?.Id);
+        Assert.Contains(logged, message => message.Contains(item.Id));
+    }
+
+    [Fact]
+    public void A_ledger_that_reports_itself_closed_is_not_swallowed()
+    {
+        var state = FactoryState.Replay([]);
+        var item = WorkItem.Create("mirrored after the host was disposed");
+        state.Apply(new WorkItemFiled(item));
+
+        var mirror = new LedgerMirroringWorkItemStore(
+            new FakeStore(), new NullHistory(new ObjectDisposedException(nameof(IRunHistory))), state, _ => { });
+
+        // Deliberately outside the tolerated set: a closed ledger is a lifecycle bug, not an
+        // environment fault, and no reconcile heals it — every later append fails the same way. A
+        // tolerance wide enough to swallow this loses the whole audit trail without saying so.
+        Assert.Throws<ObjectDisposedException>(() => mirror.Update(item));
     }
 }
