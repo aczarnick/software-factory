@@ -13,6 +13,10 @@ public enum WorkItemState
     Cancelled
 }
 
+/// <summary>What kind of work an item is. The factory's pipeline treats every kind the same way; the
+/// kinds past <see cref="Improvement"/> exist so an <see cref="IWorkItemStore"/> that has its own item
+/// vocabulary can round-trip a type the factory did not file, rather than flattening it to
+/// <see cref="Feature"/> and writing that back over the store's own value.</summary>
 public enum WorkItemKind
 {
     Feature,
@@ -20,7 +24,12 @@ public enum WorkItemKind
     Chore,
     Refactor,
     Spike,
-    Improvement
+    Improvement,
+    Task,
+    Epic,
+    Decision,
+    Story,
+    Milestone
 }
 
 public enum ProvenanceKind

@@ -50,9 +50,24 @@ public static class BeadMapper
         WorkItemKind.Spike => "spike",
         WorkItemKind.Refactor => "refactor",
         WorkItemKind.Improvement => "improvement",
+        WorkItemKind.Task => "task",
+        WorkItemKind.Epic => "epic",
+        WorkItemKind.Decision => "decision",
+        WorkItemKind.Story => "story",
+        WorkItemKind.Milestone => "milestone",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unmapped work item kind.")
     };
 
+    /// <summary>Reads a bead's type. Every type bd has built in maps to a kind of its own, because
+    /// <see cref="UpdateArgs"/> writes the mapped kind straight back out: a type read as something
+    /// else is a type destroyed on the factory's first update, and <c>task</c> is bd's default, so
+    /// that is every bead filed without an explicit <c>-t</c>. Only <c>refactor</c> and
+    /// <c>improvement</c> are the factory's own additions (see <see cref="CustomTypes"/>).
+    ///
+    /// Genuinely unknown custom vocabulary still falls back rather than throwing — a read that threw
+    /// would take down every command that lists the backlog — and is still rewritten on the next
+    /// update. Carrying the raw value on the item is the only complete fix and is not worth a field
+    /// on <see cref="WorkItem"/> for a type nobody has configured.</summary>
     public static WorkItemKind KindFor(string issueType) => issueType switch
     {
         "feature" => WorkItemKind.Feature,
@@ -61,6 +76,11 @@ public static class BeadMapper
         "spike" => WorkItemKind.Spike,
         "refactor" => WorkItemKind.Refactor,
         "improvement" => WorkItemKind.Improvement,
+        "task" => WorkItemKind.Task,
+        "epic" => WorkItemKind.Epic,
+        "decision" => WorkItemKind.Decision,
+        "story" => WorkItemKind.Story,
+        "milestone" => WorkItemKind.Milestone,
         _ => WorkItemKind.Feature
     };
 

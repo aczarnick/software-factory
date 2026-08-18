@@ -110,6 +110,19 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
+    public void Updating_a_bead_another_tool_filed_keeps_the_type_it_was_given()
+    {
+        if (Unavailable) return;
+
+        var id = AForeignBeadTheFactoryHasClaimedAndUpdated("a milestone a human filed");
+
+        // Asserted from bd's own output for the same reason as the criteria above: KindFor is what is
+        // under suspicion. An epic flattened to WorkItemKind.Feature is written straight back out as
+        // `feature`, so a type the factory cannot name is a type it destroys on first touch.
+        Assert.Equal(ForeignType, Bead(id).IssueType);
+    }
+
+    [Fact]
     public void Add_then_Get_round_trips_a_work_item()
     {
         if (Unavailable) return;

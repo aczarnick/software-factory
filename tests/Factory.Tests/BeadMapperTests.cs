@@ -35,6 +35,27 @@ public class BeadMapperTests
     }
 
     [Fact]
+    public void Every_type_beads_has_built_in_round_trips_rather_than_flattening()
+    {
+        // `bd create --help` lists these nine as bd's built-in types, and `task` is its default — so
+        // it is the type on every bead filed without an explicit -t, this repository's own captured
+        // fixtures included. Anything KindFor cannot name, TypeFor writes back out as something else.
+        string[] builtIn = ["bug", "feature", "task", "epic", "chore", "decision", "spike", "story", "milestone"];
+
+        foreach (var issueType in builtIn)
+            Assert.Equal(issueType, BeadMapper.TypeFor(BeadMapper.KindFor(issueType)));
+    }
+
+    [Fact]
+    public void A_custom_type_no_one_mapped_falls_back_instead_of_throwing()
+    {
+        // The fallback stays for genuinely unknown custom vocabulary: a read that threw would take
+        // down every command that lists the backlog. Such a type is still rewritten on the next
+        // update, which is the residual cost of not carrying the raw value on the item.
+        Assert.Equal(WorkItemKind.Feature, BeadMapper.KindFor("a-type-nobody-mapped"));
+    }
+
+    [Fact]
     public void Create_args_carry_the_explicit_id_and_native_fields()
     {
         var item = WorkItem.Create("add a flag", "users want it", WorkItemKind.Feature) with
