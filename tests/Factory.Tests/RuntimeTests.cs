@@ -285,6 +285,10 @@ public class PipelineTests : IDisposable
         // Filed, but not queued: a single request must not snowball into unbounded self-directed work.
         Assert.Single(proposed);
         Assert.Equal("add a regression test", proposed[0].Title);
+
+        // Work a station files about work it was already doing sorts after its subject, and stays
+        // inside the band the backlog store accepts.
+        Assert.Equal(Priorities.Below(Priorities.Default), proposed[0].Priority);
     }
 
     [Fact]

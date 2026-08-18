@@ -278,7 +278,7 @@ public sealed class ReviewStation : AgentStation
                 State = WorkItemState.Draft,
                 Provenance = Provenance.FromAgent(ctx.Def.Id),
                 ParentId = ctx.Item.ParentId,
-                Priority = ctx.Item.Priority + 50
+                Priority = Priorities.Below(ctx.Item.Priority)
             })
             .ToList();
 

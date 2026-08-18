@@ -147,7 +147,7 @@ public sealed class EvolutionLoop(PromptRegistry prompts, AgentRunner runner, Ac
             {
                 Provenance = Provenance.FromEvolution(stationId),
                 State = WorkItemState.Draft,
-                Priority = 200
+                Priority = Priorities.Lowest
             })
             .ToList();
 

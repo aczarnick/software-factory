@@ -188,8 +188,8 @@ public class FactoryStateTests
     [Fact]
     public void Dispatchable_orders_by_priority_then_age()
     {
-        var low = WorkItem.Create("low") with { State = WorkItemState.Ready, Priority = 500 };
-        var high = WorkItem.Create("high") with { State = WorkItemState.Ready, Priority = 10 };
+        var low = WorkItem.Create("low") with { State = WorkItemState.Ready, Priority = Priorities.Lowest };
+        var high = WorkItem.Create("high") with { State = WorkItemState.Ready, Priority = Priorities.Highest };
 
         var state = FactoryState.Replay([new WorkItemFiled(low), new WorkItemFiled(high)]);
         Assert.Equal([high.Id, low.Id], state.Dispatchable().Select(i => i.Id));
@@ -409,6 +409,52 @@ public class HeartbeatStatusTests
         var restored = FactoryJson.Read<HeartbeatStatus>(json);
 
         Assert.Empty(restored!.WorkItems);
+    }
+}
+
+public class IdFormatTests
+{
+    [Fact]
+    public void New_emits_a_beads_compatible_identifier()
+    {
+        var id = Ids.New("wi");
+
+        Assert.StartsWith("wi-", id);
+        Assert.DoesNotContain("_", id);
+    }
+
+    [Fact]
+    public void Work_items_default_to_the_middle_priority_band()
+    {
+        Assert.Equal(2, WorkItem.Create("thing").Priority);
+    }
+}
+
+public class PriorityBandTests
+{
+    [Fact]
+    public void Below_files_derived_work_one_step_less_urgent()
+    {
+        Assert.Equal(Priorities.Default + 1, Priorities.Below(Priorities.Default));
+    }
+
+    [Fact]
+    public void Below_never_leaves_the_band_for_already_lowest_work()
+    {
+        Assert.Equal(Priorities.Lowest, Priorities.Below(Priorities.Lowest));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void Below_stays_inside_the_band_the_backlog_store_accepts(int priority)
+    {
+        var derived = Priorities.Below(priority);
+
+        Assert.InRange(derived, Priorities.Highest, Priorities.Lowest);
     }
 }
 
