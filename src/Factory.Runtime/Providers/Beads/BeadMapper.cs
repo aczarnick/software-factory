@@ -138,16 +138,17 @@ public static class BeadMapper
 
         if (!string.IsNullOrWhiteSpace(item.Intent)) { args.Add("-d"); args.Add(item.Intent); }
 
-        if (item.AcceptanceCriteria.Count > 0)
-        {
-            args.Add("--acceptance");
-            args.Add(string.Join("\n", item.AcceptanceCriteria.Select(c => $"- {c.Statement} ({c.Verification.Describe})")));
-        }
+        if (item.AcceptanceCriteria.Count > 0) { args.Add("--acceptance"); args.Add(AcceptanceFor(item)); }
 
         foreach (var dependency in item.DependsOn) { args.Add("--deps"); args.Add($"depends-on:{dependency}"); }
 
         return args;
     }
+
+    // The bead's own acceptance_criteria cell, for readers of the backlog that are not the factory;
+    // the structured criteria the factory reads back travel in the metadata.
+    private static string AcceptanceFor(WorkItem item) =>
+        string.Join("\n", item.AcceptanceCriteria.Select(c => $"- {c.Statement} ({c.Verification.Describe})"));
 
     /// <summary>Reads every bead in every status. <c>--all</c> reaches closed work and
     /// <c>--limit 0</c> defeats the default page size of 50, which would otherwise truncate a
@@ -183,9 +184,26 @@ public static class BeadMapper
         ["reclaim", "--older-than", $"{(long)olderThan.TotalSeconds}s", "--json",
          "--actor", owner, "--assignee", owner];
 
-    /// <summary>Writes an item's mapped fields over the bead. Returning one to Ready also drops the
-    /// claim, because <c>bd ready --claim</c> skips an open bead that still carries an assignee —
-    /// even for the actor named in it, and <c>--claim</c> refuses to combine with
+    /// <summary>Writes an item's mapped fields over the bead. Every field beads owns natively is
+    /// sent on every update, not only the ones that changed: reconcile compares the whole mapped
+    /// projection and lets beads win, so a field left out is not merely unsaved in beads — the next
+    /// open reverts the local edit to match.
+    ///
+    /// <c>-d</c> and <c>--acceptance</c> are unconditional where <see cref="CreateArgs"/> makes them
+    /// conditional. bd accepts <c>-d ""</c> and <c>--acceptance ""</c> and empties the cell, so an
+    /// item that has lost its intent or its criteria can say so; omitting the flag instead would
+    /// leave beads asserting the old value to every other reader with nothing to ever correct it.
+    /// An empty <c>--title</c>, by contrast, bd refuses (exit 1) — exactly as it refuses one on
+    /// create, so no bead the factory filed can have one, and the write fails loudly rather than
+    /// keeping a stale title quietly.
+    ///
+    /// There is deliberately no <c>--deps</c>: bd <c>update</c> has no such flag, and a post-filing
+    /// edge needs <c>bd dep add</c> / <c>bd dep remove</c> instead. Dependency edits therefore do
+    /// not reach beads through this path.
+    ///
+    /// Returning an item to Ready also drops the claim, because <c>bd ready --claim</c> skips an
+    /// open bead that still carries an assignee — even for the actor named in it, and
+    /// <c>--claim</c> refuses to combine with
     /// <c>--assignee</c> — so an item requeued with its claim intact would be Ready everywhere and
     /// claimable nowhere. Any other status keeps the assignee: clearing it while work is in flight
     /// would hand the item to whichever machine claimed next.
@@ -199,8 +217,12 @@ public static class BeadMapper
         var args = new List<string>
         {
             "update", item.Id,
+            "--title", item.Title,
+            "-t", TypeFor(item.Kind),
             "--status", StatusFor(item.State),
             "-p", item.Priority.ToString(),
+            "-d", item.Intent,
+            "--acceptance", AcceptanceFor(item),
             "--metadata", MetadataFor(item),
             "--actor", owner
         };

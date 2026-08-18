@@ -66,6 +66,41 @@ public class BeadsArgumentTests
     }
 
     [Fact]
+    public void Updating_writes_every_field_beads_owns_natively()
+    {
+        var args = BeadMapper.UpdateArgs(
+            WorkItem.Create("a new title", "a new intent", WorkItemKind.Bug) with
+            {
+                State = WorkItemState.InReview,
+                AcceptanceCriteria = [AcceptanceCriterion.Command("builds", "dotnet build")]
+            },
+            "node-a");
+
+        // A field the update does not send is not merely unsaved: reconcile compares the mapped
+        // projection and lets beads win, so the next open reverts the edit locally as well.
+        Assert.Equal("a new title", ValueAfter(args, "--title"));
+        Assert.Equal("bug", ValueAfter(args, "-t"));
+        Assert.Equal("a new intent", ValueAfter(args, "-d"));
+        Assert.Contains("builds", ValueAfter(args, "--acceptance"));
+
+        // bd update has no --deps: a post-filing edge needs `bd dep add`, so pretending otherwise
+        // here would fail the whole write and lose the fields above with it.
+        Assert.DoesNotContain("--deps", args);
+    }
+
+    [Fact]
+    public void Updating_sends_an_emptied_description_and_criteria_rather_than_omitting_the_flags()
+    {
+        var args = BeadMapper.UpdateArgs(WorkItem.Create("nothing to say") with { State = WorkItemState.Ready }, "node-a");
+
+        // bd clears the cell for `-d ""` and `--acceptance ""` and exits 0, so omitting the flag
+        // when the item has nothing is the one shape that leaves behind a stale value claiming the
+        // item still says something it no longer says.
+        Assert.Equal("", ValueAfter(args, "-d"));
+        Assert.Equal("", ValueAfter(args, "--acceptance"));
+    }
+
+    [Fact]
     public void Updating_an_item_that_is_not_returning_to_the_queue_leaves_the_assignee_alone()
     {
         var args = BeadMapper.UpdateArgs(WorkItem.Create("in flight") with { State = WorkItemState.InReview }, "node-a");

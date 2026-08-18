@@ -337,6 +337,83 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
+    public void An_edit_to_a_field_beads_owns_natively_survives_a_reconcile()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var filed = store.Add(WorkItem.Create("the title as filed", "the intent as filed") with
+        {
+            State = WorkItemState.Ready,
+            Kind = WorkItemKind.Chore
+        });
+
+        var ledger = Path.Combine(TempDir.Create(), "ledger.jsonl");
+        using var history = new JsonlRunHistory(ledger);
+        var state = history.Replay();
+        BacklogReconciler.Reconcile(store, state, history, _ => { });
+
+        store.Update(filed with
+        {
+            Title = "the title after editing",
+            Kind = WorkItemKind.Bug,
+            Intent = "the intent after editing",
+            AcceptanceCriteria = [AcceptanceCriterion.Command("builds after editing", "dotnet build")]
+        });
+        BacklogReconciler.Reconcile(store, state, history, _ => { });
+
+        // The fold is corrected from beads on every open, so a field the update never sent to beads
+        // is not merely unsaved — the next reconcile actively reverts the edit here.
+        var reconciled = state.Items[filed.Id];
+        Assert.Equal("the title after editing", reconciled.Title);
+        Assert.Equal(WorkItemKind.Bug, reconciled.Kind);
+        Assert.Equal("the intent after editing", reconciled.Intent);
+        Assert.Equal("builds after editing", Assert.Single(reconciled.AcceptanceCriteria).Statement);
+    }
+
+    [Fact]
+    public void An_edit_keeps_the_beads_own_description_and_criteria_cells_current()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var filed = store.Add(WorkItem.Create("cells", "the intent as filed") with
+        {
+            State = WorkItemState.Ready,
+            AcceptanceCriteria = [AcceptanceCriterion.Command("as filed", "dotnet build")]
+        });
+
+        store.Update(filed with
+        {
+            Intent = "the intent after editing",
+            AcceptanceCriteria = [AcceptanceCriterion.Command("after editing", "dotnet test")]
+        });
+
+        // Intent and criteria also travel in the metadata, so the factory's own read hides this.
+        // What goes stale is the cell every other beads tool reads — `bd show`, `bd list`, a human —
+        // which the spec's mapping table says is the item's intent.
+        var bead = Bead(filed.Id);
+        Assert.Equal("the intent after editing", bead.Description);
+        Assert.Contains("after editing", bead.AcceptanceCriteria);
+    }
+
+    [Fact]
+    public void Clearing_an_items_intent_clears_the_beads_description_rather_than_leaving_it_stale()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var filed = store.Add(WorkItem.Create("intent to be cleared", "the intent as filed") with
+        {
+            State = WorkItemState.Ready
+        });
+
+        store.Update(filed with { Intent = "" });
+
+        // bd accepts `-d ""` and empties the cell, so an item whose intent is gone must not leave
+        // beads asserting the old one to every other reader of the backlog.
+        Assert.True(string.IsNullOrEmpty(Bead(filed.Id).Description),
+            $"description should be cleared, was '{Bead(filed.Id).Description}'");
+    }
+
+    [Fact]
     public void Reconciling_a_real_backlog_twice_writes_nothing_the_second_time()
     {
         if (Unavailable) return;
