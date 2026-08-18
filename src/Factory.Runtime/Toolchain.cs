@@ -416,6 +416,19 @@ public static class ToolchainRunner
         catch (Exception ex) when (ex is IOException or JsonException) { return null; }
     }
 
+    /// <summary>Reads whatever baseline is cached, regardless of which commit it was captured
+    /// against — staleness against the current commit is judged separately, by <see
+    /// cref="GetOrRecaptureBaselineAsync"/>.</summary>
+    public static ToolchainBaseline? TryLoadBaseline(string cachePath)
+    {
+        if (!File.Exists(cachePath)) return null;
+        try
+        {
+            return FactoryJson.Read<ToolchainBaseline>(File.ReadAllText(cachePath));
+        }
+        catch (Exception ex) when (ex is IOException or JsonException) { return null; }
+    }
+
     /// <summary>
     /// Captures which checks pass on the mainline, cached against the commit.
     ///
@@ -446,6 +459,37 @@ public static class ToolchainRunner
         catch (IOException) { }
 
         return baseline;
+    }
+
+    /// <summary>
+    /// Reuses a cached baseline only if it was captured against the commit the repo is
+    /// currently on. A baseline whose commit has since moved is stale whether the move was the
+    /// factory's own commit or an external push — either way it no longer describes the
+    /// mainline being checked against, so it is discarded and recaptured rather than trusted.
+    /// </summary>
+    public static async Task<ToolchainBaseline> GetOrRecaptureBaselineAsync(
+        ToolchainBaseline cached, Toolchain toolchain, string repoRoot, string cachePath,
+        IRepoStateProvider repoStateProvider, CancellationToken ct = default,
+        Func<ToolchainCheck, string, CancellationToken, Task<ShellResult>>? execute = null)
+    {
+        var currentSha = await repoStateProvider.GetCurrentMasterShaAsync(ct).ConfigureAwait(false);
+        if (cached.Commit == currentSha) return cached;
+
+        var results = await RunAsync(toolchain, repoRoot, ct, execute).ConfigureAwait(false);
+        var fresh = new ToolchainBaseline
+        {
+            Commit = currentSha,
+            Passing = results.ToDictionary(r => r.Name, r => r.Passed)
+        };
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(cachePath))!);
+            File.WriteAllText(cachePath, FactoryJson.Write(fresh, pretty: true));
+        }
+        catch (IOException) { }
+
+        return fresh;
     }
 
     public static ToolchainVerdict Compare(IReadOnlyList<CheckOutcome> results, ToolchainBaseline baseline)
