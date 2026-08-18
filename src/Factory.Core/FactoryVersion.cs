@@ -29,4 +29,9 @@ public static class FactoryVersion
             : null;
 
     public static string Full => Commit is null ? Version : $"{Version}+{Commit}";
+
+    /// <summary>Major version of the plugin ABI. Bump only on a breaking change to
+    /// <see cref="IWorkItemStore"/>, <see cref="IRunHistory"/>, <see cref="IRunHistorySink"/>,
+    /// or any type they expose. A plugin built against a different major is refused at load.</summary>
+    public const int ContractVersion = 1;
 }
