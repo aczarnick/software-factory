@@ -128,6 +128,13 @@ Probed against 1.2.1; treat as fact.
 
 ## What phase 4 still owes the spec
 
+Phase 4 is two documents, in this order:
+`docs/superpowers/plans/2026-08-18-storage-ports-phase-4-remediation-prelude.md` (fix the three
+criticals and the importants first), then the pre-existing
+`docs/superpowers/plans/2026-08-13-storage-ports-phase-4-sync-gate.md` (the original scope). The
+prelude's closing section lists the corrections the older plan needs, since it predates phase 3.
+
+
 The `integrate` sync gate (D7), `Degraded` in `factory status`, foreign-orphan reporting, the
 `factory doctor` dolt-server check, and the one-time migration of the existing items. Note the
 migration also has to rewrite `wi_` ids to `wi-`: `Ids.New` changed in this phase, so new work is

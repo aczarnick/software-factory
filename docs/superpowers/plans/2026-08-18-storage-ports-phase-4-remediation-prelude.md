@@ -1,8 +1,16 @@
-# Storage Ports Phase 4: Remediation, Sync Gating and Migration
+# Storage Ports Phase 4: Remediation Prelude
 
 **Date:** 2026-08-18
 **Spec:** `docs/superpowers/specs/2026-08-13-storage-adapters-design.md`
-**Depends on:** phases 1-3 merged. Phase 3 landed with known critical defects, listed below.
+**Depends on:** phases 1-3 merged (`2a99415`). Phase 3 landed with known critical defects.
+
+> **This is a prelude, not a replacement.** The detailed phase 4 plan already exists at
+> `docs/superpowers/plans/2026-08-13-storage-ports-phase-4-sync-gate.md` (639 lines, six tasks: the
+> `SyncStatus` ABI change, the integrate gate, surfacing degraded and orphaned state, the doctor
+> check, migration, and cutover). **Execute this prelude's tasks 1-5 first, then that plan** — its
+> Task 2 recovery path is `factory activate`, which this prelude's Task 1 is what makes work again.
+> Section "Handing off to the sync-gate plan" at the end lists the corrections that plan needs,
+> because it was written before phase 3 existed and does not know about the types phase 3 added.
 
 ## Why this plan opens with remediation
 
@@ -187,33 +195,40 @@ tests on the same foundation:
 
 ---
 
-## Task 6: The original phase-4 scope
+## Handing off to the sync-gate plan
 
-Only start this once tasks 1-3 are green — it builds directly on them.
+Once tasks 1-5 are green, execute
+`docs/superpowers/plans/2026-08-13-storage-ports-phase-4-sync-gate.md`. **Pre-flight it first** —
+every plan in this series has contained code that could not compile or flags that do not exist, and
+this one was written before phase 3 and cannot know what phase 3 actually built. Confirmed deltas:
 
-- **The `integrate` sync gate (D7).** `integrate` gates on `Sync()` succeeding, else `Blocked` with
-  reason `sync-required`; then re-read the item and confirm `revision` and `assignee` still match what
-  was claimed, else `Blocked` with the worktree preserved. Both reuse the behaviour from commit
-  `f58f28b`. **This is why Task 1 is a prerequisite:** the gate's recovery path is `factory activate`,
-  which strands the item today. It is also the first real use of `BeadRecord.Revision`.
-- **The second sync point.** The spec has `Sync()` on item completion as well as at `Open()`; only
-  `Open()` is implemented, which is what makes the reclaim grace window shorter than the sync interval.
-- **`Degraded` in `factory status`**, so an unshared backlog is visible rather than inferred.
-- **Foreign-orphan reporting** (limitation mitigation 2): surface `in_progress` beads with a foreign
-  assignee and a stale `started_at` in `factory ls` — reported, not reaped. `started_at` replicates;
-  lease expiry does not.
-- **The `factory doctor` dolt-server check.** Beads auto-starts a local `dolt sql-server` per project.
-- **Migration of the existing items.** They export to beads JSONL and import via `bd import` (upsert,
-  accepts explicit ids). **Ids must rewrite `wi_` to `wi-`**: `Ids.New` changed in phase 3 so new work
-  is already compatible, but the pre-existing items are not, and `bd` rejects the `wi_` form outright.
-- **Decide the beads telemetry question.** `metrics.disabled = false` and
-  `metrics.endpoint = https://gastownhall-eventsapi.com/mp/collect`. The spec flags this as needing a
-  deliberate decision; phase 3 did not make it. `bd config set metrics.disabled true` disables it.
-- **Whether beads becomes the default provider.** Phase 3 left `FactoryConfig.WorkItemStore` at
-  `ledger` on purpose. Flipping it is what makes D1 real, and it should not be flipped until tasks 1-3
-  are done and the migration has run.
-
----
+- **It changes `IWorkItemStore.Sync()` to return `SyncStatus`.** That is an ABI change to the plugin
+  contract, so it must also update the implementations phase 3 added, which the plan does not
+  mention: `BeadsWorkItemStore` and **`LedgerMirroringWorkItemStore`** (a decorator that forwards
+  `Sync`). It does already know about `GuardedWorkItemStore` and `LedgerWorkItemStore`. Consider
+  whether it warrants a `FactoryProviderAttribute.Contract` bump, since a third-party plugin
+  compiled against contract 1 will no longer satisfy the interface.
+- **It knows nothing of `BacklogReconciler`, `LedgerMirroringWorkItemStore`, `ReclaimArgs` or
+  `BeadRecord.Revision`.** Its Task 2 re-reads the item and compares `revision` and `assignee` to
+  detect a lost claim race — `Revision` is already deserialised and currently unread, so that task is
+  its first real consumer. Check the field's semantics before relying on ordering: it is a large,
+  often **negative** int64, so compare for equality only.
+- **Its second sync point matters more than it looks.** The spec has `Sync()` on item completion as
+  well as at `Open()`; only `Open()` is implemented. `bd reclaim --help` requires *grace window > sync
+  interval* and *lease TTL > sync interval*, and with sync only at open the effective interval is a
+  whole factory run against a fixed 5-minute TTL. This prelude's Task 2 and that sync point are two
+  halves of the same problem.
+- **Migration must rewrite `wi_` ids to `wi-`.** The plan already covers this. Phase 3 changed
+  `Ids.New`, so new work is already compatible, but pre-existing items are not and `bd` rejects the
+  `wi_` form outright with `invalid ID format (expected prefix-hash)`.
+- **Cutover is where the default provider flips** to beads. Do not flip it until this prelude's tasks
+  1-3 are done and the migration has run: every one of those three criticals becomes live the moment
+  a deployment opts in.
+- Two open decisions the spec asks for and phase 3 did not make: **beads telemetry**
+  (`metrics.disabled = false`, endpoint `https://gastownhall-eventsapi.com/mp/collect`; disable with
+  `bd config set metrics.disabled true`) and whether `RunHistoryConfig.Writer` should accept a full
+  `ProviderRef` so a third-party writer can carry options — currently a bare string, which is a spec
+  amendment plus a config migration rather than a code fix.
 
 ## Verification gate
 
