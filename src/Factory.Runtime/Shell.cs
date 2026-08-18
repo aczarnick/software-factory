@@ -11,6 +11,11 @@ public readonly record struct ShellResult(int ExitCode, string Stdout, string St
 
 public static class Shell
 {
+    /// <summary>How much of a command's output is retained. Verification only needs enough to
+    /// explain a failure, but a caller parsing structured output must be able to tell a truncated
+    /// capture from a malformed one — <see cref="ShellResult.Stdout"/> at this length may be cut.</summary>
+    public const int MaxCapturedOutputChars = 64_000;
+
     /// <summary>Id of the work item on whose behalf the current async flow is running a shell
     /// command, if any. Set by the orchestrator around an item's processing so a command's
     /// start and completion can be attributed without threading an id through every call site.</summary>
@@ -233,7 +238,7 @@ public static class Shell
             while ((n = await reader.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
             {
                 // Bound retained output: verification only needs the tail to explain a failure.
-                if (sink.Length < 64_000) sink.Append(buffer, 0, n);
+                if (sink.Length < MaxCapturedOutputChars) sink.Append(buffer, 0, n);
             }
         }
         catch (OperationCanceledException) { }

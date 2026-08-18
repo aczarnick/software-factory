@@ -210,7 +210,9 @@ public class BeadMapperTests
          "revision": -8189281253539385782}
         """;
 
-    private const string RealBlockedBeadJson = """
+    // bd reports dependencies in two different shapes. Captured verbatim from `bd show --json`,
+    // which embeds the blocking issue:
+    private const string RealBlockedBeadFromShow = """
         {"id": "wi-bbbb11112222", "title": "second", "status": "open", "priority": 2,
          "issue_type": "task", "created_at": "2026-08-18T12:54:26Z", "created_by": "aczarnick",
          "updated_at": "2026-08-18T12:54:26Z",
@@ -218,6 +220,17 @@ public class BeadMapperTests
                            "dependency_type": "blocks"}],
          "dependent_count": 0, "dependency_count": 1, "comment_count": 0,
          "revision": -7237306086704023765}
+        """;
+
+    // ...and from `bd list --all --limit 0 --json`, which reports the edge instead:
+    private const string RealBlockedBeadFromList = """
+        {"id": "wi-bbbb11112222", "title": "second", "status": "open", "priority": 2,
+         "issue_type": "task", "created_at": "2026-08-18T12:54:26Z", "created_by": "aczarnick",
+         "updated_at": "2026-08-18T12:54:26Z",
+         "dependencies": [{"issue_id": "wi-bbbb11112222", "depends_on_id": "wi-aaaa11112222",
+                           "type": "blocks", "created_at": "2026-08-18T12:54:26Z",
+                           "created_by": "aczarnick", "metadata": "{}"}],
+         "dependency_count": 1, "dependent_count": 0, "comment_count": 0}
         """;
 
     [Fact]
@@ -247,11 +260,38 @@ public class BeadMapperTests
         Assert.IsType<CommandVerification>(Assert.Single(item.AcceptanceCriteria).Verification);
     }
 
-    [Fact]
-    public void Blockers_beads_really_emits_become_the_items_dependencies()
+    [Theory]
+    [InlineData(nameof(RealBlockedBeadFromShow))]
+    [InlineData(nameof(RealBlockedBeadFromList))]
+    public void Blockers_beads_really_emits_become_the_items_dependencies(string fixture)
     {
-        var item = BeadMapper.ToWorkItem(FactoryJson.Read<BeadRecord>(RealBlockedBeadJson)!);
+        // `show` embeds the blocking issue and `list` reports the edge, so reading only one of the
+        // two shapes loses every dependency edge from whichever command was not sampled.
+        var json = fixture == nameof(RealBlockedBeadFromShow) ? RealBlockedBeadFromShow : RealBlockedBeadFromList;
+
+        var item = BeadMapper.ToWorkItem(FactoryJson.Read<BeadRecord>(json)!);
 
         Assert.Equal(["wi-aaaa11112222"], item.DependsOn);
+    }
+
+    [Fact]
+    public void A_reversed_dependency_edge_is_not_read_as_the_item_depending_on_itself()
+    {
+        var bead = new BeadRecord
+        {
+            Id = "wi-aaaa11112222",
+            Title = "blocker",
+            Dependencies =
+            [
+                new BeadDependency
+                {
+                    IssueId = "wi-bbbb11112222",
+                    DependsOnId = "wi-aaaa11112222",
+                    Type = "blocks"
+                }
+            ]
+        };
+
+        Assert.Empty(BeadMapper.ToWorkItem(bead).DependsOn);
     }
 }

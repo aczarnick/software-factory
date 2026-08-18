@@ -56,4 +56,19 @@ public class ShellRunTests
         Assert.True(started.Elapsed < TimeSpan.FromSeconds(6),
             $"Run waited {started.Elapsed.TotalSeconds:F1}s for a grandchild holding the pipe.");
     }
+
+    [Fact]
+    public void Run_bounds_how_much_output_it_retains()
+    {
+        // 200k characters against a 64k bound. Callers that parse structured output rely on this
+        // bound being knowable, because a capture cut at it is not valid JSON.
+        var result = Shell.Run("/bin/sh", ["-c", "yes 0123456789 | head -20000"],
+            Directory.GetCurrentDirectory(), timeoutSeconds: 30);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.True(result.Stdout.Length >= Shell.MaxCapturedOutputChars,
+            $"expected the capture to reach the bound, got {result.Stdout.Length} characters");
+        Assert.True(result.Stdout.Length < Shell.MaxCapturedOutputChars * 2,
+            $"expected the capture to be bounded near {Shell.MaxCapturedOutputChars}, got {result.Stdout.Length}");
+    }
 }

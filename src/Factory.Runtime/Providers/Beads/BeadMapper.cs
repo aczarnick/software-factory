@@ -97,11 +97,18 @@ public static class BeadMapper
             Assumptions = metadata.Assumptions,
             Labels = metadata.Labels,
             ParentId = metadata.ParentId,
-            DependsOn = [.. bead.Dependencies.Select(d => d.Id)],
+            DependsOn = [.. Blockers(bead)],
             BudgetUsd = metadata.BudgetUsd,
             Provenance = new Provenance(metadata.ProvenanceKind, metadata.ProvenanceSource)
         };
     }
+
+    // Only the beads this one waits on. The self-id guard covers the reversed edge shape, where
+    // the same row would otherwise read as an item depending on itself.
+    private static IEnumerable<string> Blockers(BeadRecord bead) =>
+        bead.Dependencies
+            .Select(dependency => dependency.BlockerId)
+            .Where(id => !string.IsNullOrEmpty(id) && id != bead.Id);
 
     public static IReadOnlyList<string> CreateArgs(WorkItem item)
     {
@@ -127,6 +134,35 @@ public static class BeadMapper
 
         return args;
     }
+
+    /// <summary>Reads every bead in every status. <c>--all</c> reaches closed work and
+    /// <c>--limit 0</c> defeats the default page size of 50, which would otherwise truncate a
+    /// backlog silently.</summary>
+    public static IReadOnlyList<string> AllArgs() => ["list", "--all", "--limit", "0", "--json"];
+
+    /// <summary>Reads one bead by id. Uses <c>list --id</c> rather than <c>show</c>: an id beads
+    /// does not know exits 0 with an empty array here, where <c>show</c> exits non-zero and would
+    /// be indistinguishable from a broken database.</summary>
+    public static IReadOnlyList<string> GetArgs(string id) =>
+        ["list", "--id", id, "--all", "--limit", "0", "--json"];
+
+    /// <summary>Atomically takes the first ready bead. <c>--actor</c> is the only lever that sets
+    /// the assignee — <c>--assignee</c> on <c>ready</c> filters instead of assigning — and the
+    /// factory names the checkout explicitly so the value does not fall back to the human's
+    /// git identity.</summary>
+    public static IReadOnlyList<string> ClaimArgs(string owner) =>
+        ["ready", "--claim", "--json", "--actor", owner];
+
+    /// <summary>Returns a bead to the queue. Deliberately not <c>bd unclaim</c>, which only works
+    /// while the bead is still <c>in_progress</c> and fails once a station has moved it on; this
+    /// form clears status, assignee and lease together from any state.</summary>
+    public static IReadOnlyList<string> ReleaseArgs(string id, string owner) =>
+        ["update", id, "--status", StatusFor(WorkItemState.Ready), "--assignee", "", "--actor", owner];
+
+    /// <summary>Reverts this node's stale leases. The grace window is emitted in seconds because a
+    /// sub-minute window would truncate to <c>0m</c>.</summary>
+    public static IReadOnlyList<string> ReclaimArgs(TimeSpan olderThan, string owner) =>
+        ["reclaim", "--older-than", $"{(long)olderThan.TotalSeconds}s", "--json", "--actor", owner];
 
     public static IReadOnlyList<string> UpdateArgs(WorkItem item) =>
     [
