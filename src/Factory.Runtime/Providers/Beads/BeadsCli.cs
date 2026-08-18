@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Factory.Core;
 
 namespace Factory.Runtime;
@@ -52,30 +53,39 @@ public class BeadsCli(string workingDirectory, string owner)
         if (!result.Ok)
             throw new InvalidOperationException($"bd {string.Join(' ', args)} failed: {result.Combined}");
 
-        var text = Captured(result.Stdout, args);
-        return string.IsNullOrEmpty(text) || text == "null" ? default : FactoryJson.Read<T>(text);
+        var text = result.Stdout.Trim();
+        if (string.IsNullOrEmpty(text) || text == "null") return default;
+
+        return ReadOrReportTruncation(() => FactoryJson.Read<T>(text), result.Stdout, args);
     }
 
     private static IReadOnlyList<T> Parse<T>(string stdout, string[] args)
     {
-        var text = Captured(stdout, args);
+        var text = stdout.Trim();
         if (string.IsNullOrEmpty(text) || text == "null") return [];
 
-        return text.StartsWith('[')
+        return ReadOrReportTruncation(() => text.StartsWith('[')
             ? FactoryJson.Read<List<T>>(text) ?? []
-            : [FactoryJson.Read<T>(text)!];
+            : [FactoryJson.Read<T>(text)!], stdout, args);
     }
 
-    // A capture at the retention bound is cut mid-document, so parsing it would fail as though bd
-    // had emitted malformed JSON. Name the real cause instead: the backlog outgrew what one
-    // command's output can carry.
-    private static string Captured(string stdout, string[] args)
+    // Shell.ReadAsync appends a whole 4096-char buffer whenever the sink is still under the bound,
+    // so a genuine, complete capture can legitimately land anywhere from the bound up to one buffer
+    // past it -- a length check alone cannot tell that apart from a real truncation landing in the
+    // same range. Parsing can: a truncation is cut mid-document and is not valid JSON on its own, so
+    // the length is only consulted to name the real cause once parsing has already failed, rather
+    // than to reject a complete document outright.
+    private static T ReadOrReportTruncation<T>(Func<T> read, string stdout, string[] args)
     {
-        if (stdout.Length >= Shell.MaxCapturedOutputChars)
+        try
+        {
+            return read();
+        }
+        catch (JsonException) when (stdout.Length >= Shell.MaxCapturedOutputChars)
+        {
             throw new InvalidOperationException(
                 $"bd {string.Join(' ', args)} produced more than {Shell.MaxCapturedOutputChars} " +
                 "characters, so its JSON was truncated before it could be read.");
-
-        return stdout.Trim();
+        }
     }
 }
