@@ -18,7 +18,9 @@ public static class PluginCatalog
             {
                 RegisterAssembly(registry, dll, log);
             }
-            catch (Exception ex) when (ex is BadImageFormatException or FileLoadException or ReflectionTypeLoadException)
+            catch (Exception ex) when (ex is BadImageFormatException or FileLoadException
+                                       or FileNotFoundException or TypeLoadException
+                                       or ReflectionTypeLoadException)
             {
                 log($"plugin '{Path.GetFileName(dll)}' could not be loaded: {ex.Message}");
             }

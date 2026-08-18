@@ -139,6 +139,31 @@ public class PluginCatalogTests : IDisposable
         Assert.Equal($"{nameof(FactoryNote)}{Environment.NewLine}", File.ReadAllText(recorded));
     }
 
+    [Fact]
+    public void A_broken_assembly_is_reported_and_does_not_stop_the_scan()
+    {
+        var plugins = PluginsDirWithFixture();
+        File.WriteAllText(Path.Combine(plugins, "broken.dll"), "not an assembly");
+        var registry = new ProviderRegistry();
+        var log = new List<string>();
+
+        PluginCatalog.LoadInto(registry, plugins, log.Add);
+
+        Assert.Equal("CountingSink", registry.Resolve<IRunHistorySink>(new ProviderRef("counting")).GetType().Name);
+        Assert.Contains(log, line => line.Contains("broken.dll") && line.Contains("could not be loaded"));
+    }
+
+    [Fact]
+    public void An_assembly_that_yields_no_providers_is_reported()
+    {
+        var registry = new ProviderRegistry();
+        var log = new List<string>();
+
+        PluginCatalog.LoadInto(registry, PluginsDirWithFixture(), log.Add);
+
+        Assert.Contains(log, line => line.Contains("Factory.Core.dll") && line.Contains("registered no providers"));
+    }
+
     private sealed class NoopSink : IRunHistorySink
     {
         public void Emit(FactoryEvent evt) { }
