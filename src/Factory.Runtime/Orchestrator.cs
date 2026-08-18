@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Factory.Agents;
 using Factory.Core;
 
@@ -63,6 +64,11 @@ public sealed class Orchestrator : IDisposable
     /// Not yet consulted anywhere — reserved for a later change.</summary>
     public TimeSpan StallThreshold { get; }
 
+    /// <summary>Last time each item made forward progress — a station change or a shell command
+    /// starting/completing on its behalf. Not yet consulted anywhere; the foundation for a later
+    /// stall check against <see cref="StallThreshold"/>.</summary>
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _lastProgressUtc = new();
+
     public Orchestrator(FactoryHost host, TimeSpan? stallThreshold = null)
     {
         this.host = host;
@@ -73,7 +79,16 @@ public sealed class Orchestrator : IDisposable
         // Best-effort net so a killed or crashing process still leaves the heartbeat file
         // saying 'stopped' rather than stuck on the last 'running' write.
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+
+        // Shell commands run for an item deep inside a station (check, verify, remediation);
+        // this is how their start/completion reaches progress tracking without threading an
+        // item id through every call site.
+        Shell.OnCommandStarted = TouchProgress;
+        Shell.OnCommandCompleted = TouchProgress;
     }
+
+    /// <summary>Records that an item just made forward progress.</summary>
+    private void TouchProgress(string itemId) => _lastProgressUtc[itemId] = DateTimeOffset.UtcNow;
 
     public async Task<OrchestratorReport> RunAsync(
         OrchestratorOptions? options = null, CancellationToken ct = default)
@@ -141,6 +156,7 @@ public sealed class Orchestrator : IDisposable
                 {
                     Station = claimed.Station ?? _s.Blueprint.Pipeline.FirstOrDefault()
                 });
+                TouchProgress(claimed.Id);
                 started++;
                 running.Add(ProcessItemAsync(claimed, opts, ct));
             }
@@ -196,6 +212,9 @@ public sealed class Orchestrator : IDisposable
 
         _s.Log($"▶ {item.Id} {item.Title}");
 
+        // Attributes any shell command run on this item's behalf (check, verify, remediation)
+        // to it, however deep in the call stack it happens.
+        Shell.CurrentItemId.Value = item.Id;
         try
         {
             var stationId = item.Station ?? _s.Blueprint.Pipeline.FirstOrDefault();
@@ -213,6 +232,7 @@ public sealed class Orchestrator : IDisposable
 
                 var def = _s.Blueprint.Require(stationId);
                 run.Item = host.Update(run.Item with { Station = stationId });
+                TouchProgress(run.Item.Id);
 
                 if (def.Profile != TokenProfile.None)
                 {
@@ -299,6 +319,10 @@ public sealed class Orchestrator : IDisposable
         {
             await FailAsync(run, $"unhandled: {ex.Message}", ct).ConfigureAwait(false);
         }
+        finally
+        {
+            Shell.CurrentItemId.Value = null;
+        }
     }
 
     private async Task<StationResult> ExecuteStationAsync(StationContext ctx)
@@ -323,6 +347,7 @@ public sealed class Orchestrator : IDisposable
             item = host.Transition(item, WorkItemState.Verified, detail);
         item = host.Transition(item, WorkItemState.Done, detail);
         host.Update(item with { Station = null });
+        TouchProgress(item.Id);
 
         Interlocked.Increment(ref _completed);
         _s.Log($"✔ {item.Id} done — {Trim(detail)}");
@@ -395,6 +420,8 @@ public sealed class Orchestrator : IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
 
         AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
+        Shell.OnCommandStarted = null;
+        Shell.OnCommandCompleted = null;
         TryWriteStoppedHeartbeat();
     }
 }

@@ -11,6 +11,16 @@ public readonly record struct ShellResult(int ExitCode, string Stdout, string St
 
 public static class Shell
 {
+    /// <summary>Id of the work item on whose behalf the current async flow is running a shell
+    /// command, if any. Set by the orchestrator around an item's processing so a command's
+    /// start and completion can be attributed without threading an id through every call site.</summary>
+    internal static readonly AsyncLocal<string?> CurrentItemId = new();
+
+    /// <summary>Fired for <see cref="CurrentItemId"/> when a command starts and again when it
+    /// finishes. Wired up by the orchestrator to feed per-item progress tracking.</summary>
+    internal static Action<string>? OnCommandStarted;
+    internal static Action<string>? OnCommandCompleted;
+
     public static async Task<ShellResult> RunAsync(
         string command, string workingDirectory, int timeoutSeconds = 300, CancellationToken ct = default)
     {
@@ -87,6 +97,20 @@ public static class Shell
     private static readonly TimeSpan DrainGrace = TimeSpan.FromSeconds(2);
 
     private static async Task<ShellResult> ExecAsync(ProcessStartInfo psi, int timeoutSeconds, CancellationToken ct)
+    {
+        var itemId = CurrentItemId.Value;
+        if (itemId is not null) OnCommandStarted?.Invoke(itemId);
+        try
+        {
+            return await ExecCoreAsync(psi, timeoutSeconds, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (itemId is not null) OnCommandCompleted?.Invoke(itemId);
+        }
+    }
+
+    private static async Task<ShellResult> ExecCoreAsync(ProcessStartInfo psi, int timeoutSeconds, CancellationToken ct)
     {
         // Stop build tools leaving daemons behind in the first place.
         psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
