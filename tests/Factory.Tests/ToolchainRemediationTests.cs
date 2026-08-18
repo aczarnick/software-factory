@@ -94,4 +94,34 @@ public class ToolchainRemediationTests : IDisposable
         Assert.Equal(WorkItemState.Blocked, result.Item?.State);
         Assert.NotEqual(WorkItemState.Failed, result.Item?.State);
     }
+
+    [Fact]
+    public async Task ToolchainMismatch_IsNeverCapturedIntoTheBaseline()
+    {
+        using var host = FactoryHost.Init(_dir, transport: new FakeTransport());
+        File.WriteAllText(Path.Combine(_dir, "App.csproj"), "<Project/>");
+
+        var mismatch = ToolchainCompatibilityResult.Incompatible(["9.0.100"], ["8.0.100"]);
+        var baseline = await CheckStation.CaptureBaselineAsync(
+            host.Services, probe: new FakeToolchainProbe(mismatch));
+
+        Assert.Null(baseline);
+        Assert.False(File.Exists(host.Services.Paths.BaselineFile));
+    }
+
+    [Fact]
+    public async Task GenuineFailure_IsStillCapturedIntoTheBaseline()
+    {
+        using var host = FactoryHost.Init(_dir, transport: new FakeTransport());
+        // Broken XML so `dotnet build` fails fast without needing a restorable project.
+        File.WriteAllText(Path.Combine(_dir, "App.csproj"), "not a real project");
+
+        var compatible = ToolchainCompatibilityResult.Compatible();
+        var baseline = await CheckStation.CaptureBaselineAsync(
+            host.Services, probe: new FakeToolchainProbe(compatible));
+
+        Assert.NotNull(baseline);
+        Assert.False(baseline!.Passing["build"]);
+        Assert.True(File.Exists(host.Services.Paths.BaselineFile));
+    }
 }
