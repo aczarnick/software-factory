@@ -32,23 +32,26 @@ ancestors. They are the factory's own work, already destined for master, and the
 
 ### Repository state phase 3 inherits
 
-At the time phase 2 merged, the main checkout was still on `storage-ports-phase-2` and the factory
-kept committing there, so `master` immediately began falling behind (18 commits within the hour).
-The factory work that had accumulated on that branch was brought onto `master` by cherry-picking the
-`factory: integrate` **merge** commits with `-m 1` — that takes the diff against the first parent,
-which is the work-item content, and so excluded the phase-2 commits interleaved in the same chain.
-A plain fast-forward would have dragged partial phase-2 work onto `master`.
+While phase 2 was in flight the main checkout was on `storage-ports-phase-2` and the factory kept
+committing there. That work was brought onto `master` by cherry-picking the `factory: integrate`
+**merge** commits with `-m 1` — that takes the diff against the first parent, which is the work-item
+content, and so excluded the phase-2 commits interleaved in the same chain. A plain fast-forward
+would have dragged partial phase-2 work onto `master`.
 
-Consequences to settle **before** phase 3 starts:
+Settled 2026-08-18: the factory was stopped and the main checkout moved back to `master`, so it
+commits there again and the divergence trap is closed. `storage-ports-phase-2` is now redundant — a
+subset of `master` by content, apart from superseded phase-2 drafts — and can be deleted.
 
-1. `master` and `storage-ports-phase-2` now hold duplicate-content commits with different SHAs.
-   Merging that branch again will conflict in files phase work never touched — the phase-2 merge hit
-   exactly one such conflict, in `Toolchain.cs`, where the resolution was "take master, the phase
-   side contributed nothing".
-2. The lasting fix is to get the main checkout back onto `master` so the factory commits there again.
-   That moves a live process's HEAD, so it needs an operator: stop `factory up`, `git checkout master`
-   in the main checkout, then restart. Until that happens, every phase will need the cherry-pick dance.
-3. `master` is local-only; nothing in this work has been pushed.
+Two things still worth knowing:
+
+1. **A SHA count is not a content count.** `git rev-list --count master..<branch>` counts commits
+   absent by SHA, so cherry-picked work still shows as missing; `git log --cherry-pick` is no better
+   for merge commits, because a merge's patch-id does not match the `-m 1` commit it produced. Both
+   led to a false "18 commits behind" reading here when nothing was missing. The authoritative check
+   is a tree diff: `git diff --stat master <branch>`.
+2. **The duplicate-SHA history means re-merging that branch conflicts in files phase work never
+   touched.** The phase-2 merge hit exactly one, in `Toolchain.cs`, where the resolution was "take
+   master, the phase side contributed nothing". `master` is local-only; nothing here has been pushed.
 
 ## Where the plan was wrong
 
