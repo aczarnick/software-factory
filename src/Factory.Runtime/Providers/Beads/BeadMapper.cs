@@ -191,13 +191,13 @@ public static class BeadMapper
     /// projection and lets beads win, so a field left out is not merely unsaved in beads — the next
     /// open reverts the local edit to match.
     ///
-    /// <c>-d</c> and <c>--acceptance</c> are unconditional where <see cref="CreateArgs"/> makes them
-    /// conditional. bd accepts <c>-d ""</c> and <c>--acceptance ""</c> and empties the cell, so an
-    /// item that has lost its intent or its criteria can say so; omitting the flag instead would
-    /// leave beads asserting the old value to every other reader with nothing to ever correct it.
-    /// An empty <c>--title</c>, by contrast, bd refuses (exit 1) — exactly as it refuses one on
-    /// create, so no bead the factory filed can have one, and the write fails loudly rather than
-    /// keeping a stale title quietly.
+    /// <c>-d</c> is unconditional where <see cref="CreateArgs"/> makes it conditional: bd accepts
+    /// <c>-d ""</c> and empties the cell, so an item that has lost its intent can say so, where
+    /// omitting the flag would leave beads asserting the old value with nothing to ever correct it.
+    /// <c>--acceptance</c> stays conditional for the opposite reason, explained at the flag itself.
+    /// An empty <c>--title</c> bd refuses (exit 1) — exactly as it refuses one on create, so no bead
+    /// the factory filed can have one, and the write fails loudly rather than keeping a stale title
+    /// quietly.
     ///
     /// There is deliberately no <c>--deps</c>: bd <c>update</c> has no such flag, and a post-filing
     /// edge needs <c>bd dep add</c> / <c>bd dep remove</c> instead. Dependency edits therefore do
@@ -224,10 +224,20 @@ public static class BeadMapper
             "--status", StatusFor(item.State),
             "-p", item.Priority.ToString(),
             "-d", item.Intent,
-            "--acceptance", AcceptanceFor(item),
             "--metadata", MetadataFor(item),
             "--actor", owner
         };
+
+        // Sent only when the item has criteria of its own, deliberately unlike -d above. The two
+        // differ because their reads differ: Intent falls back to the bead's own description when the
+        // factory has no metadata there, so an empty Intent really means the item has nothing to say,
+        // while AcceptanceCriteria has no such fallback and arrives empty for every bead another tool
+        // filed. An unconditional --acceptance would render that emptiness back over beads' own cell
+        // and destroy a human's criteria on the factory's first update. The accepted cost is the
+        // reverse case: clearing a factory item's criteria leaves the bead's cell stale, while the
+        // metadata blob — the authority for what the factory believes — is correct. Losing another
+        // tool's data is worse than a stale human-facing cell.
+        if (item.AcceptanceCriteria.Count > 0) { args.Add("--acceptance"); args.Add(AcceptanceFor(item)); }
 
         if (item.State == WorkItemState.Ready) { args.Add("--assignee"); args.Add(""); }
 

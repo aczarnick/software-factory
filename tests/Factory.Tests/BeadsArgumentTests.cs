@@ -89,15 +89,25 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void Updating_sends_an_emptied_description_and_criteria_rather_than_omitting_the_flags()
+    public void Updating_sends_an_emptied_description_rather_than_omitting_the_flag()
     {
         var args = BeadMapper.UpdateArgs(WorkItem.Create("nothing to say") with { State = WorkItemState.Ready }, "node-a");
 
-        // bd clears the cell for `-d ""` and `--acceptance ""` and exits 0, so omitting the flag
-        // when the item has nothing is the one shape that leaves behind a stale value claiming the
-        // item still says something it no longer says.
+        // bd clears the cell for `-d ""` and exits 0, so omitting the flag when the item has nothing
+        // is the one shape that leaves behind a stale value claiming the item still says something it
+        // no longer says. Safe only because Intent reads back from the bead's own description when the
+        // factory has no metadata there, so an emptied Intent means the item really has none.
         Assert.Equal("", ValueAfter(args, "-d"));
-        Assert.Equal("", ValueAfter(args, "--acceptance"));
+    }
+
+    [Fact]
+    public void Updating_an_item_with_no_criteria_of_its_own_leaves_the_beads_acceptance_cell_alone()
+    {
+        var args = BeadMapper.UpdateArgs(WorkItem.Create("no criteria") with { State = WorkItemState.Ready }, "node-a");
+
+        // Deliberately asymmetric with -d above: criteria have no read-back fallback, so a bead
+        // another tool filed arrives with none, and `--acceptance ""` would destroy its cell.
+        Assert.DoesNotContain("--acceptance", args);
     }
 
     [Fact]

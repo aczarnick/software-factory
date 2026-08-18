@@ -73,6 +73,42 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
             store.Update(claimed with { State = WorkItemState.Cancelled });
     }
 
+    private const string ForeignType = "epic";
+    private const string ForeignCriterion = "- a criterion a human wrote";
+
+    /// <summary>Files a bead the way another tool would — raw <c>bd</c>, no factory metadata, a type
+    /// the factory has no <see cref="WorkItemKind"/> for, and acceptance criteria in beads' own cell —
+    /// then puts it through the path the orchestrator takes: claim the ready bead, write it back.</summary>
+    private string AForeignBeadTheFactoryHasClaimedAndUpdated(string title)
+    {
+        DrainReadyQueue();
+
+        var id = Ids.New("wi");
+        var filed = Cli().Exec("create", title, "--id", id, "-t", ForeignType,
+                               "-d", "a human wrote this", "--acceptance", ForeignCriterion, "--json");
+        Assert.True(filed.Ok, filed.Combined);
+
+        var store = Store();
+        var claimed = store.TryClaim(Owner);
+        Assert.Equal(id, claimed?.Id);
+        store.Update(claimed!);
+
+        return id;
+    }
+
+    [Fact]
+    public void Updating_a_bead_another_tool_filed_keeps_the_acceptance_criteria_it_wrote()
+    {
+        if (Unavailable) return;
+
+        var id = AForeignBeadTheFactoryHasClaimedAndUpdated("an epic a human filed");
+
+        // Asserted from bd's own output, because the mapper's projection is what is under suspicion.
+        // ToWorkItem reads criteria only from the factory's metadata blob, so a foreign bead's arrive
+        // empty — and writing that emptiness back would erase beads' own cell for good.
+        Assert.Equal(ForeignCriterion, Bead(id).AcceptanceCriteria);
+    }
+
     [Fact]
     public void Add_then_Get_round_trips_a_work_item()
     {
