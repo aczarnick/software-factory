@@ -29,6 +29,7 @@ public static class PluginCatalog
     {
         var context = new PluginLoadContext(dll);
         var assembly = context.LoadFromAssemblyPath(Path.GetFullPath(dll));
+        var yieldedProvider = false;
 
         foreach (var type in assembly.GetExportedTypes())
         {
@@ -41,12 +42,24 @@ public static class PluginCatalog
                 continue;
             }
 
-            if (Register<IRunHistorySink>(registry, type, marker.Name, log)) continue;
-            if (Register<IWorkItemStore>(registry, type, marker.Name, log)) continue;
-            if (Register<IRunHistory>(registry, type, marker.Name, log)) continue;
+            // Every port the type satisfies, not just the first: a backend that both reads and
+            // writes run history must be selectable as either.
+            var claimed = Register<IRunHistorySink>(registry, type, marker.Name, log);
+            claimed |= Register<IWorkItemStore>(registry, type, marker.Name, log);
+            claimed |= Register<IRunHistory>(registry, type, marker.Name, log);
 
-            log($"plugin type '{type.FullName}' is marked as a provider but implements no storage port — skipped");
+            if (!claimed)
+            {
+                log($"plugin type '{type.FullName}' is marked as a provider but implements no storage port — skipped");
+                continue;
+            }
+
+            yieldedProvider = true;
         }
+
+        // Silence here means the assembly's contract types did not unify with the host's, which
+        // leaves no other trace: the attribute itself stops matching and every type is passed over.
+        if (!yieldedProvider) log($"plugin '{Path.GetFileName(dll)}' registered no providers");
     }
 
     private static bool Register<T>(ProviderRegistry registry, Type type, string name, Action<string> log)
@@ -62,12 +75,14 @@ public static class PluginCatalog
 
         var withOptions = type.GetConstructor([typeof(ProviderRef)]);
         if (withOptions is null && type.GetConstructor(Type.EmptyTypes) is null)
-            throw new InvalidOperationException(
-                $"Provider '{name}' ({type.FullName}) needs a constructor taking a {nameof(ProviderRef)}, " +
-                "or a parameterless one.");
+        {
+            log($"plugin provider '{name}' ({type.FullName}) needs a constructor taking a " +
+                $"{nameof(ProviderRef)}, or a parameterless one — skipped");
+            return true;
+        }
 
         registry.Register<T>(name, reference => (T)(withOptions is not null
-            ? withOptions.Invoke([reference])
+            ? withOptions.Invoke(BindingFlags.DoNotWrapExceptions, binder: null, [reference], culture: null)
             : Activator.CreateInstance(type)!));
 
         return true;

@@ -22,6 +22,10 @@ public class PluginCatalogTests : IDisposable
             AppContext.BaseDirectory, "..", "..", "..", "..", "fixtures", "Factory.TestPlugin",
             "bin", output.Parent!.Name, output.Name, "Factory.TestPlugin.dll"));
 
+        if (!File.Exists(source))
+            throw new InvalidOperationException(
+                $"Fixture plugin not built: {source}. Run 'dotnet build' at the solution root first.");
+
         File.Copy(source, Path.Combine(plugins, "Factory.TestPlugin.dll"));
         File.Copy(
             Path.Combine(AppContext.BaseDirectory, "Factory.Core.dll"),
@@ -58,8 +62,9 @@ public class PluginCatalogTests : IDisposable
 
         var sink = registry.Resolve<IRunHistorySink>(new ProviderRef("counting"));
 
-        // The cast is the assertion: a plugin that loaded its own Factory.Core would fail here.
-        Assert.IsAssignableFrom<IRunHistorySink>(sink);
+        var contractOnThePlugin = sink.GetType().GetInterfaces().Single(i => i.Name == nameof(IRunHistorySink));
+
+        Assert.Same(typeof(IRunHistorySink), contractOnThePlugin);
     }
 
     [Fact]
@@ -93,6 +98,45 @@ public class PluginCatalogTests : IDisposable
 
         Assert.IsType<NoopSink>(registry.Resolve<IRunHistorySink>(new ProviderRef("counting")));
         Assert.Contains(log, line => line.Contains("counting") && line.Contains("shadowed by a built-in"));
+    }
+
+    [Fact]
+    public void A_provider_with_no_usable_constructor_is_skipped_without_stopping_the_scan()
+    {
+        var registry = new ProviderRegistry();
+        var log = new List<string>();
+
+        PluginCatalog.LoadInto(registry, PluginsDirWithFixture(), log.Add);
+
+        Assert.Equal("CountingSink", registry.Resolve<IRunHistorySink>(new ProviderRef("counting")).GetType().Name);
+        Assert.Contains(log, line => line.Contains("unconstructable") && line.Contains("UnconstructableSink"));
+    }
+
+    [Fact]
+    public void A_provider_implementing_two_ports_is_registered_under_both()
+    {
+        var registry = new ProviderRegistry();
+        PluginCatalog.LoadInto(registry, PluginsDirWithFixture(), _ => { });
+
+        var asSink = registry.Resolve<IRunHistorySink>(new ProviderRef("dual-port"));
+        var asHistory = registry.Resolve<IRunHistory>(new ProviderRef("dual-port"));
+
+        Assert.Equal("DualPortStore", asSink.GetType().Name);
+        Assert.Equal("DualPortStore", asHistory.GetType().Name);
+    }
+
+    [Fact]
+    public void A_provider_receives_its_options_and_runs_when_called_through_the_contract()
+    {
+        var recorded = Path.Combine(_dir, "recorded.txt");
+        var registry = new ProviderRegistry();
+        PluginCatalog.LoadInto(registry, PluginsDirWithFixture(), _ => { });
+
+        var sink = registry.Resolve<IRunHistorySink>(
+            new ProviderRef("recording", new Dictionary<string, string> { ["path"] = recorded }));
+        sink.Emit(new FactoryNote("hello"));
+
+        Assert.Equal($"{nameof(FactoryNote)}{Environment.NewLine}", File.ReadAllText(recorded));
     }
 
     private sealed class NoopSink : IRunHistorySink

@@ -5,9 +5,10 @@ namespace Factory.Runtime;
 
 /// <summary>
 /// Isolates a plugin's own dependencies while forcing contract types to come from the host.
-/// Without that second rule a plugin loads its own <c>Factory.Core</c>, and the interface it
-/// implements is a different type than the one the host asks for — which surfaces as an
-/// unhelpful cast failure rather than a load error.
+/// Without that second rule a plugin loads its own <c>Factory.Core</c>, and every contract type
+/// it touches — the ports it implements, the attribute that marks it — is a different type than
+/// the host's. The provider then simply never appears: no load error, no cast failure, not even a
+/// skipped-type line, because the marker attribute stops matching before anything is logged.
 /// </summary>
 internal sealed class PluginLoadContext(string pluginPath)
     : AssemblyLoadContext(name: Path.GetFileNameWithoutExtension(pluginPath), isCollectible: false)
