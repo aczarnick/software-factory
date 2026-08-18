@@ -357,6 +357,47 @@ public class HeartbeatStatusTests
         // structural comparison is needed to catch data loss across the round trip.
         Assert.Equivalent(status, restored, strict: true);
     }
+
+    [Fact]
+    public void HeartbeatStatus_RoundTrips_HeartbeatWorkItemStatus()
+    {
+        var status = new HeartbeatStatus
+        {
+            Pid = 4242,
+            StartedAtUtc = new DateTime(2026, 8, 13, 9, 0, 0, DateTimeKind.Utc),
+            WorkItems =
+            [
+                new HeartbeatWorkItemStatus
+                {
+                    WorkItemId = "wi-1",
+                    Station = "implement",
+                    EnteredStationAtUtc = new DateTime(2026, 8, 13, 9, 5, 0, DateTimeKind.Utc),
+                    ElapsedSeconds = 123.4,
+                    CurrentCommand = "dotnet build"
+                }
+            ]
+        };
+
+        var json = FactoryJson.Write(status);
+        var restored = FactoryJson.Read<HeartbeatStatus>(json);
+
+        var entry = Assert.Single(restored!.WorkItems);
+        Assert.Equal("wi-1", entry.WorkItemId);
+        Assert.Equal("implement", entry.Station);
+        Assert.Equal(new DateTime(2026, 8, 13, 9, 5, 0, DateTimeKind.Utc), entry.EnteredStationAtUtc);
+        Assert.Equal(123.4, entry.ElapsedSeconds);
+        Assert.Equal("dotnet build", entry.CurrentCommand);
+    }
+
+    [Fact]
+    public void HeartbeatStatus_WithoutWorkItemsField_DeserializesToEmptyCollection()
+    {
+        var json = """{"pid":4242,"startedAtUtc":"2026-08-13T09:00:00Z","status":"running"}""";
+
+        var restored = FactoryJson.Read<HeartbeatStatus>(json);
+
+        Assert.Empty(restored!.WorkItems);
+    }
 }
 
 internal static class TempDir

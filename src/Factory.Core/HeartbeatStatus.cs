@@ -18,6 +18,17 @@ public sealed record HeartbeatStatus
     public HeartbeatSpend Spend { get; init; } = new();
     public List<HeartbeatUsageWindow> UsageWindows { get; init; } = [];
     public List<HeartbeatGateResult> RecentGates { get; init; } = [];
+    public List<HeartbeatWorkItemStatus> WorkItems { get; init; } = [];
+}
+
+/// <summary>Where one active work item sits in the factory right now, keyed by work item id.</summary>
+public sealed record HeartbeatWorkItemStatus
+{
+    public required string WorkItemId { get; init; }
+    public string Station { get; init; } = "";
+    public DateTime EnteredStationAtUtc { get; init; }
+    public double ElapsedSeconds { get; init; }
+    public string? CurrentCommand { get; init; }
 }
 
 /// <summary>Where one work item sits in the factory right now.</summary>
