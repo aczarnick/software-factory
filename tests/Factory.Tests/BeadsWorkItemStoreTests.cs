@@ -643,7 +643,11 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         fold.Open(store);
 
         // bd's own output, and the type literal this test chose: an edge stored as anything but
-        // `blocks` is an edge beads does not withhold the dependent for.
+        // `blocks` is an edge beads does not withhold the dependent for. Asserted on the edge itself
+        // as well as through BlockersInBeads, so the claim does not rest on that helper's filter.
+        var stored = Assert.Single(Bead(dependent.Id).Dependencies);
+        Assert.Equal("blocks", stored.Type);
+        Assert.Equal(blocker.Id, stored.DependsOnId);
         Assert.Equal([blocker.Id], BlockersInBeads(dependent.Id));
 
         // The fold is corrected from beads on every open, so an edge the update never sent is not
@@ -702,7 +706,6 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         Assert.Equal("related", edge.Type);
         Assert.Equal(context.Id, edge.DependsOnId);
 
-
         // And the item it is on is still dispatchable, so nothing about keeping the edge holds work back.
         Assert.Contains(dependent.Id, ReadyInBeads());
     }
@@ -719,11 +722,60 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         // bd checks each edge for a cycle and refuses one that closes a loop. Swallowing that would
         // leave Dispatchable() withholding an item bd ready hands straight out — the authority
         // disagreeing with itself, which is the defect this whole diff exists to close.
-        Assert.Throws<InvalidOperationException>(() => store.Update(first with { DependsOn = [second.Id] }));
+        Assert.Throws<InvalidOperationException>(() => store.Update(first with
+        {
+            Title = RenamedByTheRefusedUpdate,
+            DependsOn = [second.Id]
+        }));
 
-        // Nothing written: bd rejects the edge before storing it, so the refusal must not have left
-        // a half-applied graph behind either.
+        // Nothing written to the graph: bd rejects the edge before storing it, so the refusal must
+        // not have left a half-applied graph behind either.
         Assert.Empty(BlockersInBeads(first.Id));
         Assert.Equal([first.Id], BlockersInBeads(second.Id));
+
+        // The field half of the same update did commit, because the edge diff runs after it. That
+        // asymmetry is deliberate and is why throwing costs nothing durable: the fields are in beads,
+        // and the un-applied edge is recomputed from beads by the next update rather than lost.
+        Assert.Equal(RenamedByTheRefusedUpdate, Bead(first.Id).Title);
+    }
+
+    private const string RenamedByTheRefusedUpdate = "renamed by the update whose edge was refused";
+
+    [Fact]
+    public void An_update_that_drops_a_blocker_leaves_a_foreign_edge_on_the_same_item_alone()
+    {
+        if (Unavailable) return;
+        var logged = new List<string>();
+        var store = new BeadsWorkItemStore(Cli(), Owner, logged.Add);
+        var blocker = store.Add(WorkItem.Create("a blocker the item stops waiting on") with { State = WorkItemState.Ready });
+        var context = store.Add(WorkItem.Create("background reading a human linked") with { State = WorkItemState.Ready });
+        var dependent = store.Add(WorkItem.Create("an item with one edge of each kind") with
+        {
+            State = WorkItemState.Ready,
+            DependsOn = [blocker.Id]
+        });
+
+        var added = Cli().Exec("dep", "add", dependent.Id, context.Id, "--type", "related");
+        Assert.True(added.Ok, added.Combined);
+        Assert.Equal(2, Bead(dependent.Id).Dependencies.Count);
+
+        // One call that has to do both halves of the discrimination at once: drop the blocking edge
+        // the item no longer carries, and leave the non-blocking one it never carried. Beads allows
+        // only one edge per ordered pair, so the two necessarily point at different items — which is
+        // exactly the shape in which a type-blind removal pass takes the foreign edge with it.
+        store.Update(dependent with { DependsOn = [] });
+
+        var survivor = Assert.Single(Bead(dependent.Id).Dependencies);
+        Assert.Equal("related", survivor.Type);
+        Assert.Equal(context.Id, survivor.DependsOnId);
+
+        // And the post-condition: dropping the blocker really did unblock the work, so the removal
+        // reached beads rather than merely being absent from the item.
+        Assert.Contains(dependent.Id, ReadyInBeads());
+
+        // The removal is reported. A snapshot carries no base revision, so this pass cannot tell an
+        // edge this checkout dropped from one another actor added since the item was read — it deletes
+        // either. The log line is the only record that the row existed, so it is asserted, not assumed.
+        Assert.Contains(logged, line => line.Contains(dependent.Id) && line.Contains(blocker.Id));
     }
 }

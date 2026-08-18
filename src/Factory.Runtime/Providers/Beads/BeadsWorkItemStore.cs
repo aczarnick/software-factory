@@ -127,10 +127,18 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string
     /// the local-authority assumption this method exists to remove. The writes are skipped entirely
     /// when the two agree, which is every update that is not an edge edit.
     ///
-    /// Driving both halves from <see cref="WorkItem.DependsOn"/> is what keeps another tool's data
-    /// safe. That projection carries only the edge types beads itself treats as blocking, so a
-    /// <c>related</c> or <c>parent-child</c> edge a human filed is never in either set and is never
-    /// named to <c>bd dep remove</c> — which has no <c>--type</c> flag and would delete it.</remarks>
+    /// Driving both halves from <see cref="WorkItem.DependsOn"/> is what keeps another tool's
+    /// <em>non-blocking</em> edges safe, and only those. That projection carries just the edge types
+    /// beads itself treats as blocking, so a <c>related</c> or <c>parent-child</c> edge a human filed
+    /// is never in either set and is never named to <c>bd dep remove</c> — which has no <c>--type</c>
+    /// flag and would delete it.
+    ///
+    /// A foreign <em>blocking</em> edge is not protected, and cannot be by this shape. The item is a
+    /// snapshot with no base to diff against, so a blocking edge another actor added after this
+    /// checkout read the item is indistinguishable from one this checkout dropped, and is removed as
+    /// a local removal. The window is the whole time an item is in flight. Telling the two apart needs
+    /// a base revision the port cannot express, so the removals are logged instead: deleting another
+    /// actor's row from a shared database must at least leave a trace.</remarks>
     private void ReconcileDependencies(WorkItem item)
     {
         // Read after the field write, not before: an id beads does not know has already failed loudly
@@ -142,8 +150,14 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string
                   $"add the dependency {item.Id} -> {blocker}");
 
         foreach (var blocker in stored.DependsOn.Except(item.DependsOn))
+        {
             Write(BeadMapper.DependencyRemoveArgs(item.Id, blocker, owner),
                   $"remove the dependency {item.Id} -> {blocker}");
+
+            // Logged, never silent: the edge may have been another actor's, and this is the only
+            // record that it existed. See the remark above on why the two cases cannot be told apart.
+            log($"removed the dependency {item.Id} -> {blocker} from beads");
+        }
     }
 
     private void Write(IReadOnlyList<string> args, string what)
