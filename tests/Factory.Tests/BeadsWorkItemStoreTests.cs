@@ -95,8 +95,8 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
 
         public FactoryState State { get; }
 
-        public void Open(IWorkItemStore store) =>
-            BacklogReconciler.Reconcile(store, State, _history, _ => { });
+        public void Open(IWorkItemStore store, Action<string>? log = null) =>
+            BacklogReconciler.Reconcile(store, State, _history, log ?? (_ => { }));
 
         public void Dispose() => _history.Dispose();
     }
@@ -122,6 +122,74 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         store.Update(claimed!);
 
         return id;
+    }
+
+    private const string HumanIntent = "the intent a human rewrote by hand";
+
+    [Fact]
+    public void A_humans_edit_to_the_beads_own_description_is_read_reported_and_kept()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var filed = store.Add(WorkItem.Create("shared with a human", "the intent as filed") with
+        {
+            State = WorkItemState.Ready
+        });
+
+        using var fold = new Fold();
+        fold.Open(store);
+
+        // One command a human runs against the shared database, on the cell beads owns natively.
+        var edited = Cli().Exec("update", filed.Id, "-d", HumanIntent, "--actor", "a-human");
+        Assert.True(edited.Ok, edited.Combined);
+
+        // 1. The read adopts it. MetadataFor also writes intent into the metadata blob, and UpdateArgs
+        //    sends the same value to -d on every write, so after any factory write the two agree by
+        //    construction — which is exactly why preferring the metadata copy made the factory read
+        //    its own stale echo instead of the human's edit, and why a difference between the two can
+        //    only have come from outside.
+        Assert.Equal(HumanIntent, store.Get(filed.Id)!.Intent);
+
+        // 2. Reconcile reports it. SharedState compares the mapped projection, so an edit the read
+        //    does not see is an edit the fold is never told about either — no correction, no log line.
+        var logged = new List<string>();
+        fold.Open(store, logged.Add);
+
+        Assert.Equal(HumanIntent, fold.State.Items[filed.Id].Intent);
+        Assert.Contains(logged, message => message.Contains("reconciled"));
+
+        // 3. And the next factory write leaves it standing. This is the half that made the defect
+        //    destructive rather than merely invisible: -d is unconditional, so the stale value went
+        //    straight back over the human's text at exit 0 with nothing logged.
+        store.Update(fold.State.Items[filed.Id] with { Title = "retitled by the factory" });
+
+        Assert.Equal(HumanIntent, Bead(filed.Id).Description);
+    }
+
+    [Fact]
+    public void A_factory_item_that_has_criteria_of_its_own_still_overwrites_a_humans_acceptance_cell()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var filed = store.Add(WorkItem.Create("criteria of its own") with
+        {
+            State = WorkItemState.Ready,
+            AcceptanceCriteria = [AcceptanceCriterion.Command("as filed", "dotnet build")]
+        });
+
+        var edited = Cli().Exec("update", filed.Id, "--acceptance", ForeignCriterion, "--actor", "a-human");
+        Assert.True(edited.Ok, edited.Combined);
+
+        store.Update(store.Get(filed.Id)!);
+
+        // The accepted asymmetry, documented at UpdateArgs and until now asserted nowhere. --acceptance
+        // is conditional, which protects a bead with no factory criteria; an item that has its own
+        // renders them over the human's cell, because the structured criteria in the metadata are the
+        // authority for what the factory believes and there is nowhere else to put them. Asserted so
+        // the cost is a decision on record rather than a surprise, and so making the write
+        // unconditional cannot pass unnoticed.
+        Assert.DoesNotContain(ForeignCriterion, Bead(filed.Id).AcceptanceCriteria);
+        Assert.Contains("as filed", Bead(filed.Id).AcceptanceCriteria);
     }
 
     [Fact]

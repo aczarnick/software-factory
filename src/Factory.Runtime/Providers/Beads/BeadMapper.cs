@@ -141,7 +141,14 @@ public static class BeadMapper
         {
             Id = bead.Id,
             Title = bead.Title,
-            Intent = metadata.Intent ?? bead.Description ?? "",
+            // The bead's own description cell first, and the metadata copy only as a fallback.
+            // MetadataFor writes the intent into the metadata too and UpdateArgs sends the same value
+            // to -d on every write, so after any factory write the two agree by construction — which
+            // means a difference between them can only have come from outside, and preferring the
+            // metadata copy made the factory read its own stale echo and then write it back over a
+            // human's edit. The fallback is for the one case CreateArgs omits -d: an item filed with
+            // no intent at all.
+            Intent = bead.Description ?? metadata.Intent ?? "",
             Kind = KindFor(bead.IssueType),
             State = StateFor(bead.Status),
             StoreStatus = UnownedStatus(bead.Status),
@@ -288,14 +295,18 @@ public static class BeadMapper
         if (!KeepsStoreStatus(item)) { args.Add("--status"); args.Add(StatusFor(item.State)); }
 
         // Sent only when the item has criteria of its own, deliberately unlike -d above. The two
-        // differ because their reads differ: Intent falls back to the bead's own description when the
-        // factory has no metadata there, so an empty Intent really means the item has nothing to say,
-        // while AcceptanceCriteria has no such fallback and arrives empty for every bead another tool
-        // filed. An unconditional --acceptance would render that emptiness back over beads' own cell
-        // and destroy a human's criteria on the factory's first update. The accepted cost is the
-        // reverse case: clearing a factory item's criteria leaves the bead's cell stale, while the
-        // metadata blob — the authority for what the factory believes — is correct. Losing another
-        // tool's data is worse than a stale human-facing cell.
+        // differ because their reads differ: Intent is read from the bead's own description cell
+        // (see ToWorkItem), so it already carries whatever a human wrote there and an unconditional
+        // -d writes back the value the factory just read. AcceptanceCriteria has no such read — it
+        // comes only from the metadata — so it arrives empty for every bead another tool filed, and
+        // an unconditional --acceptance would render that emptiness back over beads' own cell and
+        // destroy a human's criteria on the factory's first update. The accepted cost is the reverse
+        // case: an item that has criteria of its own renders them over a human's cell, and clearing a
+        // factory item's criteria leaves the cell stale, while the metadata blob — the authority for
+        // what the factory believes — is correct. Losing another tool's data is worse than a stale
+        // human-facing cell. Both halves of that trade are asserted by
+        // A_factory_item_that_has_criteria_of_its_own_still_overwrites_a_humans_acceptance_cell and
+        // Updating_a_bead_another_tool_filed_keeps_the_acceptance_criteria_it_wrote.
         if (item.AcceptanceCriteria.Count > 0) { args.Add("--acceptance"); args.Add(AcceptanceFor(item)); }
 
         if (item.State == WorkItemState.Ready) { args.Add("--assignee"); args.Add(""); }
