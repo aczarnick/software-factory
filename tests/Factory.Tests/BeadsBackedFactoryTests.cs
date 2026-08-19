@@ -49,11 +49,6 @@ public class BeadsBackedFactoryTests : IDisposable
     private BeadRecord Bead(string id) =>
         new BeadsCli(_dir, Owner).Json<BeadRecord>([.. BeadMapper.GetArgs(id)]).Single();
 
-    private BeadRecord? InProgressBead() =>
-        new BeadsCli(_dir, Owner)
-            .Json<BeadRecord>("list", "--status", "in_progress", "--limit", "0", "--json")
-            .FirstOrDefault();
-
     [Fact]
     public void Selecting_the_provider_by_config_files_work_into_beads()
     {
@@ -74,21 +69,26 @@ public class BeadsBackedFactoryTests : IDisposable
 
         // Observed from inside the run, while the item is still in progress: once it finishes it is
         // closed and has no lease left, so anything asserted afterwards would pass either way.
-        BeadRecord? observed = null;
+        string? runItemId = null;
+        BeadRecord? atWindowStart = null, afterWindow = null;
 
         var transport = new FakeTransport()
             .Respond("decompose", SingleChild)
             .Respond("plan", Plan)
             .Respond("implement", request =>
             {
-                Thread.Sleep(300);
-                observed = InProgressBead();
+                atWindowStart ??= Bead(runItemId!);
+                afterWindow = WaitForARefresh(runItemId!, atWindowStart.HeartbeatAt);
                 File.WriteAllText(Path.Combine(request.WorkingDirectory!, "hello.txt"), "hi\n");
                 return FakeTransport.Success("wrote the file", cost: 0.02m);
             });
 
         using var host = OpenBeadsBacked(transport);
-        host.Submit(WorkItem.Create("held across a run"));
+
+        // Named rather than read back as whatever bd currently lists in progress: the assertion below
+        // compares two reads of one bead, and only an id fixed up front guarantees they are the same
+        // bead.
+        runItemId = host.Submit(WorkItem.Create("held across a run")).Id;
 
         await host.CreateOrchestrator().RunAsync(new OrchestratorOptions
         {
@@ -99,16 +99,22 @@ public class BeadsBackedFactoryTests : IDisposable
             LeaseRefreshInterval = TimeSpan.FromMilliseconds(40)
         });
 
-        Assert.NotNull(observed);
-        Assert.NotNull(observed!.HeartbeatAt);
-        Assert.NotNull(observed.StartedAt);
+        Assert.NotNull(atWindowStart);
+        Assert.Equal(WorkItemState.InProgress, BeadMapper.StateFor(atWindowStart!.Status));
 
+        // Compared against the lease as it stood when the station started work, not against the grant:
+        // bd stamps heartbeat_at to the second, so a refresh landing in the same wall-clock second as
+        // the claim leaves the two equal and a `> StartedAt` assertion fails a factory that is
+        // refreshing perfectly well. Waiting for the stamp to move is the same in-window capture plus
+        // bounded fallback the neighbouring refresh test uses, and it fails only if no refresh ever
+        // lands — which is what this exists to catch.
+        //
         // With MaxItems of 1 the claim loop exits immediately after claiming, so the whole station
         // run happens in the drain that follows it. A refresh driven from the poll loop — which is
         // what the plan specified — would never fire here at all.
-        Assert.True(observed.HeartbeatAt > observed.StartedAt,
-            $"the claim should have been refreshed past its grant: started {observed.StartedAt:O}, " +
-            $"last heartbeat {observed.HeartbeatAt:O}");
+        Assert.True(afterWindow!.HeartbeatAt > atWindowStart.HeartbeatAt,
+            "the claim should have been refreshed while its station worked: window opened at " +
+            $"{atWindowStart.HeartbeatAt:O}, closed at {afterWindow.HeartbeatAt:O}");
     }
 
     /// <summary>Reads the bead until its lease has been pushed out past <paramref name="since"/>,
