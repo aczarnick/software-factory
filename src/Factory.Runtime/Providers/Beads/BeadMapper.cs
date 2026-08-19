@@ -6,9 +6,16 @@ namespace Factory.Runtime;
 /// where they exist; everything structured travels in the bead's metadata JSON.</summary>
 public static class BeadMapper
 {
-    /// <summary>Custom vocabulary this mapping requires. Installed once at deployment. The
-    /// <c>frozen</c> category on draft and failed is load-bearing: it keeps proposals and failed
-    /// work out of <c>bd ready</c>, preserving the factory's --include-proposed semantics.</summary>
+    /// <summary>Custom vocabulary this mapping requires. Installed once at deployment.
+    ///
+    /// What keeps proposals and failed work out of <c>bd ready</c> — and so preserves the factory's
+    /// --include-proposed semantics — is that their category is not <c>active</c>: probed against
+    /// 1.2.1, <c>bd ready</c> offers only the <c>active</c> category, so <c>wip</c> withholds a draft
+    /// exactly as <c>frozen</c> does and no factory-visible behaviour tells the two apart. <c>frozen</c>
+    /// is still the right one of the two, because it is what bd's own views mean by a bead nobody is
+    /// working on ("deliberately put on ice"), which is what a proposal and a failure are — where
+    /// <c>wip</c> would report them as actively in hand to every other reader of the backlog. What
+    /// must never appear here is <c>active</c>: that dispatches both.</summary>
     public const string CustomStatuses =
         "draft:frozen,in_review:wip,verified:wip,failed:frozen,cancelled:done";
 

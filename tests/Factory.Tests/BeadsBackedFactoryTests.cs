@@ -448,7 +448,14 @@ public class BeadsBackedFactoryTests : IDisposable
         var foreignBead = Bead(foreignId);
         Assert.Equal(WorkItemState.InProgress, BeadMapper.StateFor(foreignBead.Status));
         Assert.Equal(elsewhere, foreignBead.Assignee);
-        Assert.Contains(log, message => message.Contains(foreignId) && message.Contains(elsewhere));
+        // Reported as left alone, and specifically not as a requeue the backlog refused. bd's own
+        // refusal text names the holder too, so a log assertion that only looks for the id and the
+        // owner is satisfied by either path — and the two are not the same behaviour. Left alone
+        // costs no bd call; attempted-and-refused spends a doomed write per foreign item on every run
+        // start and rests on bd continuing to refuse it, which is not a guarantee the factory owns.
+        Assert.Contains(log, message => message.Contains(foreignId) && message.Contains(elsewhere) &&
+                                        message.Contains("still holds it"));
+        Assert.DoesNotContain(log, message => message.Contains(foreignId) && message.Contains("refused"));
 
         // Reported, not reaped — and this checkout's own orphan is still requeued and claimable.
         Assert.Equal(mineId, reopened.Services.Items.TryClaim(Owner)?.Id);
