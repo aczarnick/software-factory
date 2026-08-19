@@ -6,9 +6,16 @@ namespace Factory.Runtime;
 /// where they exist; everything structured travels in the bead's metadata JSON.</summary>
 public static class BeadMapper
 {
-    /// <summary>Custom vocabulary this mapping requires. Installed once at deployment. The
-    /// <c>frozen</c> category on draft and failed is load-bearing: it keeps proposals and failed
-    /// work out of <c>bd ready</c>, preserving the factory's --include-proposed semantics.</summary>
+    /// <summary>Custom vocabulary this mapping requires. Installed once at deployment.
+    ///
+    /// What keeps proposals and failed work out of <c>bd ready</c> — and so preserves the factory's
+    /// --include-proposed semantics — is that their category is not <c>active</c>: probed against
+    /// 1.2.1, <c>bd ready</c> offers only the <c>active</c> category, so <c>wip</c> withholds a draft
+    /// exactly as <c>frozen</c> does and no factory-visible behaviour tells the two apart. <c>frozen</c>
+    /// is still the right one of the two, because it is what bd's own views mean by a bead nobody is
+    /// working on ("deliberately put on ice"), which is what a proposal and a failure are — where
+    /// <c>wip</c> would report them as actively in hand to every other reader of the backlog. What
+    /// must never appear here is <c>active</c>: that dispatches both.</summary>
     public const string CustomStatuses =
         "draft:frozen,in_review:wip,verified:wip,failed:frozen,cancelled:done";
 
@@ -28,7 +35,30 @@ public static class BeadMapper
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Unmapped work item state.")
     };
 
-    public static WorkItemState StateFor(string status) => status switch
+    /// <summary>Reads a bead's status. Never throws: bd has seven built-in statuses and the factory
+    /// maps four of them, so <c>deferred</c>, <c>pinned</c> and <c>hooked</c> — each settable by a
+    /// human in one command that exits 0 — arrive here, as does any custom status someone configured.
+    /// <c>All()</c> maps every bead in the database and the reconciler runs outside any tolerance, so
+    /// a throw would take down every command that opens the host, on every machine sharing the
+    /// backlog, recoverable only by editing the bead with <c>bd</c>.
+    ///
+    /// The fallback is Blocked because that is the one state whose meaning matches every status the
+    /// factory does not own: not available to be worked on. It is also true of the three by
+    /// construction — probed against 1.2.1, <c>bd ready</c> offers none of them — so the factory's
+    /// reading and bd's own dispatch agree rather than one of them offering work the other withholds.
+    ///
+    /// Unlike <see cref="KindFor"/>'s fallback this loses nothing, because the original word is
+    /// carried on the item by <see cref="UnownedStatus"/> and <see cref="UpdateArgs"/> leaves such a
+    /// cell alone. That is the complete fix KindFor's own remark describes and declines.</summary>
+    public static WorkItemState StateFor(string status) => OwnStateFor(status) ?? UnownedStatusReadsAs;
+
+    /// <summary>The store's own status, when the factory has no state of its own for it; null when
+    /// <see cref="StateFor"/> is a faithful reading of it and there is nothing to preserve.</summary>
+    public static string? UnownedStatus(string status) => OwnStateFor(status) is null ? status : null;
+
+    // Every status the factory writes, and nothing else. The single list behind both StateFor and
+    // UnownedStatus, so a status cannot be readable and unowned at once.
+    private static WorkItemState? OwnStateFor(string status) => status switch
     {
         "draft" => WorkItemState.Draft,
         "open" => WorkItemState.Ready,
@@ -39,8 +69,10 @@ public static class BeadMapper
         "blocked" => WorkItemState.Blocked,
         "failed" => WorkItemState.Failed,
         "cancelled" => WorkItemState.Cancelled,
-        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped bead status.")
+        _ => null
     };
+
+    private const WorkItemState UnownedStatusReadsAs = WorkItemState.Blocked;
 
     public static string TypeFor(WorkItemKind kind) => kind switch
     {
@@ -50,9 +82,24 @@ public static class BeadMapper
         WorkItemKind.Spike => "spike",
         WorkItemKind.Refactor => "refactor",
         WorkItemKind.Improvement => "improvement",
+        WorkItemKind.Task => "task",
+        WorkItemKind.Epic => "epic",
+        WorkItemKind.Decision => "decision",
+        WorkItemKind.Story => "story",
+        WorkItemKind.Milestone => "milestone",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unmapped work item kind.")
     };
 
+    /// <summary>Reads a bead's type. Every type bd has built in maps to a kind of its own, because
+    /// <see cref="UpdateArgs"/> writes the mapped kind straight back out: a type read as something
+    /// else is a type destroyed on the factory's first update, and <c>task</c> is bd's default, so
+    /// that is every bead filed without an explicit <c>-t</c>. Only <c>refactor</c> and
+    /// <c>improvement</c> are the factory's own additions (see <see cref="CustomTypes"/>).
+    ///
+    /// Genuinely unknown custom vocabulary still falls back rather than throwing — a read that threw
+    /// would take down every command that lists the backlog — and is still rewritten on the next
+    /// update. Carrying the raw value on the item is the only complete fix and is not worth a field
+    /// on <see cref="WorkItem"/> for a type nobody has configured.</summary>
     public static WorkItemKind KindFor(string issueType) => issueType switch
     {
         "feature" => WorkItemKind.Feature,
@@ -61,6 +108,11 @@ public static class BeadMapper
         "spike" => WorkItemKind.Spike,
         "refactor" => WorkItemKind.Refactor,
         "improvement" => WorkItemKind.Improvement,
+        "task" => WorkItemKind.Task,
+        "epic" => WorkItemKind.Epic,
+        "decision" => WorkItemKind.Decision,
+        "story" => WorkItemKind.Story,
+        "milestone" => WorkItemKind.Milestone,
         _ => WorkItemKind.Feature
     };
 
@@ -89,9 +141,17 @@ public static class BeadMapper
         {
             Id = bead.Id,
             Title = bead.Title,
-            Intent = metadata.Intent ?? bead.Description ?? "",
+            // The bead's own description cell first, and the metadata copy only as a fallback.
+            // MetadataFor writes the intent into the metadata too and UpdateArgs sends the same value
+            // to -d on every write, so after any factory write the two agree by construction — which
+            // means a difference between them can only have come from outside, and preferring the
+            // metadata copy made the factory read its own stale echo and then write it back over a
+            // human's edit. The fallback is for the one case CreateArgs omits -d: an item filed with
+            // no intent at all.
+            Intent = bead.Description ?? metadata.Intent ?? "",
             Kind = KindFor(bead.IssueType),
             State = StateFor(bead.Status),
+            StoreStatus = UnownedStatus(bead.Status),
             Priority = bead.Priority,
             Requirements = metadata.Requirements,
             AcceptanceCriteria = metadata.Criteria,
@@ -102,6 +162,12 @@ public static class BeadMapper
             BudgetUsd = metadata.BudgetUsd,
             Provenance = new Provenance(metadata.ProvenanceKind, metadata.ProvenanceSource),
 
+            // Read from the bead, never from the metadata: beads owns the assignee natively, and a
+            // second copy would go stale the moment another machine claimed or released the bead.
+            // Empty normalises to null because reconcile compares the whole mapped projection, and
+            // "" against null would rewrite every unheld item into the ledger on every open.
+            Owner = string.IsNullOrEmpty(bead.Assignee) ? null : bead.Assignee,
+
             // The filing time the factory recorded, falling back to the bead's own stamp for work
             // some other tool filed. Never defaulted to now: dispatch order breaks priority ties on
             // this, and reconcile compares it, so a fresh value on every read would both reshuffle
@@ -111,10 +177,12 @@ public static class BeadMapper
         };
     }
 
-    // Only the beads this one waits on. The self-id guard covers the reversed edge shape, where
-    // the same row would otherwise read as an item depending on itself.
+    // Only the beads this one waits on. Non-blocking edge types are dropped rather than read as
+    // blockers (see BeadDependency.IsBlocking), and the self-id guard covers the reversed edge
+    // shape, where the same row would otherwise read as an item depending on itself.
     private static IEnumerable<string> Blockers(BeadRecord bead) =>
         bead.Dependencies
+            .Where(dependency => dependency.IsBlocking)
             .Select(dependency => dependency.BlockerId)
             .Where(id => !string.IsNullOrEmpty(id) && id != bead.Id);
 
@@ -132,16 +200,17 @@ public static class BeadMapper
 
         if (!string.IsNullOrWhiteSpace(item.Intent)) { args.Add("-d"); args.Add(item.Intent); }
 
-        if (item.AcceptanceCriteria.Count > 0)
-        {
-            args.Add("--acceptance");
-            args.Add(string.Join("\n", item.AcceptanceCriteria.Select(c => $"- {c.Statement} ({c.Verification.Describe})")));
-        }
+        if (item.AcceptanceCriteria.Count > 0) { args.Add("--acceptance"); args.Add(AcceptanceFor(item)); }
 
         foreach (var dependency in item.DependsOn) { args.Add("--deps"); args.Add($"depends-on:{dependency}"); }
 
         return args;
     }
+
+    // The bead's own acceptance_criteria cell, for readers of the backlog that are not the factory;
+    // the structured criteria the factory reads back travel in the metadata.
+    private static string AcceptanceFor(WorkItem item) =>
+        string.Join("\n", item.AcceptanceCriteria.Select(c => $"- {c.Statement} ({c.Verification.Describe})"));
 
     /// <summary>Reads every bead in every status. <c>--all</c> reaches closed work and
     /// <c>--limit 0</c> defeats the default page size of 50, which would otherwise truncate a
@@ -167,16 +236,140 @@ public static class BeadMapper
     public static IReadOnlyList<string> ReleaseArgs(string id, string owner) =>
         ["update", id, "--status", StatusFor(WorkItemState.Ready), "--assignee", "", "--actor", owner];
 
-    /// <summary>Reverts this node's stale leases. The grace window is emitted in seconds because a
-    /// sub-minute window would truncate to <c>0m</c>.</summary>
+    /// <summary>Reverts this node's own stale leases. The grace window is emitted in seconds
+    /// because a sub-minute window would truncate to <c>0m</c>. <c>--assignee</c> is bd's scope
+    /// filter and is what restricts the reap to leases held by <paramref name="owner"/> — without
+    /// it, a stale lease anywhere in the shared store is fair game, including one another machine
+    /// is actively working under, because heartbeats are node-local and do not replicate.
+    /// <c>--actor</c> stays alongside it: that is the audit-trail flag, unrelated to scope.</summary>
     public static IReadOnlyList<string> ReclaimArgs(TimeSpan olderThan, string owner) =>
-        ["reclaim", "--older-than", $"{(long)olderThan.TotalSeconds}s", "--json", "--actor", owner];
+        ["reclaim", "--older-than", $"{(long)olderThan.TotalSeconds}s", "--json",
+         "--actor", owner, "--assignee", owner];
 
-    public static IReadOnlyList<string> UpdateArgs(WorkItem item) =>
-    [
-        "update", item.Id,
-        "--status", StatusFor(item.State),
-        "-p", item.Priority.ToString(),
-        "--metadata", MetadataFor(item)
-    ];
+    /// <summary>Writes an item's mapped fields over the bead. Every field beads owns natively is
+    /// sent on every update, not only the ones that changed: reconcile compares the whole mapped
+    /// projection and lets beads win, so a field left out is not merely unsaved in beads — the next
+    /// open reverts the local edit to match.
+    ///
+    /// <c>-d</c> is unconditional where <see cref="CreateArgs"/> makes it conditional: bd accepts
+    /// <c>-d ""</c> and empties the cell, so an item that has lost its intent can say so, where
+    /// omitting the flag would leave beads asserting the old value with nothing to ever correct it.
+    /// <c>--acceptance</c> stays conditional for the opposite reason, explained at the flag itself.
+    /// An empty <c>--title</c> bd refuses (exit 1) — exactly as it refuses one on create, so no bead
+    /// the factory filed can have one, and the write fails loudly rather than keeping a stale title
+    /// quietly.
+    ///
+    /// There is deliberately no <c>--deps</c>: bd <c>update</c> has no such flag, and a post-filing
+    /// edge needs <c>bd dep add</c> / <c>bd dep remove</c> instead. Dependency edits therefore do
+    /// not reach beads through this path.
+    ///
+    /// Returning an item to Ready also drops the claim, because <c>bd ready --claim</c> skips an
+    /// open bead that still carries an assignee — even for the actor named in it, and
+    /// <c>--claim</c> refuses to combine with
+    /// <c>--assignee</c> — so an item requeued with its claim intact would be Ready everywhere and
+    /// claimable nowhere. Any other status keeps the assignee: clearing it while work is in flight
+    /// would hand the item to whichever machine claimed next.
+    ///
+    /// <c>--actor</c> is always named because <c>bd</c> refuses to clear the assignee of a bead it
+    /// believes another actor holds — including the holder's own item, when the write does not name
+    /// it — so a Ready-bound write with no actor is refused on exactly the item it is meant to
+    /// requeue.</summary>
+    public static IReadOnlyList<string> UpdateArgs(WorkItem item, string owner)
+    {
+        var args = new List<string>
+        {
+            "update", item.Id,
+            "--title", item.Title,
+            "-t", TypeFor(item.Kind),
+            "-p", item.Priority.ToString(),
+            "-d", item.Intent,
+            "--metadata", MetadataFor(item),
+            "--actor", owner
+        };
+
+        // Omitting --status leaves the cell untouched and still writes every other field (probed).
+        // That is the only way an update can carry a status the factory cannot name: sending the
+        // fallback StateFor chose would destroy a human's `deferred`, `pinned` or `hooked` on the
+        // factory's first touch, which is the same read-then-write-back destruction already closed
+        // for issue_type and for the acceptance cell.
+        if (!KeepsStoreStatus(item)) { args.Add("--status"); args.Add(StatusFor(item.State)); }
+
+        // Sent only when the item has criteria of its own, deliberately unlike -d above. The two
+        // differ because their reads differ: Intent is read from the bead's own description cell
+        // (see ToWorkItem), so it already carries whatever a human wrote there and an unconditional
+        // -d writes back the value the factory just read. AcceptanceCriteria has no such read — it
+        // comes only from the metadata — so it arrives empty for every bead another tool filed, and
+        // an unconditional --acceptance would render that emptiness back over beads' own cell and
+        // destroy a human's criteria on the factory's first update. The accepted cost is the reverse
+        // case: an item that has criteria of its own renders them over a human's cell, and clearing a
+        // factory item's criteria leaves the cell stale, while the metadata blob — the authority for
+        // what the factory believes — is correct. Losing another tool's data is worse than a stale
+        // human-facing cell. Both halves of that trade are asserted by
+        // A_factory_item_that_has_criteria_of_its_own_still_overwrites_a_humans_acceptance_cell and
+        // Updating_a_bead_another_tool_filed_keeps_the_acceptance_criteria_it_wrote.
+        if (item.AcceptanceCriteria.Count > 0) { args.Add("--acceptance"); args.Add(AcceptanceFor(item)); }
+
+        if (item.State == WorkItemState.Ready) { args.Add("--assignee"); args.Add(""); }
+
+        return args;
+    }
+
+    /// <summary>Whether <see cref="UpdateArgs"/> leaves the bead's status cell alone for this item.
+    /// <see cref="WorkItem.StoreStatus"/> being set is not enough on its own: a caller that moved the
+    /// item off it — <c>factory activate</c> on a pinned bead — is making an explicit request, and
+    /// dropping that write would leave the factory and beads permanently disagreeing about a state the
+    /// operator chose. So the status is kept only while the item's state is still exactly what that
+    /// status was read as, meaning nothing asked for a change.
+    ///
+    /// Public because the store has to ask the same question to decide what the item it hands back
+    /// still carries: an item whose status the write took over must stop carrying beads' old word, or
+    /// a later write suppresses its own <c>--status</c> on the strength of a word beads no longer
+    /// holds.</summary>
+    public static bool KeepsStoreStatus(WorkItem item) =>
+        item.StoreStatus is { } carried && StateFor(carried) == item.State;
+
+    /// <summary>Adds one blocking edge. The dependent is named first: <c>bd dep add &lt;dependent&gt;
+    /// &lt;blocker&gt;</c>, and reversing the pair files a valid edge pointing the other way while still
+    /// exiting 0, so the order is the only thing that distinguishes the two.
+    ///
+    /// No <c>--type</c> is passed. bd has ten dependency types and withholds a dependent for exactly
+    /// one of them, <c>blocks</c> — which is also bd's own default here — so naming nothing is both
+    /// the shortest and the only safe shape; <c>blocked-by</c> and <c>depends-on</c> are aliases bd
+    /// normalises to <c>blocks</c> before storing, as <see cref="CreateArgs"/>' <c>--deps</c> does.
+    ///
+    /// Adding an edge that already exists is idempotent (exit 0, one row). bd refuses, with exit 1
+    /// and nothing written, an edge that would close a cycle, an edge from a bead to itself, an edge
+    /// naming an id it does not know, and an edge onto a pair some other type already occupies —
+    /// beads allows at most one edge per ordered pair.</summary>
+    public static IReadOnlyList<string> DependencyAddArgs(string dependent, string blocker, string owner) =>
+        ["dep", "add", dependent, blocker, "--actor", owner];
+
+    /// <summary>Drops one edge. The dependent is named first for the same reason as
+    /// <see cref="DependencyAddArgs"/>, but getting it wrong is worse here: <c>bd dep remove
+    /// &lt;blocker&gt; &lt;dependent&gt;</c> prints <c>✓ Removed dependency</c> and exits 0 having
+    /// removed nothing, and so does removing an edge that never existed, so no exit code or output
+    /// can catch a reversed pair — only the order can.
+    ///
+    /// There is no <c>--type</c> on <c>bd dep remove</c> and it deletes whatever single edge joins
+    /// the pair, of any type. That makes the caller responsible for never naming a pair joined by a
+    /// non-blocking edge: see <see cref="ToWorkItem"/>, which reads only blocking edges, and the diff
+    /// in <c>BeadsWorkItemStore.Update</c>, which is driven from that read.</summary>
+    public static IReadOnlyList<string> DependencyRemoveArgs(string dependent, string blocker, string owner) =>
+        ["dep", "remove", dependent, blocker, "--actor", owner];
+
+    /// <summary>The second write that gives a freshly created bead its real status. <c>bd create</c>
+    /// has no status flag, so filing anything but Ready takes two writes and the bead is claimable
+    /// in the window between them. <c>--if-status open</c> makes this write refuse — nothing written,
+    /// exit 13 — once the bead has moved on, rather than dragging a bead another machine claimed in
+    /// that window back to <c>draft</c> and dropping the lease it is working under, which bd
+    /// otherwise does while exiting 0.</summary>
+    public static IReadOnlyList<string> FilingStatusArgs(WorkItem item, string owner) =>
+        [.. UpdateArgs(item, owner), "--if-status", StatusAfterCreate];
+
+    // What bd leaves a freshly created bead in — it has no status flag on create at all. Not borrowed
+    // from StatusFor(Ready), which is the same string only by coincidence: this is a fact about bd
+    // create, not about any WorkItemState. Getting it wrong fails silently, because FinishFiling
+    // deliberately does not throw on exit 13, so every non-Ready Add would report a collision that
+    // never happened and record the freshly created open bead instead of the intended Draft.
+    private const string StatusAfterCreate = "open";
 }

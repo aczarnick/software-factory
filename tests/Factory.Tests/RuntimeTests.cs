@@ -185,6 +185,15 @@ public class PipelineTests : IDisposable
         var report = await host.CreateOrchestrator()
             .RunAsync(new OrchestratorOptions { MaxConcurrency = 2, StopWhenIdle = true });
 
+        // Asserted before the count, because this test is the suite's known flake -- about one run in
+        // nine, `Expected 2 / Actual 1` -- and a count alone cannot say whether the second item was
+        // never claimed, failed, or blocked. These two name the failure mode instead of leaving the
+        // next occurrence to be re-run and forgotten, which is how three criticals survived a green
+        // suite on the previous phase. The flake itself is deferred and recorded in the phase-4
+        // handoff note with its measured rate and mechanism.
+        Assert.Equal(0, report.Failed);
+        Assert.Equal(0, report.Blocked);
+
         Assert.Equal(2, report.Completed);
         Assert.Equal(WorkItemState.Done, host.Services.State.Items[first.Id].State);
         Assert.Equal(WorkItemState.Done, host.Services.State.Items[second.Id].State);
@@ -601,5 +610,48 @@ public class RemediationRunnerTests : IDisposable
         Assert.True(result.Found);
         Assert.True(result.Succeeded);
         Assert.Contains("remediated", result.Output);
+    }
+}
+
+public class ClaimRefreshTests
+{
+    /// <summary>Refuses a heartbeat for one named id and records the rest, wrapped in the guard the
+    /// host always composes so the exception the loop meets is the one production raises.</summary>
+    private sealed class PoisonsOneHeartbeat(string poisonedId) : IWorkItemStore
+    {
+        public List<string> Refreshed { get; } = [];
+
+        public void Heartbeat(string id)
+        {
+            if (id == poisonedId) throw new InvalidOperationException($"no lease for {id}");
+
+            Refreshed.Add(id);
+        }
+
+        public WorkItem Add(WorkItem item) => throw new NotSupportedException();
+        public WorkItem Update(WorkItem item) => throw new NotSupportedException();
+        public WorkItem Transition(WorkItem item, WorkItemState to, string? reason) => throw new NotSupportedException();
+        public WorkItem? Get(string id) => throw new NotSupportedException();
+        public IReadOnlyList<WorkItem> All() => throw new NotSupportedException();
+        public WorkItem? TryClaim(string owner) => throw new NotSupportedException();
+        public void Release(string id, string reason) => throw new NotSupportedException();
+        public void Sync() => throw new NotSupportedException();
+        public IReadOnlyList<WorkItem> Reclaim(TimeSpan olderThan) => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public void One_claim_the_backlog_will_not_refresh_does_not_cost_the_others_theirs()
+    {
+        var inner = new PoisonsOneHeartbeat("wi-sick");
+        var logged = new List<string>();
+
+        // Order matters: the sick id is first, so an unguarded loop never reaches the healthy one. At
+        // concurrency 2 that is one item costing the other its refresh every tick, and the lease it
+        // was holding then expires while its station is still working.
+        Orchestrator.RefreshEachClaim(
+            new GuardedWorkItemStore(inner, "beads"), ["wi-sick", "wi-healthy"], logged.Add);
+
+        Assert.Equal(["wi-healthy"], inner.Refreshed);
+        Assert.Contains(logged, message => message.Contains("wi-sick"));
     }
 }

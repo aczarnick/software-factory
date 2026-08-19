@@ -180,6 +180,74 @@ public class BacklogReconcilerTests : IDisposable
         BacklogReconciler.Reconcile(
             new StubStore([item with { State = WorkItemState.Done }]), state, history, messages.Add);
 
-        Assert.Contains(messages, m => m.Contains('1'));
+        Assert.Contains(messages, m => m.Contains("reconciled 1 item(s)"));
+    }
+
+    [Fact]
+    public void A_bead_deleted_from_the_backlog_is_reported_but_kept_in_the_fold()
+    {
+        using var history = History();
+        var vanished = WorkItem.Create("thing") with { State = WorkItemState.Ready };
+        var live = WorkItem.Create("still there") with { State = WorkItemState.Ready };
+        history.Append(new WorkItemFiled(vanished));
+        history.Append(new WorkItemFiled(live));
+        var state = history.Replay();
+        var messages = new List<string>();
+
+        // store.All() no longer returns "vanished" at all -- it was deleted, not merely closed
+        // (bd list --all --limit 0 still returns closed beads, so this only happens on a genuine
+        // deletion of a row the fold still remembers). "live" is still returned, so the false-positive
+        // direction of the same check -- that a fold item the store still knows about is never
+        // reported alongside a genuinely vanished one -- is asserted in the same test.
+        BacklogReconciler.Reconcile(new StubStore([live]), state, history, messages.Add);
+
+        Assert.True(state.Items.ContainsKey(vanished.Id));
+        Assert.Equal(WorkItemState.Ready, state.Items[vanished.Id].State);
+        Assert.Contains(messages, m => m.Contains(vanished.Id));
+        Assert.DoesNotContain(messages, m => m.Contains(live.Id));
+    }
+
+    /// <summary>A ledger file this process may not write, in a temp directory of its own. Mirrors
+    /// <c>LedgerMirroringWorkItemStoreTests.UnwritableLedger</c>: each test file keeps its own copy
+    /// of this fixture rather than sharing one, the same way each already keeps its own store
+    /// double.</summary>
+    private sealed class UnwritableLedger : IDisposable
+    {
+        private readonly string _root = TempDir.Create();
+
+        public UnwritableLedger()
+        {
+            LedgerPath = Path.Combine(_root, "ledger.jsonl");
+            File.WriteAllText(LedgerPath, "");
+            File.SetAttributes(LedgerPath, FileAttributes.ReadOnly);
+        }
+
+        public string LedgerPath { get; }
+
+        // Cleared before delete: TempDir.Delete tolerates only IOException, and a recursive delete
+        // over a still-read-only tree can raise UnauthorizedAccessException instead.
+        public void Dispose()
+        {
+            File.SetAttributes(LedgerPath, FileAttributes.Normal);
+            TempDir.Delete(_root);
+        }
+    }
+
+    [Fact]
+    public void A_correction_the_ledger_refuses_to_write_does_not_stop_reconcile()
+    {
+        var item = WorkItem.Create("thing") with { State = WorkItemState.Ready };
+        using var ledger = new UnwritableLedger();
+        using var history = new JsonlRunHistory(ledger.LedgerPath);
+        var state = history.Replay();
+        var logged = new List<string>();
+
+        // Every item in the store looks new to an empty fold, so the correction reconcile attempts
+        // is exactly the WorkItemFiled append this read-only ledger refuses -- the same fault
+        // LedgerMirroringWorkItemStore already tolerates for the identical call.
+        BacklogReconciler.Reconcile(new StubStore([item]), state, history, logged.Add);
+
+        Assert.False(state.Items.ContainsKey(item.Id));
+        Assert.Contains(logged, m => m.Contains(item.Id));
     }
 }

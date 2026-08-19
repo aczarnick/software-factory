@@ -58,6 +58,20 @@ public class ShellRunTests
     }
 
     [Fact]
+    public void Run_reports_rather_than_throws_when_the_executable_does_not_exist()
+    {
+        // Process.Start on a nonexistent file throws System.ComponentModel.Win32Exception -- a
+        // SystemException that is neither an IOException nor an InvalidOperationException. That
+        // makes this the case that proves the catch's SystemException arm is the one actually
+        // doing the work: IOException and InvalidOperationException both already derive from it,
+        // so naming them separately in the filter catches nothing the bare type would not.
+        var result = Shell.Run("/definitely/does/not/exist-xyz", [], Directory.GetCurrentDirectory());
+
+        Assert.Equal(127, result.ExitCode);
+        Assert.False(result.TimedOut);
+    }
+
+    [Fact]
     public void Run_bounds_how_much_output_it_retains()
     {
         // 200k characters against a 64k bound. Callers that parse structured output rely on this

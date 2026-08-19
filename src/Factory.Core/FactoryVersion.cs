@@ -32,6 +32,14 @@ public static class FactoryVersion
 
     /// <summary>Major version of the plugin ABI. Bump only on a breaking change to
     /// <see cref="IWorkItemStore"/>, <see cref="IRunHistory"/>, <see cref="IRunHistorySink"/>,
-    /// or any type they expose. A plugin built against a different major is refused at load.</summary>
-    public const int ContractVersion = 1;
+    /// or any type they expose. A plugin built against a different major is refused at load.
+    ///
+    /// v2 is the storage-ports work: <see cref="WorkItem"/> gained <see cref="WorkItem.Owner"/> and
+    /// <see cref="WorkItem.StoreStatus"/>, and <see cref="WorkItemKind"/> gained five members —
+    /// all in a type <see cref="IWorkItemStore"/> and <see cref="IRunHistorySink"/> expose. None of
+    /// them can raise a <c>MissingMethodException</c>, so the exposure is narrow: a contract-1 sink
+    /// handed <c>Kind = Task</c> with no case for it. Bumped anyway, and now rather than later,
+    /// because the alternative was a promise recorded outside the repository that a plan slipping
+    /// would silently skip while the gate that exists for this never fired.</summary>
+    public const int ContractVersion = 2;
 }

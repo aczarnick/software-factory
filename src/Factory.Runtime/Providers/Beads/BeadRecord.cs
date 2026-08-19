@@ -21,9 +21,13 @@ public sealed record BeadRecord
 
     [JsonPropertyName("created_at")] public DateTimeOffset? CreatedAt { get; init; }
     [JsonPropertyName("updated_at")] public DateTimeOffset? UpdatedAt { get; init; }
-    [JsonPropertyName("started_at")] public DateTimeOffset? StartedAt { get; init; }
     [JsonPropertyName("lease_expires_at")] public DateTimeOffset? LeaseExpiresAt { get; init; }
     [JsonPropertyName("heartbeat_at")] public DateTimeOffset? HeartbeatAt { get; init; }
+
+    /// <summary>The replica that granted this lease, from <c>BEADS_NODE_ID</c> at claim time.
+    /// Absent when the claiming process had no node id set (or set it to an empty string) — bd's
+    /// cross-replica guard treats that the same as unset and never skips the lease on reclaim.</summary>
+    [JsonPropertyName("lease_granted_node")] public string? LeaseGrantedNode { get; init; }
 
     /// <summary>Beads that must close before this one can be worked.</summary>
     [JsonPropertyName("dependencies")] public IReadOnlyList<BeadDependency> Dependencies { get; init; } = [];

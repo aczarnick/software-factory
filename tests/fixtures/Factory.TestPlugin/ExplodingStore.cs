@@ -5,7 +5,7 @@ namespace Factory.TestPlugin;
 /// <summary>Fails while being constructed, the way a backlog store that probes its backend in
 /// the constructor does when that backend is missing. Construction is the point; the members
 /// never run.</summary>
-[FactoryProvider("exploding-store", Contract = 1)]
+[FactoryProvider("exploding-store", Contract = FactoryVersion.ContractVersion)]
 public sealed class ExplodingStore : IWorkItemStore
 {
     public ExplodingStore() => throw new InvalidOperationException("cannot reach the backlog");

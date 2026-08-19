@@ -1,15 +1,48 @@
+using System.Text.Json;
 using Factory.Core;
 
 namespace Factory.Runtime;
 
 /// <summary>Thin synchronous wrapper over the <c>bd</c> executable.</summary>
-public sealed class BeadsCli(string workingDirectory)
+///
+/// <remarks><c>owner</c> is set as <c>BEADS_NODE_ID</c> on every invocation, arming bd's
+/// cross-replica guard for this checkout. It has to be set at claim time, not only at reclaim
+/// time: bd stamps the granting node onto the lease when the claim is taken, and a reclaim later
+/// skips only a lease whose granting node differs from its own. Deliberately not <c>bd config set
+/// node_id</c>: that writes the machine-global <c>~/.config/bd/config.yaml</c>, shared by every
+/// beads project on the machine, and a value instead committed to the git-tracked
+/// <c>.beads/config.yaml</c> would leave the guard armed but inert, since every clone would read
+/// the same name. The environment variable is per-process and per-store instead.
+///
+/// The id is one per <em>store</em>, not per host — but "one store" means one <c>dolt
+/// sql-server</c>: machines that are clients of the same server share one value, because they
+/// share one lease table. This deployment mode has no such server (<c>bd dolt status</c> reports
+/// <c>embedded (in-process, no server)</c>), so two machines syncing their own embedded copies of
+/// a shared remote are <em>two</em> replicas and must be given <em>different</em> values of
+/// <c>owner</c> — the same value here would make the guard treat a foreign lease as its own and
+/// skip nothing, the same armed-but-inert failure described above for a committed config file.
+/// <c>owner</c> comes from <see cref="Factory.Core.FactoryConfig.Name"/>, so that value must be
+/// unique per machine wherever the backlog is shared.</remarks>
+public class BeadsCli(string workingDirectory, string owner)
 {
-    private static readonly Dictionary<string, string> NonInteractive =
-        new() { ["BD_NON_INTERACTIVE"] = "1" };
+    private const string Executable = "bd";
 
-    public ShellResult Exec(params string[] args) =>
-        Shell.Run("bd", args, workingDirectory, NonInteractive);
+    private readonly Dictionary<string, string> _environment =
+        new() { ["BD_NON_INTERACTIVE"] = "1", ["BEADS_NODE_ID"] = owner };
+
+    /// <summary>Whether the executable this wraps is on PATH. Overridable for the same reason
+    /// <see cref="Exec"/> is: <see cref="Shell.Which"/> resolves through <c>/bin/sh -c "command -v
+    /// bd"</c> and so reads the login shell's PATH, which no test process can take <c>bd</c> out
+    /// of. Without a seam here the guard that turns a missing <c>bd</c> into a message an operator
+    /// can act on is unreachable on any machine that has <c>bd</c> — which is every machine the
+    /// suite runs on.</summary>
+    public virtual bool IsAvailable => Shell.Which(Executable);
+
+    /// <summary>Runs <c>bd</c>. Overridable so a test can interpose at a specific call — the window
+    /// between the two writes that file a non-Ready item is bounded by one process start, so nothing
+    /// outside this seam can reach it deterministically.</summary>
+    public virtual ShellResult Exec(params string[] args) =>
+        Shell.Run(Executable, args, workingDirectory, _environment);
 
     /// <summary>Runs a command expected to emit JSON, failing loudly when it does not. <c>bd</c>
     /// returns an array for <c>show</c> and <c>list</c> and an object for <c>create</c>, so both
@@ -30,30 +63,39 @@ public sealed class BeadsCli(string workingDirectory)
         if (!result.Ok)
             throw new InvalidOperationException($"bd {string.Join(' ', args)} failed: {result.Combined}");
 
-        var text = Captured(result.Stdout, args);
-        return string.IsNullOrEmpty(text) || text == "null" ? default : FactoryJson.Read<T>(text);
+        var text = result.Stdout.Trim();
+        if (string.IsNullOrEmpty(text) || text == "null") return default;
+
+        return ReadOrReportTruncation(() => FactoryJson.Read<T>(text), result.Stdout, args);
     }
 
     private static IReadOnlyList<T> Parse<T>(string stdout, string[] args)
     {
-        var text = Captured(stdout, args);
+        var text = stdout.Trim();
         if (string.IsNullOrEmpty(text) || text == "null") return [];
 
-        return text.StartsWith('[')
+        return ReadOrReportTruncation(() => text.StartsWith('[')
             ? FactoryJson.Read<List<T>>(text) ?? []
-            : [FactoryJson.Read<T>(text)!];
+            : [FactoryJson.Read<T>(text)!], stdout, args);
     }
 
-    // A capture at the retention bound is cut mid-document, so parsing it would fail as though bd
-    // had emitted malformed JSON. Name the real cause instead: the backlog outgrew what one
-    // command's output can carry.
-    private static string Captured(string stdout, string[] args)
+    // Shell.ReadAsync appends a whole 4096-char buffer whenever the sink is still under the bound,
+    // so a genuine, complete capture can legitimately land anywhere from the bound up to one buffer
+    // past it -- a length check alone cannot tell that apart from a real truncation landing in the
+    // same range. Parsing can: a truncation is cut mid-document and is not valid JSON on its own, so
+    // the length is only consulted to name the real cause once parsing has already failed, rather
+    // than to reject a complete document outright.
+    private static T ReadOrReportTruncation<T>(Func<T> read, string stdout, string[] args)
     {
-        if (stdout.Length >= Shell.MaxCapturedOutputChars)
+        try
+        {
+            return read();
+        }
+        catch (JsonException ex) when (stdout.Length >= Shell.MaxCapturedOutputChars)
+        {
             throw new InvalidOperationException(
                 $"bd {string.Join(' ', args)} produced more than {Shell.MaxCapturedOutputChars} " +
-                "characters, so its JSON was truncated before it could be read.");
-
-        return stdout.Trim();
+                "characters, so its JSON was truncated before it could be read.", ex);
+        }
     }
 }

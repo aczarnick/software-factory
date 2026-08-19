@@ -35,6 +35,27 @@ public class BeadMapperTests
     }
 
     [Fact]
+    public void Every_type_beads_has_built_in_round_trips_rather_than_flattening()
+    {
+        // `bd create --help` lists these nine as bd's built-in types, and `task` is its default — so
+        // it is the type on every bead filed without an explicit -t, this repository's own captured
+        // fixtures included. Anything KindFor cannot name, TypeFor writes back out as something else.
+        string[] builtIn = ["bug", "feature", "task", "epic", "chore", "decision", "spike", "story", "milestone"];
+
+        foreach (var issueType in builtIn)
+            Assert.Equal(issueType, BeadMapper.TypeFor(BeadMapper.KindFor(issueType)));
+    }
+
+    [Fact]
+    public void A_custom_type_no_one_mapped_falls_back_instead_of_throwing()
+    {
+        // The fallback stays for genuinely unknown custom vocabulary: a read that threw would take
+        // down every command that lists the backlog. Such a type is still rewritten on the next
+        // update, which is the residual cost of not carrying the raw value on the item.
+        Assert.Equal(WorkItemKind.Feature, BeadMapper.KindFor("a-type-nobody-mapped"));
+    }
+
+    [Fact]
     public void Create_args_carry_the_explicit_id_and_native_fields()
     {
         var item = WorkItem.Create("add a flag", "users want it", WorkItemKind.Feature) with
@@ -149,23 +170,101 @@ public class BeadMapperTests
         Assert.Empty(restored.DependsOn);
     }
 
+    /// <summary>Every key <see cref="BeadMapper.MetadataFor"/> is allowed to write, for an item with
+    /// nothing left null. Asserted as a set rather than as a list of forbidden names: naming what
+    /// must be absent cannot fail while the field does not exist on <see cref="BeadMetadata"/> at all,
+    /// so it never reddens for anything, where the exact set reddens the moment a key appears.</summary>
+    private static readonly string[] MetadataKeys =
+    [
+        "assumptions", "budgetUsd", "createdAt", "criteria", "intent",
+        "labels", "parentId", "provenanceKind", "provenanceSource", "requirements"
+    ];
+
     [Fact]
-    public void Volatile_run_state_is_not_sent_to_the_backlog()
+    public void The_metadata_blob_carries_exactly_the_fields_beads_has_no_native_home_for()
     {
-        var item = WorkItem.Create("thing") with
+        // Two things must not reach it, for two different reasons. Volatile run state — station,
+        // worktree, attempts, spend — belongs to the local ledger, and a copy in a shared backlog
+        // would let one machine's progress overwrite another's. Owner must not be copied either: beads
+        // owns the assignee natively, so a second copy goes stale the moment any machine claims or
+        // releases the bead.
+        var item = WorkItem.Create("thing", "the intent") with
         {
             Station = "implement",
             Worktree = "/tmp/wt",
             Attempts = 3,
-            SpentUsd = 0.42m
+            SpentUsd = 0.42m,
+            Owner = "other-machine",
+            Requirements = ["works"],
+            AcceptanceCriteria = [AcceptanceCriterion.Command("runs", "dotnet run")],
+            Assumptions = ["nothing else changed"],
+            Labels = ["lane-a"],
+            ParentId = "wi-aaaa11112222",
+            BudgetUsd = 5m,
+            Provenance = Provenance.FromAgent("intake")
         };
 
         var metadata = BeadMapper.MetadataFor(item);
+        var written = JsonDocument.Parse(metadata).RootElement
+            .EnumerateObject().Select(property => property.Name).Order();
 
-        Assert.DoesNotContain("worktree", metadata, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("spentUsd", metadata, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("attempts", metadata, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("implement", metadata, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(MetadataKeys, written);
+
+        // The key set cannot see a value smuggled into a key that already belongs here — a
+        // `Labels = [.. item.Labels, item.Station]` keeps the set intact — so the two volatile fields
+        // with a distinctive string form are named on their values as well. Attempts and spend are
+        // left out on purpose: as raw numbers they are indistinguishable from a priority or a budget.
+        Assert.DoesNotContain(item.Station!, metadata, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(item.Worktree!, metadata, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Nothing_the_metadata_blob_carries_is_lost_on_the_way_back()
+    {
+        var item = WorkItem.Create("thing", "the intent") with
+        {
+            Requirements = ["works"],
+            Assumptions = ["nothing else changed"],
+            Labels = ["lane-a"],
+            ParentId = "wi-aaaa11112222",
+            BudgetUsd = 5m,
+            Provenance = Provenance.FromAgent("intake")
+        };
+
+        // The set assertion above catches a key that appears; this catches one that stops being
+        // written, which leaves the key in place holding a default and so is invisible to it.
+        var restored = BeadMapper.ToWorkItem(BeadWith(item));
+
+        Assert.Equal("the intent", restored.Intent);
+        Assert.Equal(["works"], restored.Requirements);
+        Assert.Equal(["nothing else changed"], restored.Assumptions);
+        Assert.Equal(["lane-a"], restored.Labels);
+        Assert.Equal("wi-aaaa11112222", restored.ParentId);
+        Assert.Equal(5m, restored.BudgetUsd);
+        Assert.Equal(new Provenance(ProvenanceKind.Agent, "intake"), restored.Provenance);
+        Assert.Equal(item.CreatedAt, restored.CreatedAt);
+    }
+
+    [Fact]
+    public void The_assignee_is_read_as_the_checkout_holding_the_item()
+    {
+        var bead = new BeadRecord { Id = "wi-eeee11112222", Title = "held", Assignee = "other-machine" };
+
+        // Who holds an item is what lets a requeue tell its own orphan from work another checkout
+        // is still running, which bd refuses to let this one release.
+        Assert.Equal("other-machine", BeadMapper.ToWorkItem(bead).Owner);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void An_unassigned_bead_is_owned_by_nobody(string? assignee)
+    {
+        var bead = new BeadRecord { Id = "wi-eeee11112222", Title = "unheld", Assignee = assignee };
+
+        // Empty and absent have to land on the same value: reconcile compares the whole mapped
+        // projection, so "" against null would rewrite the item into the ledger on every open.
+        Assert.Null(BeadMapper.ToWorkItem(bead).Owner);
     }
 
     [Fact]
@@ -180,17 +279,67 @@ public class BeadMapperTests
     {
         var item = WorkItem.Create("thing") with { State = WorkItemState.Verified };
 
-        var args = BeadMapper.UpdateArgs(item);
+        var args = BeadMapper.UpdateArgs(item, "node-a");
 
         Assert.Contains("--status", args);
         Assert.Contains("verified", args);
     }
 
     [Fact]
-    public void An_unmapped_status_is_refused_rather_than_guessed()
+    public void Every_status_beads_has_built_in_reads_as_a_state_rather_than_throwing()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => BeadMapper.StateFor("deferred"));
+        // bd's own refusal enumerates the set: `invalid status "tombstone" (built-in: open,
+        // in_progress, blocked, deferred, closed, pinned, hooked ...)`. The factory maps four of the
+        // seven; each of the other three is settable by a human in one command that exits 0 — probed
+        // against 1.2.1 — and All() maps every bead in the database, so a read that threw on one
+        // would take down every command that opens the host, on every machine sharing the backlog.
+        string[] beadsOwnStatuses = ["deferred", "pinned", "hooked"];
+
+        foreach (var status in beadsOwnStatuses)
+            Assert.Equal(WorkItemState.Blocked, BeadMapper.StateFor(status));
     }
+
+    [Fact]
+    public void A_custom_status_no_one_mapped_falls_back_rather_than_throwing()
+    {
+        Assert.Equal(WorkItemState.Blocked, BeadMapper.StateFor("a-status-nobody-mapped"));
+    }
+
+    [Fact]
+    public void Every_status_the_factory_writes_is_one_it_owns()
+    {
+        // The guard that keeps StateFor's list and UnownedStatus' answer from drifting: a status the
+        // factory writes but reports as unowned would have its own --status suppressed for ever.
+        foreach (var state in Enum.GetValues<WorkItemState>())
+            Assert.Null(BeadMapper.UnownedStatus(BeadMapper.StatusFor(state)));
+    }
+
+    [Fact]
+    public void A_status_the_factory_does_not_own_is_carried_on_the_item_verbatim()
+    {
+        var item = ToWorkItemWithStatus("pinned");
+
+        // Blocked is only how the factory reads it. The bead's own word is what makes the read
+        // reversible, so the next update can leave the cell alone instead of guessing.
+        Assert.Equal(WorkItemState.Blocked, item.State);
+        Assert.Equal("pinned", item.StoreStatus);
+    }
+
+    [Fact]
+    public void A_status_the_factory_does_own_carries_nothing()
+    {
+        Assert.Null(ToWorkItemWithStatus("blocked").StoreStatus);
+    }
+
+    private static WorkItem ToWorkItemWithStatus(string status) =>
+        BeadMapper.ToWorkItem(new BeadRecord
+        {
+            Id = "wi-000000000001",
+            Title = "a bead a human moved",
+            Status = status,
+            IssueType = "task",
+            Priority = Priorities.Default
+        });
 
     // Captured verbatim from `bd show --json` (beads 1.2.1) against a throwaway database, so the
     // JSON property names are exercised against what beads really emits rather than against a
@@ -276,6 +425,64 @@ public class BeadMapperTests
         var item = BeadMapper.ToWorkItem(FactoryJson.Read<BeadRecord>(json)!);
 
         Assert.Equal(["wi-aaaa11112222"], item.DependsOn);
+    }
+
+    [Theory]
+    [InlineData("tracks")]
+    [InlineData("related")]
+    [InlineData("parent-child")]
+    [InlineData("discovered-from")]
+    [InlineData("until")]
+    [InlineData("caused-by")]
+    [InlineData("validates")]
+    [InlineData("relates-to")]
+    [InlineData("supersedes")]
+    public void An_edge_beads_does_not_treat_as_blocking_is_not_read_as_a_blocker(string type)
+    {
+        // Probed against bd 1.2.1: of its ten edge types only `blocks` withholds the dependent from
+        // `bd ready`, and only `blocks` counts towards the dependent's own dependency_count. Reading
+        // every edge as blocking turns an edge another tool filed as context into a false blocker
+        // that FactoryState.Dispatchable() will never dispatch past.
+        var fromList = new BeadRecord
+        {
+            Id = "wi-bbbb11112222",
+            Title = "dependent",
+            Dependencies =
+            [
+                new BeadDependency
+                {
+                    IssueId = "wi-bbbb11112222",
+                    DependsOnId = "wi-aaaa11112222",
+                    Type = type
+                }
+            ]
+        };
+
+        var fromShow = new BeadRecord
+        {
+            Id = "wi-bbbb11112222",
+            Title = "dependent",
+            Dependencies = [new BeadDependency { Id = "wi-aaaa11112222", DependencyType = type }]
+        };
+
+        // Both shapes, because `list` reports the edge and `show` embeds the blocking issue.
+        Assert.Empty(BeadMapper.ToWorkItem(fromList).DependsOn);
+        Assert.Empty(BeadMapper.ToWorkItem(fromShow).DependsOn);
+    }
+
+    [Fact]
+    public void An_edge_with_no_type_recorded_still_blocks()
+    {
+        var bead = new BeadRecord
+        {
+            Id = "wi-bbbb11112222",
+            Title = "dependent",
+            Dependencies = [new BeadDependency { DependsOnId = "wi-aaaa11112222" }]
+        };
+
+        // `blocks` is bd's own default for an edge with no type given, and the unsafe direction here
+        // is dropping a real blocker rather than keeping a spurious one.
+        Assert.Equal(["wi-aaaa11112222"], BeadMapper.ToWorkItem(bead).DependsOn);
     }
 
     [Fact]

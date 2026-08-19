@@ -74,6 +74,13 @@ public sealed class Orchestrator : IDisposable
     /// stall check against <see cref="StallThreshold"/>.</summary>
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastProgressUtc = new();
 
+    /// <summary>The claims this run took itself and is still working, which is exactly the set whose
+    /// leases it has to keep alive. Written from the claim rather than read back out of the fold: the
+    /// mirror's ledger append is best-effort, so a swallowed one leaves a bead claimed under a live
+    /// lease that the fold has never heard of — and a shared backlog puts other machines' in-flight
+    /// items in the fold, whose leases are not this checkout's to refresh.</summary>
+    private readonly ConcurrentDictionary<string, bool> _claimsHeld = new();
+
     public Orchestrator(FactoryHost host, TimeSpan? stallThreshold = null)
     {
         this.host = host;
@@ -164,6 +171,10 @@ public sealed class Orchestrator : IDisposable
             {
                 if (_s.Items.TryClaim(_s.Config.Name) is not { } claimed) break;
 
+                // Before anything else can fail: from here on there is a lease out in the backlog
+                // with this checkout's name on it, and the refresh loop is the only thing keeping it.
+                _claimsHeld[claimed.Id] = true;
+
                 claimed = _s.Items.Update(claimed with
                 {
                     Station = claimed.Station ?? _s.Blueprint.Pipeline.FirstOrDefault()
@@ -206,31 +217,95 @@ public sealed class Orchestrator : IDisposable
             };
     }
 
-    /// <summary>Holds this checkout's claims open while their stations work. Only items actually
-    /// in progress have a claim to refresh — a store drops the lease once a station moves an item
-    /// on to review — and a refusal is not a backlog failure, so failures are left to the timer to
-    /// swallow.</summary>
+    /// <summary>Holds this run's own claims open while their stations work.</summary>
     private Task RefreshClaimsAsync()
     {
-        foreach (var item in _s.State.Items.Values.Where(i => i.State == WorkItemState.InProgress))
-            _s.Items.Heartbeat(item.Id);
+        RefreshEachClaim(_s.Items, _claimsHeld.Keys, _s.Log);
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>Refreshes each claim independently, so one item's failure never costs the others
+    /// theirs. Without the per-id guard a single throwing <c>Heartbeat</c> abandons the rest of the
+    /// tick — at concurrency 2, one sick item costs its neighbour every refresh, and the neighbour's
+    /// lease then expires while its station is still working. The timer swallows what escapes a tick,
+    /// so there would be nothing to see it by either.
+    ///
+    /// <see cref="WorkItemStoreException"/> is the one caught because the store is always composed
+    /// behind <see cref="GuardedWorkItemStore"/>, which is what every port fault arrives as — the same
+    /// reasoning and the same shape as <see cref="RequeueOrphans"/>' per-orphan tolerance. Anything
+    /// else is a defect in the factory and stays loud.
+    ///
+    /// Public for the reason <c>Commands.IsHeldElsewhere</c> is: the policy is not reachable through
+    /// <see cref="RunAsync"/> without a test-only injection seam in the host's composition, and the
+    /// seam would be the larger change.</summary>
+    public static void RefreshEachClaim(IWorkItemStore items, IEnumerable<string> ids, Action<string> log)
+    {
+        foreach (var id in ids)
+        {
+            try
+            {
+                items.Heartbeat(id);
+            }
+            catch (WorkItemStoreException ex)
+            {
+                log($"the claim on {id} could not be refreshed, so its lease may expire before the " +
+                    $"station finishes: {ex.Message}");
+            }
+        }
     }
 
     /// <summary>Work left mid-flight by a crash is put back on the queue. This is what the
     /// event-sourced ledger buys: a killed factory resumes rather than losing the item.
     ///
     /// Released rather than merely transitioned: releasing is what also drops the claim and clears
-    /// the assignee, and an orphan that kept either could not be picked up by another machine.</summary>
+    /// the assignee, and an orphan that kept either could not be picked up by another machine.
+    ///
+    /// Only this checkout's own claims: a shared backlog puts every machine's in-flight work in the
+    /// fold, and a backlog store is entitled to refuse a release of a claim it does not hold — which
+    /// would take the whole run start down with it. Another checkout's item is reported and left
+    /// alone, never forced: its holder may be working on it right now, and only its own restart or
+    /// an expired lease can safely return it.
+    ///
+    /// One orphan that cannot be requeued is reported and stepped over rather than allowed to end the
+    /// pass. The targets come from the fold while the backlog decides whether a release is legal, so
+    /// the two can disagree — a bead another machine closed between this host's open and now is
+    /// released as a Done item, which the port is right to refuse — and a single refusal must not stop
+    /// a factory before it has started or cost every other orphan its requeue. The log line is the
+    /// report: nothing is retried and nothing is forced.</summary>
     private void RequeueOrphans()
     {
         foreach (var item in _s.State.InFlight().ToList())
         {
-            _s.Items.Release(item.Id, "requeued after restart");
+            if (HeldElsewhere(item))
+            {
+                // "still holds it" is asserted, by
+                // Requeueing_orphans_leaves_an_item_another_checkout_holds_in_progress_alone. It has no
+                // other way to tell this report apart from the refusal logged below: without the guard
+                // the release is attempted, bd refuses it, nothing is written, and bd's own refusal text
+                // names the holder too — so the wording is what distinguishes them. Reword both together.
+                _s.Log($"left {item.Id} ({item.Title}) in flight — {item.Owner} still holds it");
+                continue;
+            }
+
+            try
+            {
+                _s.Items.Release(item.Id, "requeued after restart");
+            }
+            catch (WorkItemStoreException ex)
+            {
+                _s.Log($"could not requeue {item.Id} ({item.Title}) — the backlog refused it: {ex.Message}");
+                continue;
+            }
+
             _s.Log($"requeued {item.Id} ({item.Title})");
         }
     }
+
+    // An item with no recorded owner is this checkout's: a backlog store that keeps no claims
+    // reports none, and it is per-checkout anyway.
+    private bool HeldElsewhere(WorkItem item) =>
+        !string.IsNullOrEmpty(item.Owner) && item.Owner != _s.Config.Name;
 
     private async Task ProcessItemAsync(WorkItem item, OrchestratorOptions opts, CancellationToken ct)
     {
@@ -349,6 +424,9 @@ public sealed class Orchestrator : IDisposable
         }
         finally
         {
+            // However this pass ended, the item is no longer being worked here, so its lease is no
+            // longer this run's to hold open.
+            _claimsHeld.TryRemove(item.Id, out _);
             Shell.CurrentItemId.Value = null;
         }
     }

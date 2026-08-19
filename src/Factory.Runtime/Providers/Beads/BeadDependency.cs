@@ -25,4 +25,20 @@ public sealed record BeadDependency
     /// <summary>The bead that must close before the one carrying this entry can be worked.</summary>
     [JsonIgnore]
     public string BlockerId => DependsOnId ?? Id ?? "";
+
+    /// <summary>Whether this edge withholds the bead carrying it. Beads has ten edge types and
+    /// treats exactly one of them, <c>blocks</c>, as blocking: probing bd 1.2.1 shows a dependent
+    /// joined by <c>tracks</c>, <c>related</c>, <c>parent-child</c>, <c>discovered-from</c>,
+    /// <c>until</c>, <c>caused-by</c>, <c>validates</c>, <c>relates-to</c> or <c>supersedes</c> is
+    /// still listed by <c>bd ready</c> and still reports <c>dependency_count: 0</c>. Reading those
+    /// as blocking would make an edge another tool filed as context a blocker the factory never
+    /// dispatches past. An entry with no type recorded blocks, because that is bd's own default for
+    /// <c>bd dep add</c>; <c>blocked-by</c> and <c>depends-on</c> are bd's documented aliases for
+    /// <c>blocks</c>, accepted here because bd's help declares them synonyms even though every
+    /// write path probed normalises them to <c>blocks</c> before storing.</summary>
+    [JsonIgnore]
+    public bool IsBlocking => BlockingTypes.Contains(DependencyType ?? Type ?? "blocks");
+
+    private static readonly HashSet<string> BlockingTypes =
+        new(["blocks", "blocked-by", "depends-on", ""], StringComparer.OrdinalIgnoreCase);
 }

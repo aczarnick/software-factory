@@ -61,6 +61,13 @@ public sealed class FactoryPaths(string repoRoot)
 /// <summary>On-disk factory configuration.</summary>
 public sealed record FactoryConfig
 {
+    /// <summary>This checkout's identity. Defaults to the repo directory's basename, which is
+    /// <em>not</em> machine-unique — two clones of the same repo into identically named
+    /// directories get the same default. That is harmless with the <c>ledger</c> backlog, but with
+    /// the <c>beads</c> provider this value doubles as both the claim assignee and the cross-replica
+    /// node id (see the beads provider's <c>BeadsCli</c>), so wherever a beads backlog is shared
+    /// across machines, <c>Name</c> must be set explicitly and distinctly per machine — an empty
+    /// value is read as unset and silently disarms the guard, same as leaving it unconfigured.</summary>
     public required string Name { get; init; }
     public string BlueprintName { get; init; } = "standard";
     public int MaxConcurrency { get; init; } = 2;

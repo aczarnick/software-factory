@@ -13,6 +13,23 @@ public enum WorkItemState
     Cancelled
 }
 
+/// <summary>What kind of work an item is. The factory's pipeline treats every kind the same way.
+///
+/// The kinds past <see cref="Improvement"/> were added so an <see cref="IWorkItemStore"/> with its own
+/// item vocabulary can round-trip a type the factory did not file, rather than flattening it to
+/// <see cref="Feature"/> and writing that back over the store's own value. They are not confined to
+/// that: <c>ItemContract.ToDomain</c> parses a decompose station's model output into this enum, and
+/// <c>factory add --kind</c> parses an operator's word, so both now mint the new members too —
+/// <c>factory add --kind milestone</c> files a Milestone where it used to file a Feature.
+///
+/// That widening is deliberate rather than an oversight. Nothing in the pipeline branches on kind, so
+/// no station behaves differently; refusing the new words at the CLI would mean a special case listing
+/// which members an operator may name, to protect nothing.
+///
+/// The cost worth stating: this makes the enum a growing union of every backlog provider's vocabulary,
+/// and each growth is a plugin-ABI event (see <see cref="FactoryVersion.ContractVersion"/>). The
+/// provider-agnostic alternative — carrying the store's raw type string opaquely on the item — is
+/// named and rejected on cost grounds in <c>BeadMapper.KindFor</c>.</summary>
 public enum WorkItemKind
 {
     Feature,
@@ -20,7 +37,12 @@ public enum WorkItemKind
     Chore,
     Refactor,
     Spike,
-    Improvement
+    Improvement,
+    Task,
+    Epic,
+    Decision,
+    Story,
+    Milestone
 }
 
 public enum ProvenanceKind
@@ -63,8 +85,21 @@ public sealed record WorkItem
     public WorkItemState State { get; init; } = WorkItemState.Draft;
 
     /// <summary>Dispatch priority, <see cref="Priorities.Highest"/> to
-    /// <see cref="Priorities.Lowest"/>. Lower sorts first.</summary>
-    public int Priority { get; init; } = Priorities.Default;
+    /// <see cref="Priorities.Lowest"/>. Lower sorts first.
+    ///
+    /// Brought into the band on the way in rather than merely documented as being in it. The band is
+    /// the backlog store's — beads refuses anything outside it with a non-zero exit, which the store
+    /// raises as a halt — so this is the one place that can guarantee no item the factory holds is an
+    /// item the backlog will refuse. Every construction path lands here: object initialiser,
+    /// <c>with</c>, and deserialisation, which is how a ledger written before the band was narrowed
+    /// replays without stopping the factory.</summary>
+    public int Priority
+    {
+        get => _priority;
+        init => _priority = Priorities.Clamp(value);
+    }
+
+    private readonly int _priority = Priorities.Default;
 
     public IReadOnlyList<string> Labels { get; init; } = [];
     public string? ParentId { get; init; }
@@ -74,6 +109,23 @@ public sealed record WorkItem
     public decimal? BudgetUsd { get; init; }
 
     public Provenance Provenance { get; init; } = Provenance.Human;
+
+    /// <summary>Checkout holding the claim on this item, as the backlog store records it. Owned by
+    /// the backlog rather than by this machine — unlike <see cref="Station"/> and
+    /// <see cref="Worktree"/>, which are local run state — so reconciling from the backlog is
+    /// entitled to overwrite it. Null when nothing holds the item, or when the store keeps no
+    /// claims.</summary>
+    public string? Owner { get; init; }
+
+    /// <summary>The backlog store's own word for this item's status, kept verbatim when it is one the
+    /// factory has no <see cref="WorkItemState"/> of its own for; null whenever
+    /// <see cref="State"/> is a faithful reading of it. Store-owned like <see cref="Owner"/>, so
+    /// reconciling from the backlog is entitled to overwrite it.
+    ///
+    /// It exists so a status the factory cannot name is a status the factory does not destroy: the
+    /// read has to fall back to <em>some</em> state, and without the original word the next write
+    /// renders that fallback back over the store's own cell.</summary>
+    public string? StoreStatus { get; init; }
 
     /// <summary>Station currently holding the item, when InProgress.</summary>
     public string? Station { get; init; }

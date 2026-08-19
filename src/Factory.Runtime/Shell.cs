@@ -87,7 +87,14 @@ public static class Shell
 
             return new ShellResult(proc.ExitCode, stdout.ToString(), stderr.ToString(), false);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException or SystemException)
+        // Catches every SystemException, not just IOException and InvalidOperationException (both
+        // already derive from it, so naming them separately caught nothing the bare type does not).
+        // Deliberately this broad: Process.Start reports a missing executable, a denied fork, or a
+        // full process table as a plain Win32Exception, which is a SystemException and nothing
+        // narrower. The cost is that a bug inside this method's own body -- a NullReferenceException,
+        // say -- is caught here too, and surfaces to the caller as an ordinary failure result
+        // (a non-zero exit, or false) rather than as an exception.
+        catch (SystemException ex)
         {
             return new ShellResult(127, "", ex.Message, false);
         }
@@ -137,7 +144,14 @@ public static class Shell
             try { proc.Kill(entireProcessTree: true); } catch { /* already gone */ }
             return false;
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException or SystemException)
+        // Catches every SystemException, not just IOException and InvalidOperationException (both
+        // already derive from it, so naming them separately caught nothing the bare type does not).
+        // Deliberately this broad: Process.Start reports a missing executable, a denied fork, or a
+        // full process table as a plain Win32Exception, which is a SystemException and nothing
+        // narrower. The cost is that a bug inside this method's own body -- a NullReferenceException,
+        // say -- is caught here too, and surfaces to the caller as an ordinary failure result
+        // (a non-zero exit, or false) rather than as an exception.
+        catch (SystemException)
         {
             return false;
         }
