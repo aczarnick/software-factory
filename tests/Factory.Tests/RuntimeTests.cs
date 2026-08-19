@@ -185,6 +185,15 @@ public class PipelineTests : IDisposable
         var report = await host.CreateOrchestrator()
             .RunAsync(new OrchestratorOptions { MaxConcurrency = 2, StopWhenIdle = true });
 
+        // Asserted before the count, because this test is the suite's known flake -- about one run in
+        // nine, `Expected 2 / Actual 1` -- and a count alone cannot say whether the second item was
+        // never claimed, failed, or blocked. These two name the failure mode instead of leaving the
+        // next occurrence to be re-run and forgotten, which is how three criticals survived a green
+        // suite on the previous phase. The flake itself is deferred and recorded in the phase-4
+        // handoff note with its measured rate and mechanism.
+        Assert.Equal(0, report.Failed);
+        Assert.Equal(0, report.Blocked);
+
         Assert.Equal(2, report.Completed);
         Assert.Equal(WorkItemState.Done, host.Services.State.Items[first.Id].State);
         Assert.Equal(WorkItemState.Done, host.Services.State.Items[second.Id].State);
