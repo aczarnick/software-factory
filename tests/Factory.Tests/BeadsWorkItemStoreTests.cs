@@ -434,14 +434,47 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Heartbeat_does_not_throw_for_an_item_this_node_does_not_hold()
+    public void Heartbeat_stays_quiet_for_an_item_this_node_does_not_hold()
     {
         if (Unavailable) return;
-        var store = Store();
+        var logged = new List<string>();
+        var store = new BeadsWorkItemStore(Cli(), Owner, logged.Add);
         var item = store.Add(WorkItem.Create("unheld") with { State = WorkItemState.Ready });
 
-        // bd refuses a heartbeat on a bead that is not in progress here; that is not a backlog failure.
+        // bd refuses a heartbeat on a bead that is not in progress here -- probed: exit 1, `issue not
+        // claimable: <id> status open`. That is the expected refusal every station past in_progress
+        // produces, so it must neither throw nor be reported.
         store.Heartbeat(item.Id);
+
+        Assert.Empty(logged);
+    }
+
+    private sealed class FailsHeartbeatCalls(string directory, string owner) : BeadsCli(directory, owner)
+    {
+        public override ShellResult Exec(params string[] args) =>
+            args is ["heartbeat", ..]
+                ? new ShellResult(1, "", "Error: unknown command \"heartbeat\" for \"bd\"", false)
+                : base.Exec(args);
+    }
+
+    [Fact]
+    public void A_heartbeat_failing_for_any_other_reason_is_reported()
+    {
+        if (Unavailable) return;
+        DrainReadyQueue();
+        var logged = new List<string>();
+        var store = new BeadsWorkItemStore(new FailsHeartbeatCalls(database.Directory, Owner), Owner, logged.Add);
+        var item = store.Add(WorkItem.Create("held but unrefreshable") with { State = WorkItemState.Ready });
+        var claimed = store.TryClaim(Owner)!;
+        Assert.Equal(item.Id, claimed.Id);
+
+        // A renamed command after a bd upgrade, injected here because it is the failure the silence was
+        // hiding. The heartbeat is the only thing holding the claim, so this is the lease expiring
+        // mid-station and another machine taking the work -- previously with nothing anywhere saying
+        // why, because the expected refusal above justified discarding the result entirely.
+        store.Heartbeat(claimed.Id);
+
+        Assert.Contains(logged, message => message.Contains(claimed.Id) && message.Contains("unknown command"));
     }
 
     [Fact]

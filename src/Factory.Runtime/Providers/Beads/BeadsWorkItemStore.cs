@@ -54,8 +54,31 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string
 
     /// <summary>Pushes the lease out. Best-effort by design: beads refuses a heartbeat on a bead
     /// this node does not hold in progress, and a station that has moved its item to review has no
-    /// lease left to refresh. Neither is a backlog failure, so neither halts the factory.</summary>
-    public void Heartbeat(string id) => cli.Exec("heartbeat", id, "--actor", owner);
+    /// lease left to refresh. Neither is a backlog failure, so neither halts the factory.
+    ///
+    /// Every other refusal is reported. The heartbeat is the only thing holding the claim, so a
+    /// renamed command after a bd upgrade, a locked database or a node-id mismatch means the lease
+    /// expires mid-station and another machine can take the work — and the expected refusal above is
+    /// exactly what used to justify discarding the result, and with it the unexpected one. Still
+    /// non-throwing: a failed refresh is not a reason to stop the run that is holding the claim.</summary>
+    public void Heartbeat(string id)
+    {
+        var result = cli.Exec("heartbeat", id, "--actor", owner);
+        if (result.Ok || IsLeaseNotHeld(result)) return;
+
+        log($"the claim on {id} could not be refreshed in beads, so its lease will expire and another " +
+            $"checkout may take the work: {result.Combined}");
+    }
+
+    /// <summary>bd's words for the one heartbeat refusal that is expected — <c>issue not claimable:
+    /// &lt;id&gt; status &lt;status&gt;</c>. Matched on the message because there is nothing else to
+    /// match on: probed, every heartbeat failure exits 1 — this one, a foreign claim, an unknown id and
+    /// an unknown command alike — and leases live in a node-local table with no query surface to ask
+    /// instead.</summary>
+    private const string LeaseNotHeld = "not claimable";
+
+    private static bool IsLeaseNotHeld(ShellResult result) =>
+        result.Combined.Contains(LeaseNotHeld, StringComparison.Ordinal);
 
     /// <summary>Returns an item to the queue. Refuses one whose current state cannot reach Ready,
     /// which the port requires and <see cref="LedgerWorkItemStore"/> gets from routing through
