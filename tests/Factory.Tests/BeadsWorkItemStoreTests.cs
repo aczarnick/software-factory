@@ -1062,10 +1062,14 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
 
         store.Update(filed with { Intent = "" });
 
+        // Read once and held: C# evaluates the interpolated failure message eagerly, so naming Bead()
+        // inside it spent a second bd subprocess on every passing run.
+        var description = Bead(filed.Id).Description;
+
         // bd accepts `-d ""` and empties the cell, so an item whose intent is gone must not leave
         // beads asserting the old one to every other reader of the backlog.
-        Assert.True(string.IsNullOrEmpty(Bead(filed.Id).Description),
-            $"description should be cleared, was '{Bead(filed.Id).Description}'");
+        Assert.True(string.IsNullOrEmpty(description),
+            $"description should be cleared, was '{description}'");
     }
 
     [Fact]
