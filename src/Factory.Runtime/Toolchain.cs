@@ -297,11 +297,11 @@ public sealed record ToolchainCompatibilityResult
 
     public static ToolchainCompatibilityResult Incompatible(
         IReadOnlyList<string> required, IReadOnlyList<string> installed) => new()
-    {
-        IsCompatible = false,
-        RequiredVersions = required,
-        InstalledVersions = installed
-    };
+        {
+            IsCompatible = false,
+            RequiredVersions = required,
+            InstalledVersions = installed
+        };
 }
 
 /// <summary>Determines whether a repo's toolchain requirement is met by the installed SDKs.</summary>

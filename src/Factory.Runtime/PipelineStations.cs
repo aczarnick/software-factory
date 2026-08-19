@@ -293,15 +293,21 @@ public sealed class ReviewStation : AgentStation
                 : review.Summary;
             return new StationResult
             {
-                Success = true, GatePassed = false, Detail = detail,
-                NewItems = followUps, Run = record with { GatePassed = false }
+                Success = true,
+                GatePassed = false,
+                Detail = detail,
+                NewItems = followUps,
+                Run = record with { GatePassed = false }
             };
         }
 
         return new StationResult
         {
-            Success = true, GatePassed = true, Detail = review.Summary,
-            NewItems = followUps, Run = record with { GatePassed = true }
+            Success = true,
+            GatePassed = true,
+            Detail = review.Summary,
+            NewItems = followUps,
+            Run = record with { GatePassed = true }
         };
     }
 }

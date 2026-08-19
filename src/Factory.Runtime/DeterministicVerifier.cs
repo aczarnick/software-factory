@@ -45,14 +45,14 @@ public static class DeterministicVerifier
                     break;
 
                 case FileExistsVerification file:
-                {
-                    var path = Path.IsPathRooted(file.Path) ? file.Path : Path.Combine(workDir, file.Path);
-                    var exists = File.Exists(path) || Directory.Exists(path);
-                    results.Add(exists
-                        ? CriterionResult.Pass(criterion.Id, $"{file.Path} exists")
-                        : CriterionResult.Fail(criterion.Id, $"{file.Path} does not exist"));
-                    break;
-                }
+                    {
+                        var path = Path.IsPathRooted(file.Path) ? file.Path : Path.Combine(workDir, file.Path);
+                        var exists = File.Exists(path) || Directory.Exists(path);
+                        results.Add(exists
+                            ? CriterionResult.Pass(criterion.Id, $"{file.Path} exists")
+                            : CriterionResult.Fail(criterion.Id, $"{file.Path} does not exist"));
+                        break;
+                    }
 
                 case AgentJudgeVerification:
                     deferred.Add(criterion);

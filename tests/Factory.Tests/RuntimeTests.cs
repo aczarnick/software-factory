@@ -553,7 +553,8 @@ public class CompositionTests : IDisposable
     public async Task Delegation_depth_is_bounded_so_a_factory_containing_itself_cannot_run_away()
     {
         var blueprint = Blueprint.Composite("loop", new Dictionary<string, string> { ["self"] = _parent })
-            with { MaxDelegationDepth = 0 };
+            with
+        { MaxDelegationDepth = 0 };
 
         using var host = FactoryHost.Init(_parent, blueprint,
             new FactoryConfig { Name = "loop", Factories = new Dictionary<string, string> { ["self"] = _parent } },
