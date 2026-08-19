@@ -285,7 +285,7 @@ public static class BeadMapper
         // fallback StateFor chose would destroy a human's `deferred`, `pinned` or `hooked` on the
         // factory's first touch, which is the same read-then-write-back destruction already closed
         // for issue_type and for the acceptance cell.
-        if (!KeepsUnownedStatus(item)) { args.Add("--status"); args.Add(StatusFor(item.State)); }
+        if (!KeepsStoreStatus(item)) { args.Add("--status"); args.Add(StatusFor(item.State)); }
 
         // Sent only when the item has criteria of its own, deliberately unlike -d above. The two
         // differ because their reads differ: Intent falls back to the bead's own description when the
@@ -303,13 +303,19 @@ public static class BeadMapper
         return args;
     }
 
-    // Whether this write must leave the bead's status alone. The carried status is not enough on its
-    // own: a caller that moved the item off it -- `factory activate` on a pinned bead -- is making an
-    // explicit request, and dropping that write would leave the factory and beads permanently
-    // disagreeing about a state the operator chose. So the status is kept only while the item's state
-    // is still exactly what that status was read as, meaning nothing asked for a change.
-    private static bool KeepsUnownedStatus(WorkItem item) =>
-        item.StoreStatus is { } unowned && StateFor(unowned) == item.State;
+    /// <summary>Whether <see cref="UpdateArgs"/> leaves the bead's status cell alone for this item.
+    /// <see cref="WorkItem.StoreStatus"/> being set is not enough on its own: a caller that moved the
+    /// item off it — <c>factory activate</c> on a pinned bead — is making an explicit request, and
+    /// dropping that write would leave the factory and beads permanently disagreeing about a state the
+    /// operator chose. So the status is kept only while the item's state is still exactly what that
+    /// status was read as, meaning nothing asked for a change.
+    ///
+    /// Public because the store has to ask the same question to decide what the item it hands back
+    /// still carries: an item whose status the write took over must stop carrying beads' old word, or
+    /// a later write suppresses its own <c>--status</c> on the strength of a word beads no longer
+    /// holds.</summary>
+    public static bool KeepsStoreStatus(WorkItem item) =>
+        item.StoreStatus is { } carried && StateFor(carried) == item.State;
 
     /// <summary>Adds one blocking edge. The dependent is named first: <c>bd dep add &lt;dependent&gt;
     /// &lt;blocker&gt;</c>, and reversing the pair files a valid edge pointing the other way while still

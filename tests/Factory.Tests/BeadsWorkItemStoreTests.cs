@@ -609,6 +609,29 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
+    public void A_status_the_factory_has_taken_over_is_not_carried_any_further()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var id = ABeadAHumanMovedTo("pinned", "a bead a human pinned, then activated");
+        var pinned = store.Get(id)!;
+        Assert.Equal("pinned", pinned.StoreStatus);
+
+        var activated = store.Transition(pinned, WorkItemState.Ready, "activated by the operator");
+
+        // The write sent --status, so beads' own word is gone and the item must stop carrying it.
+        Assert.Equal("open", Bead(id).Status);
+        Assert.Null(activated.StoreStatus);
+
+        // The consequence if it kept carrying it: the item's state is Blocked again here, which is what
+        // `pinned` reads as, so the suppression would fire on the strength of a word beads no longer
+        // holds and leave the two disagreeing for the rest of the run.
+        store.Transition(activated, WorkItemState.Blocked, "blocked after activation");
+
+        Assert.Equal("blocked", Bead(id).Status);
+    }
+
+    [Fact]
     public void A_legacy_priority_on_an_item_does_not_halt_the_backlog_write()
     {
         if (Unavailable) return;

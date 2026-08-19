@@ -21,12 +21,18 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string
         Write(BeadMapper.UpdateArgs(item, owner), $"update {item.Id}");
         ReconcileDependencies(item);
 
-        // A Ready-bound write just cleared the bead's assignee (BeadMapper.UpdateArgs), so the
-        // returned item has to say the same thing — otherwise the mirror carries a stale Owner
-        // into the ledger for a bead that bd now shows as unassigned.
-        return item.State == WorkItemState.Ready
-            ? item with { Owner = null, UpdatedAt = DateTimeOffset.UtcNow }
-            : item with { UpdatedAt = DateTimeOffset.UtcNow };
+        // The write's own post-conditions, so the mirror carries into the ledger what bd now holds
+        // rather than what the caller asked for. A Ready-bound write just cleared the bead's assignee
+        // (BeadMapper.UpdateArgs), and a write that sent --status has taken over a status the item was
+        // only carrying — keeping that word would let a later write suppress its own --status on the
+        // strength of a status beads no longer holds.
+        var written = item with
+        {
+            UpdatedAt = DateTimeOffset.UtcNow,
+            StoreStatus = BeadMapper.KeepsStoreStatus(item) ? item.StoreStatus : null
+        };
+
+        return item.State == WorkItemState.Ready ? written with { Owner = null } : written;
     }
 
     public WorkItem Transition(WorkItem item, WorkItemState to, string? reason)
