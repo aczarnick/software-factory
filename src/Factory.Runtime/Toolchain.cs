@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Xml.Linq;
 using Factory.Core;
 
@@ -148,6 +149,31 @@ public sealed record ToolchainBaseline
     /// cref="IRepoStateProvider"/> at capture time. Not wired up to any staleness comparison —
     /// <see cref="Commit"/> remains the source of truth for that.</summary>
     public string CapturedCommitSha { get; init; } = "";
+
+    /// <summary>How many attempts each check needed. <see cref="RunAsync"/> already measures this and
+    /// the capture used to discard it, at the one place where confidence decides whether a gate stays
+    /// on. Absent from baselines written before it was recorded, which load as an empty map.</summary>
+    public Dictionary<string, int> Attempts { get; init; } = [];
+
+    /// <summary>Checks this baseline records as already failing. Only regressions block, so a check
+    /// believed broken can no longer fail anything: naming these is naming the gates that are off.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> DisabledGates =>
+        [.. Passing.Where(p => !p.Value).Select(p => p.Key).Order()];
+
+    /// <summary>Checks that passed, but only after a retry — the machine decided the first attempt,
+    /// not the code. The gate stays on; the evidence that this host is unreliable does not vanish.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> FlakyChecks =>
+        [.. Passing.Where(p => p.Value && Attempts.GetValueOrDefault(p.Key, 1) > 1).Select(p => p.Key).Order()];
+
+    public static ToolchainBaseline From(string commit, IReadOnlyList<CheckOutcome> results) => new()
+    {
+        Commit = commit,
+        CapturedCommitSha = commit,
+        Passing = results.ToDictionary(r => r.Name, r => r.Passed),
+        Attempts = results.ToDictionary(r => r.Name, r => r.Attempts)
+    };
 }
 
 public sealed record ToolchainVerdict(
@@ -501,12 +527,7 @@ public static class ToolchainRunner
         if (TryLoadBaseline(cachePath, commit) is { } cached) return cached;
 
         var results = await RunAsync(toolchain, repoRoot, ct).ConfigureAwait(false);
-        var baseline = new ToolchainBaseline
-        {
-            Commit = commit,
-            CapturedCommitSha = commit,
-            Passing = results.ToDictionary(r => r.Name, r => r.Passed)
-        };
+        var baseline = ToolchainBaseline.From(commit, results);
 
         try
         {
@@ -533,12 +554,7 @@ public static class ToolchainRunner
         if (cached.Commit == currentSha) return cached;
 
         var results = await RunAsync(toolchain, repoRoot, ct, execute).ConfigureAwait(false);
-        var fresh = new ToolchainBaseline
-        {
-            Commit = currentSha,
-            CapturedCommitSha = currentSha,
-            Passing = results.ToDictionary(r => r.Name, r => r.Passed)
-        };
+        var fresh = ToolchainBaseline.From(currentSha, results);
 
         try
         {

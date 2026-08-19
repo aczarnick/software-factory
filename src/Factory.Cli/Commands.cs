@@ -318,6 +318,9 @@ public static class Commands
 
     // ── inspection ──────────────────────────────────────────────────────────
 
+    private static string Short(string? sha) =>
+        string.IsNullOrEmpty(sha) ? "an unknown commit" : sha[..Math.Min(12, sha.Length)];
+
     /// <summary>Probes harness staleness from a synchronous command. Blocking is safe here: a CLI has
     /// no synchronisation context to deadlock against, and the probe is two short git invocations.</summary>
     private static HarnessStaleness ProbeHarness(FactoryHost host) =>
@@ -335,6 +338,10 @@ public static class Commands
 
         if (ProbeHarness(host) is { IsStale: true } stale)
             Output.Warn($"harness   {stale.Describe}");
+
+        if (ToolchainRunner.TryLoadBaseline(host.Paths.BaselineFile) is { DisabledGates.Count: > 0 } baseline)
+            Output.Warn($"gates off {string.Join(", ", baseline.DisabledGates)} "
+                        + $"— recorded as already failing at {Short(baseline.Commit)}, so they cannot block");
         Output.Info($"blueprint {host.Blueprint.Name} · {string.Join(" → ", host.Blueprint.Pipeline)}");
 
         // The deterministic gates the repository itself provides, shown so it is obvious
@@ -731,6 +738,39 @@ public static class Commands
         else if (harness.SelfHosted) Output.Success($"built from this repository at {FactoryVersion.Commit}");
         else Output.Info("not built from this repository — nothing to compare");
 
+        Output.Header("Gates");
+
+        // `doctor` dispatches no work, so it is the one command guaranteed to be running while the
+        // toolchain is otherwise idle — which is the condition a trustworthy baseline requires.
+        if (cli.Has("recapture"))
+        {
+            Output.Step("recapturing the toolchain baseline — nothing else should be building");
+            File.Delete(host.Paths.BaselineFile);
+            var captured = ToolchainRunner
+                .BaselineAsync(toolchain, host.Paths.RepoRoot, host.Paths.BaselineFile,
+                    new GitRepoStateProvider(host.Paths.RepoRoot))
+                .GetAwaiter().GetResult();
+            Output.Step($"captured at {Short(captured.Commit)}: "
+                        + string.Join(", ", captured.Passing.Select(p => $"{p.Key} {(p.Value ? "pass" : "FAIL")}")));
+        }
+
+        var baseline = ToolchainRunner.TryLoadBaseline(host.Paths.BaselineFile);
+        if (baseline is null)
+        {
+            Output.Info("no baseline captured yet — every check will block on its first failure");
+        }
+        else
+        {
+            foreach (var gate in baseline.DisabledGates)
+                Output.Warn($"'{gate}' was recorded as already failing at {Short(baseline.Commit)} — "
+                            + "it can no longer block anything. Recapture on an idle machine if that is wrong.");
+            foreach (var flaky in baseline.FlakyChecks)
+                Output.Warn($"'{flaky}' only passed on a retry — this host's toolchain is unreliable");
+
+            if (baseline.DisabledGates.Count == 0 && baseline.FlakyChecks.Count == 0)
+                Output.Success($"all baseline checks passed first time at {Short(baseline.Commit)}");
+        }
+
         Output.Header("Claude CLI");
         var claudeExe = Environment.GetEnvironmentVariable("FACTORY_CLAUDE_BIN") ?? "claude";
         if (Shell.Which(claudeExe))
@@ -788,7 +828,7 @@ public static class Commands
               factory ls [--all]                Backlog
               factory show <id>                 One item in full, with its run history
               factory status                    Backlog, spend, and configuration
-              factory doctor                    Check toolchain, claude CLI, and blueprint health
+              factory doctor [--recapture]      Check health; --recapture retakes the toolchain baseline
 
             {Output.Bold("Composition")}
               factory link <path> [--as <name>] [--pipeline]
