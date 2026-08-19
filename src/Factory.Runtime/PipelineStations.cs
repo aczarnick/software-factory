@@ -216,6 +216,11 @@ public sealed class VerifyStation : IStation
 
         ctx.Run.DeferredCriteria = outcome.Deferred;
 
+        // Recorded whether or not the gate passed: a failing verdict is evidence too, and the item
+        // is about to be routed back to implementation carrying it.
+        if (outcome.Report.Results.Count > 0)
+            ctx.Services.Record(new CriteriaVerified(ctx.Item.Id, outcome.Report.Results));
+
         var checkedCount = outcome.Report.Results.Count;
         ctx.Log($"{checkedCount} criteria checked at zero token cost" +
                 (outcome.HasDeferred ? $", {outcome.Deferred.Count} deferred to review" : ""));

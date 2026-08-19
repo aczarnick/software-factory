@@ -372,7 +372,8 @@ public static class Commands
     public static int List(CommandLine cli)
     {
         using var host = OpenOrInit(cli, quiet: true);
-        var items = host.Services.State.Items.Values
+        var state = host.Services.State;
+        var items = state.Items.Values
             .Where(i => cli.Has("all") || i.State is not (WorkItemState.Done or WorkItemState.Superseded))
             .OrderBy(i => i.State)
             .ThenBy(i => i.Priority)
@@ -389,13 +390,24 @@ public static class Commands
             i.Id,
             Output.State(i.State),
             Output.Truncate(i.Title, 54),
-            $"{i.AcceptanceCriteria.Count(c => c.Verification.IsDeterministic)}/{i.AcceptanceCriteria.Count}",
-            $"${i.SpentUsd:F3}",
+            Verdict(state.VerdictFor(i.Id), i),
+            $"${state.SpentFor(i.Id):F3}",
             i.Provenance.Kind.ToString().ToLowerInvariant()
         }).ToList();
 
-        Output.Table(rows, "id", "state", "title", "checks", "cost", "from");
+        Output.Table(rows, "id", "state", "title", "passed", "cost", "from");
         return 0;
+    }
+
+    /// <summary>How many acceptance criteria actually passed. A dash means the item was never
+    /// verified, which must not look like a pass: the column used to show how many criteria a shell
+    /// *could* settle, so an item that skipped verification entirely still rendered as "5/5".</summary>
+    private static string Verdict(VerificationReport? report, WorkItem item)
+    {
+        if (item.AcceptanceCriteria.Count == 0) return "—";
+        if (report is null) return $"—/{item.AcceptanceCriteria.Count}";
+
+        return $"{report.Results.Count(r => r.Passed)}/{item.AcceptanceCriteria.Count}";
     }
 
     public static int Show(CommandLine cli)
@@ -411,7 +423,7 @@ public static class Commands
         Output.Header($"{item.Id}  {item.Title}");
         Output.Info($"state    {Output.State(item.State)}");
         Output.Info($"kind     {item.Kind}   priority {item.Priority}   from {item.Provenance}");
-        Output.Info($"spend    ${item.SpentUsd:F4}   attempts {item.Attempts}");
+        Output.Info($"spend    ${host.Services.State.SpentFor(item.Id):F4}   attempts {item.Attempts}");
         if (item.Station is not null) Output.Info($"station  {item.Station}");
         if (!string.IsNullOrWhiteSpace(item.Intent)) Output.Info($"intent   {item.Intent}");
 
@@ -423,12 +435,24 @@ public static class Commands
 
         if (item.AcceptanceCriteria.Count > 0)
         {
+            var verdict = host.Services.State.VerdictFor(item.Id);
+
             Output.Header("Acceptance criteria");
             foreach (var c in item.AcceptanceCriteria)
             {
                 var tag = c.Verification.IsDeterministic ? Output.Green("machine") : Output.Yellow("judged");
                 Output.Info($"- [{tag}] {c.Statement}");
                 Output.Step($"    {c.Verification.Describe}");
+
+                // Absence of a result is reported as such. Saying nothing here is what let an item
+                // that never reached verification read as though it had passed.
+                var result = verdict?.Results.FirstOrDefault(r => r.CriterionId == c.Id);
+                Output.Step(result switch
+                {
+                    { Passed: true } => $"    {Output.Green("passed")} — {result.Detail}",
+                    { Passed: false } => $"    {Output.Red("failed")} — {result.Detail}",
+                    _ => $"    {Output.Dim("never checked")}"
+                });
             }
         }
 

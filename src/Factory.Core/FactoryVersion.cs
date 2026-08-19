@@ -45,6 +45,11 @@ public static class FactoryVersion
     /// v3 adds <see cref="WorkItemState.Superseded"/>, so a decomposed parent stops being reported as
     /// Done. Same shape of exposure as v2's: no signature moved, but a contract-2 store or sink can be
     /// handed a state it has no case for, and one that silently maps to Done would reinstate exactly
-    /// the false green this member exists to remove.</summary>
-    public const int ContractVersion = 3;
+    /// the false green this member exists to remove.
+    ///
+    /// v4 adds the <see cref="CriteriaVerified"/> event, so per-criterion outcomes survive as ledger
+    /// evidence instead of being computed and discarded. <see cref="IRunHistorySink"/> takes
+    /// <see cref="FactoryEvent"/>, so a contract-3 sink is now handed a case it does not know — the
+    /// same exposure v2 and v3 were bumped for.</summary>
+    public const int ContractVersion = 4;
 }

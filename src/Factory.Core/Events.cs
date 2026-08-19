@@ -70,6 +70,7 @@ public sealed record RunRecord
 [JsonDerivedType(typeof(RunStarted), "run_started")]
 [JsonDerivedType(typeof(RunCompleted), "run_completed")]
 [JsonDerivedType(typeof(GateEvaluated), "gate_evaluated")]
+[JsonDerivedType(typeof(CriteriaVerified), "criteria_verified")]
 [JsonDerivedType(typeof(BudgetConsumed), "budget_consumed")]
 [JsonDerivedType(typeof(PromptPromoted), "prompt_promoted")]
 [JsonDerivedType(typeof(PromptDemoted), "prompt_demoted")]
@@ -101,6 +102,13 @@ public sealed record RunCompleted(RunRecord Record) : FactoryEvent;
 
 public sealed record GateEvaluated(
     string ItemId, string StationId, bool Passed, string Detail) : FactoryEvent;
+
+/// <summary>The per-criterion outcome of verifying an item. <see cref="GateEvaluated"/> records only
+/// that a gate passed; without this, which criteria were settled and which were never attempted is
+/// computed and thrown away, so an item that skipped verification is indistinguishable from one that
+/// passed everything.</summary>
+public sealed record CriteriaVerified(
+    string ItemId, IReadOnlyList<CriterionResult> Results) : FactoryEvent;
 
 public sealed record BudgetConsumed(string Scope, decimal Usd, decimal ScopeTotal) : FactoryEvent;
 

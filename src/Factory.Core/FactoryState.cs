@@ -13,6 +13,7 @@ public sealed class FactoryState
     private readonly List<RunRecord> _runs = [];
     private readonly Dictionary<string, string> _champions = [];
     private readonly Dictionary<string, string> _linkedFactories = [];
+    private readonly Dictionary<string, VerificationReport> _verdicts = [];
 
     public IReadOnlyDictionary<string, WorkItem> Items
     {
@@ -37,6 +38,21 @@ public sealed class FactoryState
 
     public long LastSeq { get; private set; }
     public decimal TotalSpentUsd { get { lock (_gate) return _runs.Sum(r => r.CostUsd); } }
+
+    /// <summary>What one item's runs cost, summed from the ledger rather than read off the item.
+    /// <see cref="WorkItem.SpentUsd"/> is accumulated onto a record that <see cref="WorkItemUpdated"/>
+    /// replaces wholesale from a caller's snapshot, so it reads as zero for most items.</summary>
+    public decimal SpentFor(string itemId)
+    {
+        lock (_gate) return _runs.Where(r => r.ItemId == itemId).Sum(r => r.CostUsd);
+    }
+
+    /// <summary>The most recent per-criterion verdict for an item, or <c>null</c> when it was never
+    /// verified. Null is not a passing verdict, and the two must never render alike.</summary>
+    public VerificationReport? VerdictFor(string itemId)
+    {
+        lock (_gate) return _verdicts.GetValueOrDefault(itemId);
+    }
     public TokenUsage TotalUsage { get { lock (_gate) return _runs.Aggregate(TokenUsage.Zero, (a, r) => a + r.Usage); } }
 
     public static FactoryState Replay(IEnumerable<FactoryEvent> events)
@@ -73,6 +89,12 @@ public sealed class FactoryState
                 _runs.Add(r.Record);
                 if (_items.TryGetValue(r.Record.ItemId, out var ri))
                     _items[r.Record.ItemId] = ri with { SpentUsd = ri.SpentUsd + r.Record.CostUsd };
+                break;
+
+            // Keyed by item rather than accumulated, so a re-verification replaces its predecessor
+            // instead of appending a second opinion.
+            case CriteriaVerified v:
+                _verdicts[v.ItemId] = new VerificationReport(v.Results);
                 break;
 
             case PromptPromoted p:
