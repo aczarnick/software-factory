@@ -35,7 +35,30 @@ public static class BeadMapper
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Unmapped work item state.")
     };
 
-    public static WorkItemState StateFor(string status) => status switch
+    /// <summary>Reads a bead's status. Never throws: bd has seven built-in statuses and the factory
+    /// maps four of them, so <c>deferred</c>, <c>pinned</c> and <c>hooked</c> — each settable by a
+    /// human in one command that exits 0 — arrive here, as does any custom status someone configured.
+    /// <c>All()</c> maps every bead in the database and the reconciler runs outside any tolerance, so
+    /// a throw would take down every command that opens the host, on every machine sharing the
+    /// backlog, recoverable only by editing the bead with <c>bd</c>.
+    ///
+    /// The fallback is Blocked because that is the one state whose meaning matches every status the
+    /// factory does not own: not available to be worked on. It is also true of the three by
+    /// construction — probed against 1.2.1, <c>bd ready</c> offers none of them — so the factory's
+    /// reading and bd's own dispatch agree rather than one of them offering work the other withholds.
+    ///
+    /// Unlike <see cref="KindFor"/>'s fallback this loses nothing, because the original word is
+    /// carried on the item by <see cref="UnownedStatus"/> and <see cref="UpdateArgs"/> leaves such a
+    /// cell alone. That is the complete fix KindFor's own remark describes and declines.</summary>
+    public static WorkItemState StateFor(string status) => OwnStateFor(status) ?? UnownedStatusReadsAs;
+
+    /// <summary>The store's own status, when the factory has no state of its own for it; null when
+    /// <see cref="StateFor"/> is a faithful reading of it and there is nothing to preserve.</summary>
+    public static string? UnownedStatus(string status) => OwnStateFor(status) is null ? status : null;
+
+    // Every status the factory writes, and nothing else. The single list behind both StateFor and
+    // UnownedStatus, so a status cannot be readable and unowned at once.
+    private static WorkItemState? OwnStateFor(string status) => status switch
     {
         "draft" => WorkItemState.Draft,
         "open" => WorkItemState.Ready,
@@ -46,8 +69,10 @@ public static class BeadMapper
         "blocked" => WorkItemState.Blocked,
         "failed" => WorkItemState.Failed,
         "cancelled" => WorkItemState.Cancelled,
-        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unmapped bead status.")
+        _ => null
     };
+
+    private const WorkItemState UnownedStatusReadsAs = WorkItemState.Blocked;
 
     public static string TypeFor(WorkItemKind kind) => kind switch
     {
@@ -119,6 +144,7 @@ public static class BeadMapper
             Intent = metadata.Intent ?? bead.Description ?? "",
             Kind = KindFor(bead.IssueType),
             State = StateFor(bead.Status),
+            StoreStatus = UnownedStatus(bead.Status),
             Priority = bead.Priority,
             Requirements = metadata.Requirements,
             AcceptanceCriteria = metadata.Criteria,
@@ -248,12 +274,18 @@ public static class BeadMapper
             "update", item.Id,
             "--title", item.Title,
             "-t", TypeFor(item.Kind),
-            "--status", StatusFor(item.State),
             "-p", item.Priority.ToString(),
             "-d", item.Intent,
             "--metadata", MetadataFor(item),
             "--actor", owner
         };
+
+        // Omitting --status leaves the cell untouched and still writes every other field (probed).
+        // That is the only way an update can carry a status the factory cannot name: sending the
+        // fallback StateFor chose would destroy a human's `deferred`, `pinned` or `hooked` on the
+        // factory's first touch, which is the same read-then-write-back destruction already closed
+        // for issue_type and for the acceptance cell.
+        if (!KeepsUnownedStatus(item)) { args.Add("--status"); args.Add(StatusFor(item.State)); }
 
         // Sent only when the item has criteria of its own, deliberately unlike -d above. The two
         // differ because their reads differ: Intent falls back to the bead's own description when the
@@ -270,6 +302,14 @@ public static class BeadMapper
 
         return args;
     }
+
+    // Whether this write must leave the bead's status alone. The carried status is not enough on its
+    // own: a caller that moved the item off it -- `factory activate` on a pinned bead -- is making an
+    // explicit request, and dropping that write would leave the factory and beads permanently
+    // disagreeing about a state the operator chose. So the status is kept only while the item's state
+    // is still exactly what that status was read as, meaning nothing asked for a change.
+    private static bool KeepsUnownedStatus(WorkItem item) =>
+        item.StoreStatus is { } unowned && StateFor(unowned) == item.State;
 
     /// <summary>Adds one blocking edge. The dependent is named first: <c>bd dep add &lt;dependent&gt;
     /// &lt;blocker&gt;</c>, and reversing the pair files a valid edge pointing the other way while still

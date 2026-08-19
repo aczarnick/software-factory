@@ -220,6 +220,42 @@ public class BeadsArgumentTests
         Assert.DoesNotContain("-t", args);
     }
 
+    [Fact]
+    public void An_update_leaves_a_status_the_factory_does_not_own_alone()
+    {
+        var pinned = WorkItem.Create("a bead a human pinned") with
+        {
+            State = WorkItemState.Blocked,
+            StoreStatus = "pinned"
+        };
+
+        var args = BeadMapper.UpdateArgs(pinned, "node-a");
+
+        // bd accepts an update with no --status and leaves the cell untouched (probed against
+        // 1.2.1), so the human's `pinned` survives every other field being written over it. Sending
+        // the mapped `blocked` instead destroys it on the factory's first touch — the same
+        // read-faithfully-then-write-back destruction this branch already closed for issue_type.
+        Assert.DoesNotContain("--status", args);
+        Assert.Equal("a bead a human pinned", ValueAfter(args, "--title"));
+    }
+
+    [Fact]
+    public void An_update_writes_the_status_once_a_caller_has_moved_the_item_off_it()
+    {
+        var activated = WorkItem.Create("a bead a human pinned") with
+        {
+            State = WorkItemState.Ready,
+            StoreStatus = "pinned"
+        };
+
+        var args = BeadMapper.UpdateArgs(activated, "node-a");
+
+        // Suppression is about whether anything asked for a change, not about the bead. A state that
+        // no longer agrees with the carried status is an explicit request — `factory activate` on a
+        // pinned bead — and has to reach beads rather than being silently dropped.
+        Assert.Equal("open", ValueAfter(args, "--status"));
+    }
+
     private static string ValueAfter(IReadOnlyList<string> args, string flag)
     {
         var index = args.ToList().IndexOf(flag);

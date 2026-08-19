@@ -489,6 +489,82 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         Assert.Contains(done.Id, ids);
     }
 
+    /// <summary>Files a bead and then has a human move it to one of bd's own statuses, the way one
+    /// command at a terminal does. Returns the id; the bead is left in that status.</summary>
+    private string ABeadAHumanMovedTo(string status, string title)
+    {
+        var id = Ids.New("wi");
+        var filed = Cli().Exec("create", title, "--id", id, "-t", "task", "--json");
+        Assert.True(filed.Ok, filed.Combined);
+
+        // Exit 0: this is one command a human runs, not a corruption a test had to manufacture.
+        var moved = Cli().Exec("update", id, "--status", status);
+        Assert.True(moved.Ok, moved.Combined);
+
+        return id;
+    }
+
+    [Theory]
+    [InlineData("deferred")]
+    [InlineData("pinned")]
+    [InlineData("hooked")]
+    public void A_status_a_human_set_does_not_stop_the_factory_opening(string status)
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var id = ABeadAHumanMovedTo(status, $"a bead a human moved to {status}");
+
+        // All() maps every bead in the database and Reconcile is called outside any tolerance, so a
+        // throw here is every factory command dying on every machine sharing the backlog, with no way
+        // to recover from inside the factory. This is the halt, not the mapping.
+        using var fold = new Fold();
+        fold.Open(store);
+
+        Assert.Contains(id, store.All().Select(item => item.Id));
+        Assert.Equal(WorkItemState.Blocked, fold.State.Items[id].State);
+    }
+
+    [Theory]
+    [InlineData("deferred")]
+    [InlineData("pinned")]
+    [InlineData("hooked")]
+    public void An_update_keeps_the_status_a_human_set(string status)
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var id = ABeadAHumanMovedTo(status, $"a bead a human moved to {status}");
+
+        store.Update(store.Get(id)! with { Title = "retitled by the factory" });
+
+        // Asserted from bd's own output, because the mapper's projection is what is under suspicion:
+        // reading the status as Blocked and writing that back is the same destruction this branch
+        // closed for issue_type and for acceptance criteria. The rest of the update still lands.
+        var bead = Bead(id);
+        Assert.Equal(status, bead.Status);
+        Assert.Equal("retitled by the factory", bead.Title);
+    }
+
+    [Theory]
+    [InlineData("deferred")]
+    [InlineData("pinned")]
+    [InlineData("hooked")]
+    public void A_status_a_human_set_is_dispatched_by_neither_authority(string status)
+    {
+        if (Unavailable) return;
+        var store = Store();
+        DrainReadyQueue();
+        var id = ABeadAHumanMovedTo(status, $"a bead a human moved to {status}");
+
+        using var fold = new Fold();
+        fold.Open(store);
+
+        // Both authorities, because either one alone would let the item be worked on: bd withholds it
+        // from `bd ready` (probed), and the factory reads it as Blocked, which Dispatchable() excludes.
+        Assert.DoesNotContain(id, ReadyInBeads());
+        Assert.DoesNotContain(id, fold.State.Dispatchable().Select(item => item.Id));
+        Assert.Null(store.TryClaim(Owner));
+    }
+
     [Fact]
     public void Reclaim_reverts_nothing_while_every_lease_is_live()
     {

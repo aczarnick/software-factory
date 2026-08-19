@@ -91,6 +91,16 @@ public sealed record WorkItem
     /// claims.</summary>
     public string? Owner { get; init; }
 
+    /// <summary>The backlog store's own word for this item's status, kept verbatim when it is one the
+    /// factory has no <see cref="WorkItemState"/> of its own for; null whenever
+    /// <see cref="State"/> is a faithful reading of it. Store-owned like <see cref="Owner"/>, so
+    /// reconciling from the backlog is entitled to overwrite it.
+    ///
+    /// It exists so a status the factory cannot name is a status the factory does not destroy: the
+    /// read has to fall back to <em>some</em> state, and without the original word the next write
+    /// renders that fallback back over the store's own cell.</summary>
+    public string? StoreStatus { get; init; }
+
     /// <summary>Station currently holding the item, when InProgress.</summary>
     public string? Station { get; init; }
 

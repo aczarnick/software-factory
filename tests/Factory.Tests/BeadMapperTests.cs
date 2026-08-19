@@ -286,10 +286,60 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void An_unmapped_status_is_refused_rather_than_guessed()
+    public void Every_status_beads_has_built_in_reads_as_a_state_rather_than_throwing()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => BeadMapper.StateFor("deferred"));
+        // bd's own refusal enumerates the set: `invalid status "tombstone" (built-in: open,
+        // in_progress, blocked, deferred, closed, pinned, hooked ...)`. The factory maps four of the
+        // seven; each of the other three is settable by a human in one command that exits 0 — probed
+        // against 1.2.1 — and All() maps every bead in the database, so a read that threw on one
+        // would take down every command that opens the host, on every machine sharing the backlog.
+        string[] beadsOwnStatuses = ["deferred", "pinned", "hooked"];
+
+        foreach (var status in beadsOwnStatuses)
+            Assert.Equal(WorkItemState.Blocked, BeadMapper.StateFor(status));
     }
+
+    [Fact]
+    public void A_custom_status_no_one_mapped_falls_back_rather_than_throwing()
+    {
+        Assert.Equal(WorkItemState.Blocked, BeadMapper.StateFor("a-status-nobody-mapped"));
+    }
+
+    [Fact]
+    public void Every_status_the_factory_writes_is_one_it_owns()
+    {
+        // The guard that keeps StateFor's list and UnownedStatus' answer from drifting: a status the
+        // factory writes but reports as unowned would have its own --status suppressed for ever.
+        foreach (var state in Enum.GetValues<WorkItemState>())
+            Assert.Null(BeadMapper.UnownedStatus(BeadMapper.StatusFor(state)));
+    }
+
+    [Fact]
+    public void A_status_the_factory_does_not_own_is_carried_on_the_item_verbatim()
+    {
+        var item = ToWorkItemWithStatus("pinned");
+
+        // Blocked is only how the factory reads it. The bead's own word is what makes the read
+        // reversible, so the next update can leave the cell alone instead of guessing.
+        Assert.Equal(WorkItemState.Blocked, item.State);
+        Assert.Equal("pinned", item.StoreStatus);
+    }
+
+    [Fact]
+    public void A_status_the_factory_does_own_carries_nothing()
+    {
+        Assert.Null(ToWorkItemWithStatus("blocked").StoreStatus);
+    }
+
+    private static WorkItem ToWorkItemWithStatus(string status) =>
+        BeadMapper.ToWorkItem(new BeadRecord
+        {
+            Id = "wi-000000000001",
+            Title = "a bead a human moved",
+            Status = status,
+            IssueType = "task",
+            Priority = Priorities.Default
+        });
 
     // Captured verbatim from `bd show --json` (beads 1.2.1) against a throwaway database, so the
     // JSON property names are exercised against what beads really emits rather than against a
