@@ -603,3 +603,46 @@ public class RemediationRunnerTests : IDisposable
         Assert.Contains("remediated", result.Output);
     }
 }
+
+public class ClaimRefreshTests
+{
+    /// <summary>Refuses a heartbeat for one named id and records the rest, wrapped in the guard the
+    /// host always composes so the exception the loop meets is the one production raises.</summary>
+    private sealed class PoisonsOneHeartbeat(string poisonedId) : IWorkItemStore
+    {
+        public List<string> Refreshed { get; } = [];
+
+        public void Heartbeat(string id)
+        {
+            if (id == poisonedId) throw new InvalidOperationException($"no lease for {id}");
+
+            Refreshed.Add(id);
+        }
+
+        public WorkItem Add(WorkItem item) => throw new NotSupportedException();
+        public WorkItem Update(WorkItem item) => throw new NotSupportedException();
+        public WorkItem Transition(WorkItem item, WorkItemState to, string? reason) => throw new NotSupportedException();
+        public WorkItem? Get(string id) => throw new NotSupportedException();
+        public IReadOnlyList<WorkItem> All() => throw new NotSupportedException();
+        public WorkItem? TryClaim(string owner) => throw new NotSupportedException();
+        public void Release(string id, string reason) => throw new NotSupportedException();
+        public void Sync() => throw new NotSupportedException();
+        public IReadOnlyList<WorkItem> Reclaim(TimeSpan olderThan) => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public void One_claim_the_backlog_will_not_refresh_does_not_cost_the_others_theirs()
+    {
+        var inner = new PoisonsOneHeartbeat("wi-sick");
+        var logged = new List<string>();
+
+        // Order matters: the sick id is first, so an unguarded loop never reaches the healthy one. At
+        // concurrency 2 that is one item costing the other its refresh every tick, and the lease it
+        // was holding then expires while its station is still working.
+        Orchestrator.RefreshEachClaim(
+            new GuardedWorkItemStore(inner, "beads"), ["wi-sick", "wi-healthy"], logged.Add);
+
+        Assert.Equal(["wi-healthy"], inner.Refreshed);
+        Assert.Contains(logged, message => message.Contains("wi-sick"));
+    }
+}

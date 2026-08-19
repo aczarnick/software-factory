@@ -217,15 +217,42 @@ public sealed class Orchestrator : IDisposable
             };
     }
 
-    /// <summary>Holds this run's own claims open while their stations work. A store refuses a
-    /// heartbeat once the item has moved past in progress and has no lease left, which is best-effort
-    /// by contract rather than a backlog failure, so failures are left to the timer to swallow.</summary>
+    /// <summary>Holds this run's own claims open while their stations work.</summary>
     private Task RefreshClaimsAsync()
     {
-        foreach (var id in _claimsHeld.Keys)
-            _s.Items.Heartbeat(id);
+        RefreshEachClaim(_s.Items, _claimsHeld.Keys, _s.Log);
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>Refreshes each claim independently, so one item's failure never costs the others
+    /// theirs. Without the per-id guard a single throwing <c>Heartbeat</c> abandons the rest of the
+    /// tick — at concurrency 2, one sick item costs its neighbour every refresh, and the neighbour's
+    /// lease then expires while its station is still working. The timer swallows what escapes a tick,
+    /// so there would be nothing to see it by either.
+    ///
+    /// <see cref="WorkItemStoreException"/> is the one caught because the store is always composed
+    /// behind <see cref="GuardedWorkItemStore"/>, which is what every port fault arrives as — the same
+    /// reasoning and the same shape as <see cref="RequeueOrphans"/>' per-orphan tolerance. Anything
+    /// else is a defect in the factory and stays loud.
+    ///
+    /// Public for the reason <c>Commands.IsHeldElsewhere</c> is: the policy is not reachable through
+    /// <see cref="RunAsync"/> without a test-only injection seam in the host's composition, and the
+    /// seam would be the larger change.</summary>
+    public static void RefreshEachClaim(IWorkItemStore items, IEnumerable<string> ids, Action<string> log)
+    {
+        foreach (var id in ids)
+        {
+            try
+            {
+                items.Heartbeat(id);
+            }
+            catch (WorkItemStoreException ex)
+            {
+                log($"the claim on {id} could not be refreshed, so its lease may expire before the " +
+                    $"station finishes: {ex.Message}");
+            }
+        }
     }
 
     /// <summary>Work left mid-flight by a crash is put back on the queue. This is what the
