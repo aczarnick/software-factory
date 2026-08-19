@@ -98,8 +98,21 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string
     }
 
     /// <summary>Best-effort: beads is a replica model, so an unreachable or unconfigured remote
-    /// leaves the local database complete and the factory able to work on.</summary>
-    public void Sync() => cli.Exec("sync");
+    /// leaves the local database complete and the factory able to work on.
+    ///
+    /// Tolerated is not unreported. A deployment with no remote exits 0 and says so, so this warns
+    /// only on a real failure — without which a shared backlog stops replicating in total silence and
+    /// the whole point of sharing it quietly stops being true. Turning that into a
+    /// <c>Degraded</c> state <c>factory status</c> surfaces is the sync-gate plan's task; the warning
+    /// is one line and should not wait for it.</summary>
+    public void Sync()
+    {
+        var result = cli.Exec("sync");
+        if (result.Ok) return;
+
+        log($"the backlog could not be synced with its remote, so work filed here is not yet " +
+            $"visible to other machines and theirs is not yet visible here: {result.Combined}");
+    }
 
     public IReadOnlyList<WorkItem> Reclaim(TimeSpan olderThan)
     {

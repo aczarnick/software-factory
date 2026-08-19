@@ -805,26 +805,36 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     public void A_sync_beads_could_not_complete_leaves_the_factory_able_to_work_on()
     {
         var cli = new FailsSyncCalls(database.Directory, Owner);
+        var logged = new List<string>();
 
-        // The behaviour Sync's contract turns on, and the reason it deliberately ignores its result:
-        // beads is a replica model, so an unreachable remote leaves the local database complete. A
-        // deployment with no remote at all cannot show this — probed against 1.2.1, bd exits 0 and
-        // reports the skip — so the failure has to come from the seam.
-        new BeadsWorkItemStore(cli, Owner, _ => { }).Sync();
+        // The behaviour Sync's contract turns on: beads is a replica model, so an unreachable remote
+        // leaves the local database complete. A deployment with no remote at all cannot show this —
+        // probed against 1.2.1, bd exits 0 and reports the skip — so the failure has to come from the
+        // seam.
+        new BeadsWorkItemStore(cli, Owner, logged.Add).Sync();
 
         // Attempted as well as tolerated. Without the count, a Sync that had stopped calling bd
         // altogether would pass this test and every other one in the suite.
         Assert.Equal(1, cli.SyncCalls);
+
+        // Tolerated is not the same as unreported. Surfacing a Degraded state is the sync-gate plan's
+        // task; without at least this line, a shared backlog stops replicating in total silence, and
+        // goal 1 — the backlog surviving the loss of a machine — quietly stops being true.
+        Assert.Contains(logged, message => message.Contains("sync failed"));
     }
 
     [Fact]
-    public void Sync_without_a_remote_does_not_throw()
+    public void Sync_without_a_remote_reports_nothing()
     {
         if (Unavailable) return;
+        var logged = new List<string>();
 
-        // A smoke check over the real executable, not coverage of the tolerance above: bd's no-remote
-        // path exits 0, so this passes whether or not Sync tolerates a failure.
-        Store().Sync();
+        // Over the real executable: bd's no-remote path exits 0 and reports the skip, which is the
+        // path this repository — and every solo deployment — actually takes. Warning on it would put a
+        // line nobody can act on in front of every operator on every run.
+        new BeadsWorkItemStore(Cli(), Owner, logged.Add).Sync();
+
+        Assert.Empty(logged);
     }
 
     [Fact]
