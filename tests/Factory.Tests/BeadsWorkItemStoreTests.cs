@@ -792,16 +792,17 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     /// defaults every field the row omits rather than leaving it alone, hence the mapper's own write
     /// afterwards to put the item's content back. A plain <c>bd update</c> does not touch the
     /// lease.</summary>
-    private void StrandTheLeaseHeldOn(WorkItem item)
+    private void StrandTheLeaseHeldOn(WorkItem item, string? heldBy = null)
     {
+        var holder = heldBy ?? Owner;
         var now = DateTimeOffset.UtcNow;
         var row = FactoryJson.Write(new StaleLeaseRow
         {
             Id = item.Id,
             Title = item.Title,
             Status = BeadMapper.StatusFor(WorkItemState.InProgress),
-            Assignee = Owner,
-            LeaseGrantedNode = Owner,
+            Assignee = holder,
+            LeaseGrantedNode = holder,
             StartedAt = now - TimeSpan.FromMinutes(10),
             HeartbeatAt = now - TimeSpan.FromMinutes(6),
             LeaseExpiresAt = now - TimeSpan.FromMinutes(1),
@@ -820,7 +821,49 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
             File.Delete(path);
         }
 
-        Store().Update(item with { State = WorkItemState.InProgress });
+        // Puts back the content `bd import` defaulted away. Only for this checkout's own bead: a
+        // factory write onto a bead another machine holds is the very thing PF2 stopped doing, and the
+        // foreign case asserts on status, assignee and the reclaim result rather than on content.
+        if (heldBy is null) Store().Update(item with { State = WorkItemState.InProgress });
+    }
+
+    private const string OtherMachine = "other-machine";
+
+    [Fact]
+    public void Reclaim_leaves_a_stale_lease_another_machine_holds_alone()
+    {
+        if (Unavailable) return;
+        DrainReadyQueue();
+        var store = Store();
+        var foreign = store.Add(
+            WorkItem.Create("stranded on another machine") with { State = WorkItemState.Ready });
+
+        StrandTheLeaseHeldOn(foreign, heldBy: OtherMachine);
+
+        var reclaimed = store.Reclaim(TimeSpan.Zero);
+
+        // Critical 2's own acceptance criterion — "a foreign lease is not reclaimed" — asserted on the
+        // reap itself rather than on the flags. The argument test and
+        // TryClaim_stamps_the_lease_with_this_checkouts_node_id each pin one guard's precondition;
+        // this pins the composed result, which is what the plan actually asked for. It became
+        // affordable when Task 5 found the `bd import` route: bd's lease TTL is a fixed five minutes,
+        // which is what made a genuinely stale lease unaffordable and is the premise this test used to
+        // be excused by.
+        Assert.DoesNotContain(foreign.Id, reclaimed.Select(item => item.Id));
+
+        // Asserted from bd's own output, because the point is that nothing was written: reclaiming a
+        // foreign lease would set the bead back to open and drop the assignee, and its holder — which
+        // may be working on it right now — would lose the work to whichever machine claimed next.
+        var bead = Bead(foreign.Id);
+        Assert.Equal(BeadMapper.StatusFor(WorkItemState.InProgress), bead.Status);
+        Assert.Equal(OtherMachine, bead.Assignee);
+
+        // The detail the branch does not state anywhere and this test depends on: the two halves of
+        // the Task 2 fix mask each other. BeadsCli always sets BEADS_NODE_ID, so bd's replica guard
+        // alone spares this lease even with --assignee removed, and --assignee alone spares it with
+        // the node id unset. Only removing both reproduces the phase-3 defect, so a mutation of either
+        // one on its own will not redden this — which is exactly why the two argument-level tests have
+        // to stay rather than being folded into this one.
     }
 
     [Fact]
