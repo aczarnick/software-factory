@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Factory.Core;
 using Factory.Runtime;
 
@@ -497,6 +498,102 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         // BeadsArgumentTests rather than by waiting here. What this pins is that a reclaim pass over
         // healthy leases is a no-op that neither throws nor invents items.
         Assert.Empty(Store().Reclaim(TimeSpan.FromMinutes(15)));
+    }
+
+    /// <summary>One row of <c>bd export</c>'s JSONL, carrying only what an aged lease needs. Field
+    /// names are bd's own, so the naming policy is overridden on every one of them.</summary>
+    private sealed record StaleLeaseRow
+    {
+        [JsonPropertyName("_type")] public string Type => "issue";
+        [JsonPropertyName("id")] public required string Id { get; init; }
+        [JsonPropertyName("title")] public required string Title { get; init; }
+        [JsonPropertyName("status")] public required string Status { get; init; }
+        [JsonPropertyName("assignee")] public required string Assignee { get; init; }
+        [JsonPropertyName("lease_granted_node")] public required string LeaseGrantedNode { get; init; }
+        [JsonPropertyName("started_at")] public required DateTimeOffset StartedAt { get; init; }
+        [JsonPropertyName("heartbeat_at")] public required DateTimeOffset HeartbeatAt { get; init; }
+        [JsonPropertyName("lease_expires_at")] public required DateTimeOffset LeaseExpiresAt { get; init; }
+        [JsonPropertyName("updated_at")] public required DateTimeOffset UpdatedAt { get; init; }
+    }
+
+    /// <summary>Leaves <paramref name="item"/> in progress under a lease that expired a minute ago,
+    /// the state a worker that died mid-item leaves behind. Not produced by waiting: bd's lease TTL is
+    /// a fixed five minutes with no config key, no flag and no environment variable to shorten it.
+    ///
+    /// <c>bd import</c> is the route. It fills a lease column that is currently null — and a bead moved
+    /// to in progress by anything other than a claim has no lease at all — but never overwrites one
+    /// already set, which is why the item is not claimed first. It applies a row only when the row's
+    /// <c>updated_at</c> is strictly newer than the local copy's, hence the future stamp, and it
+    /// defaults every field the row omits rather than leaving it alone, hence the mapper's own write
+    /// afterwards to put the item's content back. A plain <c>bd update</c> does not touch the
+    /// lease.</summary>
+    private void StrandTheLeaseHeldOn(WorkItem item)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var row = FactoryJson.Write(new StaleLeaseRow
+        {
+            Id = item.Id,
+            Title = item.Title,
+            Status = BeadMapper.StatusFor(WorkItemState.InProgress),
+            Assignee = Owner,
+            LeaseGrantedNode = Owner,
+            StartedAt = now - TimeSpan.FromMinutes(10),
+            HeartbeatAt = now - TimeSpan.FromMinutes(6),
+            LeaseExpiresAt = now - TimeSpan.FromMinutes(1),
+            UpdatedAt = now + TimeSpan.FromMinutes(1)
+        });
+
+        var path = Path.Combine(database.Directory, $"{item.Id}.stale.jsonl");
+        File.WriteAllText(path, row + "\n");
+        try
+        {
+            var imported = Cli().Exec("import", "--input", path);
+            Assert.True(imported.Ok, imported.Combined);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+
+        Store().Update(item with { State = WorkItemState.InProgress });
+    }
+
+    [Fact]
+    public void Reclaim_resolves_a_stale_lease_to_the_item_it_stranded()
+    {
+        if (Unavailable) return;
+        DrainReadyQueue();
+        var store = Store();
+
+        var stranded = store.Add(
+            WorkItem.Create("stranded by a worker that died", "so another machine has to get it back")
+                with { State = WorkItemState.Ready });
+        var live = store.Add(WorkItem.Create("still being worked") with { State = WorkItemState.Ready });
+        var claimed = Cli().Exec("update", live.Id, "--claim", "--actor", Owner);
+        Assert.True(claimed.Ok, claimed.Combined);
+
+        StrandTheLeaseHeldOn(stranded);
+
+        var reclaimed = store.Reclaim(TimeSpan.Zero);
+
+        // The whole item, not the bare id and previous owner bd reports: Reclaim's contract is a list
+        // of work items and the caller reads state and owner off them. Intent lives in the metadata
+        // blob rather than in any field bd's reclaim output carries, so asserting it is what proves
+        // each id was resolved through a real read and mapped.
+        var reported = reclaimed.SingleOrDefault(item => item.Id == stranded.Id);
+        Assert.NotNull(reported);
+        Assert.Equal("stranded by a worker that died", reported!.Title);
+        Assert.Equal("so another machine has to get it back", reported.Intent);
+
+        // Resolved after the reap, so it reports the post-condition the next claimant depends on
+        // rather than the in-progress copy the reap started from.
+        Assert.Equal(WorkItemState.Ready, reported.State);
+        Assert.Null(reported.Owner);
+
+        // A lease that has not expired is not stale, whatever the grace window: --older-than measures
+        // from expiry, not from when the claim was taken.
+        Assert.DoesNotContain(live.Id, reclaimed.Select(item => item.Id));
+        Assert.Equal(WorkItemState.InProgress, store.Get(live.Id)!.State);
     }
 
     [Fact]
