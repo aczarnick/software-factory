@@ -240,7 +240,7 @@ public class PipelineTests : IDisposable
     }
 
     [Fact]
-    public async Task Decomposition_into_several_children_files_them_and_closes_the_parent()
+    public async Task Decomposition_into_several_children_files_them_and_supersedes_the_parent()
     {
         var transport = Scripted().Respond("decompose",
             """
@@ -257,7 +257,10 @@ public class PipelineTests : IDisposable
 
         var children = host.Services.State.Children(parent.Id);
         Assert.Equal(2, children.Count);
-        Assert.Equal(WorkItemState.Done, host.Services.State.Items[parent.Id].State);
+
+        // The parent's own acceptance criteria were never run — its children carry the work now — so
+        // it must not be reported as Done. Done here would be a false green in every backlog view.
+        Assert.Equal(WorkItemState.Superseded, host.Services.State.Items[parent.Id].State);
 
         // The declared ordering must survive the key-to-id mapping.
         var second = children.First(c => c.Title == "second");

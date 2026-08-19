@@ -32,6 +32,7 @@ public static class BeadMapper
         WorkItemState.Blocked => "blocked",
         WorkItemState.Failed => "failed",
         WorkItemState.Cancelled => "cancelled",
+        WorkItemState.Superseded => "superseded",
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Unmapped work item state.")
     };
 
@@ -69,6 +70,7 @@ public static class BeadMapper
         "blocked" => WorkItemState.Blocked,
         "failed" => WorkItemState.Failed,
         "cancelled" => WorkItemState.Cancelled,
+        "superseded" => WorkItemState.Superseded,
         _ => null
     };
 

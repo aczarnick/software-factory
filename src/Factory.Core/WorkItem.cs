@@ -10,7 +10,8 @@ public enum WorkItemState
     Done,
     Blocked,
     Failed,
-    Cancelled
+    Cancelled,
+    Superseded
 }
 
 /// <summary>What kind of work an item is. The factory's pipeline treats every kind the same way.
@@ -158,14 +159,17 @@ public static class WorkItemStates
         [WorkItemState.Draft] = [WorkItemState.Ready, WorkItemState.Cancelled, WorkItemState.Blocked],
         [WorkItemState.Ready] = [WorkItemState.InProgress, WorkItemState.Blocked, WorkItemState.Cancelled],
         // Ready is reachable from in-flight states so a crashed factory can requeue orphans.
-        [WorkItemState.InProgress] = [WorkItemState.InReview, WorkItemState.Failed, WorkItemState.Blocked, WorkItemState.Cancelled, WorkItemState.Ready],
+        // Superseded is reachable only from InProgress: decompose is the one thing that replaces an
+        // item with the children that carry its work, and it does so while the item is in flight.
+        [WorkItemState.InProgress] = [WorkItemState.InReview, WorkItemState.Failed, WorkItemState.Blocked, WorkItemState.Cancelled, WorkItemState.Ready, WorkItemState.Superseded],
         [WorkItemState.InReview] = [WorkItemState.Verified, WorkItemState.InProgress, WorkItemState.Failed, WorkItemState.Blocked, WorkItemState.Ready],
         [WorkItemState.Verified] = [WorkItemState.Done, WorkItemState.Failed],
         [WorkItemState.Blocked] = [WorkItemState.Ready, WorkItemState.Cancelled],
         // Failed is retryable: the orchestrator can put it back on the queue.
         [WorkItemState.Failed] = [WorkItemState.Ready, WorkItemState.Cancelled],
         [WorkItemState.Done] = [],
-        [WorkItemState.Cancelled] = []
+        [WorkItemState.Cancelled] = [],
+        [WorkItemState.Superseded] = []
     };
 
     public static bool IsTerminal(WorkItemState s) => Allowed[s].Length == 0;

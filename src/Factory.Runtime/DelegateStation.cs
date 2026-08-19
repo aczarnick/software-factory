@@ -64,7 +64,7 @@ public sealed class DelegateStation : IStation
         }, ctx.Ct).ConfigureAwait(false);
 
         var final = child.Services.State.Items.GetValueOrDefault(forwarded.Id);
-        var success = final?.State is WorkItemState.Done or WorkItemState.Verified;
+        var success = final?.State is WorkItemState.Done or WorkItemState.Verified or WorkItemState.Superseded;
 
         s.Record(new DelegationCompleted(ctx.Item.Id, childName, success, report.CostUsd));
 

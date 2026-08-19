@@ -359,7 +359,7 @@ public static class Commands
     {
         using var host = OpenOrInit(cli, quiet: true);
         var items = host.Services.State.Items.Values
-            .Where(i => cli.Has("all") || i.State is not WorkItemState.Done)
+            .Where(i => cli.Has("all") || i.State is not (WorkItemState.Done or WorkItemState.Superseded))
             .OrderBy(i => i.State)
             .ThenBy(i => i.Priority)
             .ToList();

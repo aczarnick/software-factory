@@ -38,6 +38,7 @@ public static class Output
         WorkItemState.Blocked => Yellow("blocked"),
         WorkItemState.InProgress => Cyan("running"),
         WorkItemState.InReview => Cyan("review"),
+        WorkItemState.Superseded => Dim("superseded"),
         WorkItemState.Ready => "ready",
         WorkItemState.Draft => Dim("proposed"),
         _ => state.ToString().ToLowerInvariant()

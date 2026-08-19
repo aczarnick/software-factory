@@ -40,6 +40,11 @@ public static class FactoryVersion
     /// them can raise a <c>MissingMethodException</c>, so the exposure is narrow: a contract-1 sink
     /// handed <c>Kind = Task</c> with no case for it. Bumped anyway, and now rather than later,
     /// because the alternative was a promise recorded outside the repository that a plan slipping
-    /// would silently skip while the gate that exists for this never fired.</summary>
-    public const int ContractVersion = 2;
+    /// would silently skip while the gate that exists for this never fired.
+    ///
+    /// v3 adds <see cref="WorkItemState.Superseded"/>, so a decomposed parent stops being reported as
+    /// Done. Same shape of exposure as v2's: no signature moved, but a contract-2 store or sink can be
+    /// handed a state it has no case for, and one that silently maps to Done would reinstate exactly
+    /// the false green this member exists to remove.</summary>
+    public const int ContractVersion = 3;
 }

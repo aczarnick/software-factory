@@ -375,9 +375,9 @@ public sealed class Orchestrator : IDisposable
 
                 if (result.Item is { } updated) run.Item = host.Update(updated);
 
-                if (result.ShortCircuitToDone)
+                if (result.SupersededByChildren)
                 {
-                    await CompleteAsync(run, result.Detail, ct).ConfigureAwait(false);
+                    Supersede(run, result.Detail);
                     return;
                 }
 
@@ -442,6 +442,17 @@ public sealed class Orchestrator : IDisposable
         {
             return StationResult.Failed($"station threw: {ex.Message}");
         }
+    }
+
+    /// <summary>Retires a parent that decomposition replaced with children. It skips the gates by
+    /// design, so it is not counted as completed work and is never marked Done.</summary>
+    private void Supersede(ItemRun run, string detail)
+    {
+        var item = host.Transition(run.Item, WorkItemState.Superseded, detail);
+        host.Update(item with { Station = null });
+        TouchProgress(item.Id);
+
+        _s.Log($"↳ {item.Id} superseded — {Trim(detail)}");
     }
 
     private async Task CompleteAsync(ItemRun run, string detail, CancellationToken ct)

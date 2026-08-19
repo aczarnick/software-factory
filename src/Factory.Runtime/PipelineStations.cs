@@ -117,8 +117,7 @@ public sealed class DecomposeStation : AgentStation
             Detail = $"decomposed into {children.Count} child items",
             NewItems = children,
             Run = record with { GatePassed = true },
-            // The parent is a container: its children carry the work from here.
-            ShortCircuitToDone = true
+            SupersededByChildren = true
         };
     }
 }

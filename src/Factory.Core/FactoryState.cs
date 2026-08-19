@@ -106,8 +106,26 @@ public sealed class FactoryState
         lock (_gate) return DependencySatisfiedLocked(id);
     }
 
-    private bool DependencySatisfiedLocked(string id) =>
-        !_items.TryGetValue(id, out var dep) || dep.State is WorkItemState.Done or WorkItemState.Verified;
+    private bool DependencySatisfiedLocked(string id)
+    {
+        if (!_items.TryGetValue(id, out var dep)) return true;
+
+        return dep.State switch
+        {
+            WorkItemState.Done or WorkItemState.Verified => true,
+            WorkItemState.Superseded => ChildrenSatisfyLocked(id),
+            _ => false
+        };
+    }
+
+    /// <summary>A superseded parent stands in for the children that replaced it, so it settles a
+    /// dependency only once every one of them has. A parent superseded by nothing is a hole rather
+    /// than a completion, and must not release work that was waiting on it.</summary>
+    private bool ChildrenSatisfyLocked(string parentId)
+    {
+        var children = _items.Values.Where(i => i.ParentId == parentId).ToList();
+        return children.Count > 0 && children.All(c => DependencySatisfiedLocked(c.Id));
+    }
 
     public IReadOnlyList<WorkItem> InFlight()
     {
@@ -120,7 +138,7 @@ public sealed class FactoryState
     public bool HasOpenWork()
     {
         lock (_gate)
-            return _items.Values.Any(i => i.State is not (WorkItemState.Done or WorkItemState.Cancelled));
+            return _items.Values.Any(i => i.State is not (WorkItemState.Done or WorkItemState.Cancelled or WorkItemState.Superseded));
     }
 
     public IReadOnlyList<RunRecord> RunsFor(string stationId)

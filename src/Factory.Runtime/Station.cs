@@ -93,9 +93,10 @@ public sealed record StationResult
     /// <summary>Model calls made inside a child factory.</summary>
     public int DelegatedCalls { get; init; }
 
-    /// <summary>Ends the pipeline early and marks the item done (used when decomposition
-    /// replaces an item with its children).</summary>
-    public bool ShortCircuitToDone { get; init; }
+    /// <summary>Ends the pipeline early because decomposition replaced this item with the children
+    /// that now carry its work. The item leaves as <see cref="WorkItemState.Superseded"/>, never as
+    /// Done: its own acceptance criteria were never run, and reporting it as Done is a false green.</summary>
+    public bool SupersededByChildren { get; init; }
 
     public static StationResult Ok(string detail = "", WorkItem? item = null, RunRecord? run = null) =>
         new() { Success = true, GatePassed = true, Detail = detail, Item = item, Run = run };
