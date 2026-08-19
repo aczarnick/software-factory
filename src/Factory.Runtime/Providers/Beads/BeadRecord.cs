@@ -21,7 +21,6 @@ public sealed record BeadRecord
 
     [JsonPropertyName("created_at")] public DateTimeOffset? CreatedAt { get; init; }
     [JsonPropertyName("updated_at")] public DateTimeOffset? UpdatedAt { get; init; }
-    [JsonPropertyName("started_at")] public DateTimeOffset? StartedAt { get; init; }
     [JsonPropertyName("lease_expires_at")] public DateTimeOffset? LeaseExpiresAt { get; init; }
     [JsonPropertyName("heartbeat_at")] public DateTimeOffset? HeartbeatAt { get; init; }
 

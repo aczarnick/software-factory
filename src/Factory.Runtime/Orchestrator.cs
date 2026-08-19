@@ -252,6 +252,11 @@ public sealed class Orchestrator : IDisposable
         {
             if (HeldElsewhere(item))
             {
+                // "still holds it" is asserted, by
+                // Requeueing_orphans_leaves_an_item_another_checkout_holds_in_progress_alone. It has no
+                // other way to tell this report apart from the refusal logged below: without the guard
+                // the release is attempted, bd refuses it, nothing is written, and bd's own refusal text
+                // names the holder too — so the wording is what distinguishes them. Reword both together.
                 _s.Log($"left {item.Id} ({item.Title}) in flight — {item.Owner} still holds it");
                 continue;
             }

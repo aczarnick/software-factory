@@ -610,22 +610,37 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         Assert.True(response!.Scoped);
     }
 
-    /// <summary>Fails every <c>bd sync</c> call, letting everything else through, the same seam shape
-    /// as <see cref="FailsNoteCalls"/> above.</summary>
+    /// <summary>Fails every <c>bd sync</c> call and counts them, letting everything else through — the
+    /// same seam shape as <see cref="FailsNoteCalls"/> above. The count is load-bearing: <c>Sync</c> has
+    /// no argument mapper and so no argument test, so an empty body would satisfy a test that only
+    /// asserted the absence of a throw.</summary>
     private sealed class FailsSyncCalls(string directory, string owner) : BeadsCli(directory, owner)
     {
-        public override ShellResult Exec(params string[] args) =>
-            args is ["sync", ..] ? new ShellResult(1, "", "sync failed: fetch from origin/main", false) : base.Exec(args);
+        public int SyncCalls { get; private set; }
+
+        public override ShellResult Exec(params string[] args)
+        {
+            if (args is not ["sync", ..]) return base.Exec(args);
+
+            SyncCalls++;
+            return new ShellResult(1, "", "sync failed: fetch from origin/main", false);
+        }
     }
 
     [Fact]
     public void A_sync_beads_could_not_complete_leaves_the_factory_able_to_work_on()
     {
+        var cli = new FailsSyncCalls(database.Directory, Owner);
+
         // The behaviour Sync's contract turns on, and the reason it deliberately ignores its result:
         // beads is a replica model, so an unreachable remote leaves the local database complete. A
         // deployment with no remote at all cannot show this — probed against 1.2.1, bd exits 0 and
         // reports the skip — so the failure has to come from the seam.
-        new BeadsWorkItemStore(new FailsSyncCalls(database.Directory, Owner), Owner, _ => { }).Sync();
+        new BeadsWorkItemStore(cli, Owner, _ => { }).Sync();
+
+        // Attempted as well as tolerated. Without the count, a Sync that had stopped calling bd
+        // altogether would pass this test and every other one in the suite.
+        Assert.Equal(1, cli.SyncCalls);
     }
 
     [Fact]

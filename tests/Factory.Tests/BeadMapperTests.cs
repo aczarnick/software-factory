@@ -204,10 +204,18 @@ public class BeadMapperTests
             Provenance = Provenance.FromAgent("intake")
         };
 
-        var written = JsonDocument.Parse(BeadMapper.MetadataFor(item)).RootElement
+        var metadata = BeadMapper.MetadataFor(item);
+        var written = JsonDocument.Parse(metadata).RootElement
             .EnumerateObject().Select(property => property.Name).Order();
 
         Assert.Equal(MetadataKeys, written);
+
+        // The key set cannot see a value smuggled into a key that already belongs here — a
+        // `Labels = [.. item.Labels, item.Station]` keeps the set intact — so the two volatile fields
+        // with a distinctive string form are named on their values as well. Attempts and spend are
+        // left out on purpose: as raw numbers they are indistinguishable from a priority or a budget.
+        Assert.DoesNotContain(item.Station!, metadata, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(item.Worktree!, metadata, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
