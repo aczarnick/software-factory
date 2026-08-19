@@ -198,3 +198,60 @@ Recorded because the phase-3 plan's equivalent line did not.
 Prelude Task 4's remaining items (the narrow mirror catch, the leaked claim on a failed `TryClaim`
 mirror, `Release`'s missing state-machine precondition, unread `dependency_type`, the minors) and
 Task 5's test-quality questions are unaffected by the probes above and stand as written.
+
+---
+
+## For the sync-gate plan: minors deferred out of the final review
+
+Raised by the final whole-branch review at `db7234e` and deliberately left unfixed on this branch.
+These three are the ones that change what the **next** plan has to do, so they are recorded here
+rather than only in the review, because this note is the artefact the next session reads.
+
+### SG8 — the contract bump has to cover this branch's type widening, and record why it waited
+
+`FactoryVersion.cs`'s own rule is "bump on a breaking change to … any type they expose". This branch
+widened three things `IWorkItemStore` and `IRunHistorySink` expose and did **not** bump: five new
+`WorkItemKind` members, `WorkItem.Owner`, and `WorkItem.StoreStatus`. That was safe, for a reason
+that is not currently written beside any of them:
+
+- an enum member addition is binary-compatible, so it cannot produce the `MissingMethodException`
+  the contract major exists to prevent;
+- `IWorkItemStore` is one-of, so a third-party *store* never coexists with beads and never meets the
+  new kinds;
+- the only real exposure is a contract-1 **sink** handed `Kind = Task` with no case for it, and none
+  ships.
+
+**For SG1:** the bump to 2 already planned for `Sync()` → `SyncStatus` is the bump that covers all of
+this. When it lands, record the reasoning above next to the enum and next to the two new properties,
+so the rule's exception is documented where the next reader will look rather than only in a review.
+
+### SG9 — a ledger line from this branch is unreadable by an earlier build
+
+`FactoryJson` uses `JsonStringEnumConverter`, so a ledger line carrying `"kind":"Task"` (or any of
+the other four new kinds) fails `FactoryState.Replay` outright on any factory built before this
+branch — it does not degrade, and `JsonlRunHistory.ReadFrom` only skips lines that fail to *parse*,
+not lines whose enum value is unknown.
+
+Downgrading after cutover is therefore not a supported operation. Say so in the cutover handoff
+rather than discovering it during a rollback.
+
+### SG10 — `bd import` overwrites omitted fields with defaults
+
+Probed: a row omitting `priority` and `issue_type` logged `priority 2 → 0, type feature → task`. So
+SG4's requirement to emit `updated_at` is not sufficient — the migration must emit **every** field
+the item has, or import will silently default the ones it leaves out.
+
+The same probe reproduced SG4's strictly-newer rule: an equal `updated_at` was refused with
+`Kept local state … use --allow-stale`.
+
+### SG11 — the legacy priority band must be mapped from the raw ledger lines
+
+New with the final fix wave, and it constrains where the migration reads from. `WorkItem.Priority`
+now clamps into 0-4 at every construction path, deserialisation included, so this repository's 87
+legacy items (priorities 100 ×80, 150 ×5, 200 ×2 — folded read-only) all arrive as **4** once
+`FactoryState.Replay` has read them. Their relative order is gone by the time anything sees the fold.
+
+**So the migration must read the raw ledger lines, not the replayed fold,** if the legacy band is to
+be mapped monotonically (100 → 2, 150 → 3, 200 → 4 is the obvious shape). Reading the fold and
+emitting what it holds is not wrong — every item lands in band and bd accepts it — but it files all
+87 at the lowest priority.
