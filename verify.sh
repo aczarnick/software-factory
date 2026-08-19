@@ -179,6 +179,19 @@ check "doctor names the gate that cannot block"   contains "$DOC" "can no longer
 check "status names the gates that are off"       contains "$("$CLI/factory" status --dir "$F4" 2>&1)" "gates off"
 check "a baseline predating attempts still loads" not_contains "$DOC" "no baseline captured"
 
+printf '\n  The installer needs no elevation\n'
+INST="$WORK/prefix"
+PREFIX="$INST" "$ROOT/install.sh" >"$WORK/install.log" 2>&1
+INSTALL_RC=$?
+INSTALL_LOG="$(cat "$WORK/install.log")"
+check "installs without sudo"                     test "$INSTALL_RC" -eq 0
+check "lands the binary under the prefix"         test -x "$INST/bin/factory"
+check "the installed binary runs"                 "$INST/bin/factory" version
+check "it says where it installed"                contains "$INSTALL_LOG" "$INST/bin/factory"
+check "it warns when another copy shadows it"     contains "$INSTALL_LOG" "still resolves to"
+check "it never silently assumes it won"          not_contains "$INSTALL_LOG" "Permission denied"
+check "default prefix is one the user owns"       grep -q 'PREFIX:-\$HOME/.local' "$ROOT/install.sh"
+
 section "Result"
 printf '%d passed, %d failed\n' "$PASS" "$FAIL"
 for n in ${FAILED_NAMES+"${FAILED_NAMES[@]}"}; do printf '  failed: %s\n' "$n"; done
