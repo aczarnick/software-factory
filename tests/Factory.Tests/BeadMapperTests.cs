@@ -170,23 +170,71 @@ public class BeadMapperTests
         Assert.Empty(restored.DependsOn);
     }
 
+    /// <summary>Every key <see cref="BeadMapper.MetadataFor"/> is allowed to write, for an item with
+    /// nothing left null. Asserted as a set rather than as a list of forbidden names: naming what
+    /// must be absent cannot fail while the field does not exist on <see cref="BeadMetadata"/> at all,
+    /// so it never reddens for anything, where the exact set reddens the moment a key appears.</summary>
+    private static readonly string[] MetadataKeys =
+    [
+        "assumptions", "budgetUsd", "createdAt", "criteria", "intent",
+        "labels", "parentId", "provenanceKind", "provenanceSource", "requirements"
+    ];
+
     [Fact]
-    public void Volatile_run_state_is_not_sent_to_the_backlog()
+    public void The_metadata_blob_carries_exactly_the_fields_beads_has_no_native_home_for()
     {
-        var item = WorkItem.Create("thing") with
+        // Two things must not reach it, for two different reasons. Volatile run state — station,
+        // worktree, attempts, spend — belongs to the local ledger, and a copy in a shared backlog
+        // would let one machine's progress overwrite another's. Owner must not be copied either: beads
+        // owns the assignee natively, so a second copy goes stale the moment any machine claims or
+        // releases the bead.
+        var item = WorkItem.Create("thing", "the intent") with
         {
             Station = "implement",
             Worktree = "/tmp/wt",
             Attempts = 3,
-            SpentUsd = 0.42m
+            SpentUsd = 0.42m,
+            Owner = "other-machine",
+            Requirements = ["works"],
+            AcceptanceCriteria = [AcceptanceCriterion.Command("runs", "dotnet run")],
+            Assumptions = ["nothing else changed"],
+            Labels = ["lane-a"],
+            ParentId = "wi-aaaa11112222",
+            BudgetUsd = 5m,
+            Provenance = Provenance.FromAgent("intake")
         };
 
-        var metadata = BeadMapper.MetadataFor(item);
+        var written = JsonDocument.Parse(BeadMapper.MetadataFor(item)).RootElement
+            .EnumerateObject().Select(property => property.Name).Order();
 
-        Assert.DoesNotContain("worktree", metadata, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("spentUsd", metadata, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("attempts", metadata, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("implement", metadata, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(MetadataKeys, written);
+    }
+
+    [Fact]
+    public void Nothing_the_metadata_blob_carries_is_lost_on_the_way_back()
+    {
+        var item = WorkItem.Create("thing", "the intent") with
+        {
+            Requirements = ["works"],
+            Assumptions = ["nothing else changed"],
+            Labels = ["lane-a"],
+            ParentId = "wi-aaaa11112222",
+            BudgetUsd = 5m,
+            Provenance = Provenance.FromAgent("intake")
+        };
+
+        // The set assertion above catches a key that appears; this catches one that stops being
+        // written, which leaves the key in place holding a default and so is invisible to it.
+        var restored = BeadMapper.ToWorkItem(BeadWith(item));
+
+        Assert.Equal("the intent", restored.Intent);
+        Assert.Equal(["works"], restored.Requirements);
+        Assert.Equal(["nothing else changed"], restored.Assumptions);
+        Assert.Equal(["lane-a"], restored.Labels);
+        Assert.Equal("wi-aaaa11112222", restored.ParentId);
+        Assert.Equal(5m, restored.BudgetUsd);
+        Assert.Equal(new Provenance(ProvenanceKind.Agent, "intake"), restored.Provenance);
+        Assert.Equal(item.CreatedAt, restored.CreatedAt);
     }
 
     [Fact]
@@ -209,17 +257,6 @@ public class BeadMapperTests
         // Empty and absent have to land on the same value: reconcile compares the whole mapped
         // projection, so "" against null would rewrite the item into the ledger on every open.
         Assert.Null(BeadMapper.ToWorkItem(bead).Owner);
-    }
-
-    [Fact]
-    public void The_holder_of_an_item_is_not_duplicated_into_the_metadata()
-    {
-        var metadata = BeadMapper.MetadataFor(WorkItem.Create("held") with { Owner = "other-machine" });
-
-        // beads owns the assignee natively; a second copy in the metadata would go stale the moment
-        // another machine claimed or released the bead.
-        Assert.DoesNotContain("owner", metadata, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("other-machine", metadata, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

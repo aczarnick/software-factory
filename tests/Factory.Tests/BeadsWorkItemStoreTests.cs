@@ -494,9 +494,9 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     {
         if (Unavailable) return;
 
-        // The live behaviour needs the 5-minute lease to expire, so it is evidenced by probe and by
-        // BeadsArgumentTests rather than by waiting here. What this pins is that a reclaim pass over
-        // healthy leases is a no-op that neither throws nor invents items.
+        // The counterpart to Reclaim_resolves_a_stale_lease_to_the_item_it_stranded, which builds an
+        // expired lease rather than waiting one out: what this pins is that a pass over healthy leases
+        // is a no-op that neither throws nor invents items.
         Assert.Empty(Store().Reclaim(TimeSpan.FromMinutes(15)));
     }
 
@@ -602,13 +602,30 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         if (Unavailable) return;
 
         // A live bd reclaim against the throwaway database: bd reports "scoped": true as soon as
-        // --assignee is passed, even with nothing stale, so this needs no wait on the 5-minute
-        // lease TTL. This is the live half of the scoping fix; a foreign lease actually surviving
-        // reclaim is probe-evidenced only, since producing one costs the fixed TTL.
+        // --assignee is passed, even with nothing stale. This is the live half of the scoping fix; a
+        // lease held by another assignee actually surviving a reclaim is probe-evidenced only.
         var response = Cli().JsonObject<BeadsReclaimResponse>(
             [.. BeadMapper.ReclaimArgs(TimeSpan.FromMinutes(15), Owner)]);
 
         Assert.True(response!.Scoped);
+    }
+
+    /// <summary>Fails every <c>bd sync</c> call, letting everything else through, the same seam shape
+    /// as <see cref="FailsNoteCalls"/> above.</summary>
+    private sealed class FailsSyncCalls(string directory, string owner) : BeadsCli(directory, owner)
+    {
+        public override ShellResult Exec(params string[] args) =>
+            args is ["sync", ..] ? new ShellResult(1, "", "sync failed: fetch from origin/main", false) : base.Exec(args);
+    }
+
+    [Fact]
+    public void A_sync_beads_could_not_complete_leaves_the_factory_able_to_work_on()
+    {
+        // The behaviour Sync's contract turns on, and the reason it deliberately ignores its result:
+        // beads is a replica model, so an unreachable remote leaves the local database complete. A
+        // deployment with no remote at all cannot show this — probed against 1.2.1, bd exits 0 and
+        // reports the skip — so the failure has to come from the seam.
+        new BeadsWorkItemStore(new FailsSyncCalls(database.Directory, Owner), Owner, _ => { }).Sync();
     }
 
     [Fact]
@@ -616,6 +633,8 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     {
         if (Unavailable) return;
 
+        // A smoke check over the real executable, not coverage of the tolerance above: bd's no-remote
+        // path exits 0, so this passes whether or not Sync tolerates a failure.
         Store().Sync();
     }
 
