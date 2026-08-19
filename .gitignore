@@ -4,3 +4,10 @@ dist/
 .factory/
 # Proof artifacts kept on disk with their own git history; see examples/README.md
 examples/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
