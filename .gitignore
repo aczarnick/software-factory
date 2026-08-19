@@ -11,3 +11,6 @@ examples/
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# Harness-managed worktrees
+.claude/worktrees/
