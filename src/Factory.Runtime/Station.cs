@@ -18,6 +18,11 @@ public sealed class FactoryServices
     public required Workspace Workspace { get; init; }
     public required FactoryState State { get; init; }
 
+    /// <summary>The one lock every toolchain invocation this factory makes goes through — see
+    /// <see cref="ToolchainGate"/>. Distinct from <see cref="Workspace"/>'s own merge lock, which
+    /// serialises integration rather than compiles; nothing in the factory acquires both at once.</summary>
+    public ToolchainGate ToolchainGate { get; init; } = new();
+
     /// <summary>Transport this host was opened with, so child factories inherit it. Without
     /// this a delegate silently opens its child on the default transport, which means a
     /// composite cannot be exercised without live model calls.</summary>
