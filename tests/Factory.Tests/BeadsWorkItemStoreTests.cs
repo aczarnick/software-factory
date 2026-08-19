@@ -929,6 +929,50 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         [.. Cli().Json<BeadRecord>("ready", "--json", "--limit", "0").Select(bead => bead.Id)];
 
     [Fact]
+    public void An_edge_a_human_already_typed_as_another_type_is_logged_rather_than_halting()
+    {
+        if (Unavailable) return;
+        var logged = new List<string>();
+        var store = new BeadsWorkItemStore(Cli(), Owner, logged.Add);
+        var blocker = store.Add(WorkItem.Create("the blocker") with { State = WorkItemState.Ready });
+        var dependent = store.Add(WorkItem.Create("the dependent") with { State = WorkItemState.Ready });
+
+        // One ordinary edit by another actor. beads allows at most one edge per ordered pair, so this
+        // is enough to make the factory's own `dep add` on the same pair exit 1 (probed).
+        var typed = Cli().Exec("dep", "add", dependent.Id, blocker.Id, "--type", "related");
+        Assert.True(typed.Ok, typed.Combined);
+
+        store.Update(dependent with { DependsOn = [blocker.Id] });
+
+        // Not a halt: the field write has already committed by the time the edge diff runs, so a throw
+        // here leaves the mirror unrun and the fold never learning the change -- and the next open
+        // repairs the fold only for the next update to halt again in the same place.
+        Assert.Contains(logged, message => message.Contains(dependent.Id) && message.Contains("related"));
+
+        // And the human's edge is still theirs, untouched.
+        var stored = Assert.Single(Bead(dependent.Id).Dependencies);
+        Assert.Equal("related", stored.Type);
+    }
+
+    [Fact]
+    public void An_edge_beads_refuses_as_broken_is_still_loud()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var dependent = store.Add(WorkItem.Create("names a blocker beads does not know") with
+        {
+            State = WorkItemState.Ready
+        });
+
+        // The other side of the same discrimination: an id beads has never heard of is a defect in the
+        // caller, not another actor's edit, and must not be swallowed alongside the occupied pair.
+        var refused = Assert.Throws<InvalidOperationException>(
+            () => store.Update(dependent with { DependsOn = ["wi-000000000000"] }));
+
+        Assert.Contains("wi-000000000000", refused.Message);
+    }
+
+    [Fact]
     public void An_edge_added_after_filing_reaches_beads_and_survives_a_reconcile()
     {
         if (Unavailable) return;

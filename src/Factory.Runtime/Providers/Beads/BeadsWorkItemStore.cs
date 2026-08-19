@@ -146,8 +146,7 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string
         if (Get(item.Id) is not { } stored) return;
 
         foreach (var blocker in item.DependsOn.Except(stored.DependsOn))
-            Write(BeadMapper.DependencyAddArgs(item.Id, blocker, owner),
-                  $"add the dependency {item.Id} -> {blocker}");
+            AddDependency(item.Id, blocker);
 
         foreach (var blocker in stored.DependsOn.Except(item.DependsOn))
         {
@@ -159,6 +158,41 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string
             log($"removed the dependency {item.Id} -> {blocker} from beads");
         }
     }
+
+    /// <summary>Adds one blocking edge, tolerating the one refusal another actor's ordinary edit
+    /// causes. beads allows at most one edge per ordered pair and refuses (exit 1, nothing written) an
+    /// add onto a pair another type already occupies — which a human retyping an edge as <c>related</c>
+    /// is enough to produce, on a pair the caller's <c>DependsOn</c> still holds as blocking.
+    ///
+    /// That must not halt a factory. The field write has already committed by the time the diff runs,
+    /// so a throw here leaves the mirror unrun and the fold never learning the change; the next open
+    /// repairs the fold and the next update halts again in the same place. So it is a log line, the
+    /// shape <c>Note</c> and <c>FinishFiling</c> already use, while a genuinely broken add — a cycle, a
+    /// self-edge, an id beads does not know — stays loud.
+    ///
+    /// The two are told apart by the database, not by bd's wording: all four failures exit 1 (probed),
+    /// so the exit code cannot discriminate, and re-reading the pair answers the question directly
+    /// while also closing the race a pre-check would leave open.</summary>
+    private void AddDependency(string dependent, string blocker)
+    {
+        var result = cli.Exec([.. BeadMapper.DependencyAddArgs(dependent, blocker, owner)]);
+        if (result.Ok) return;
+
+        if (EdgeTypeJoining(dependent, blocker) is not { } occupying)
+            throw new InvalidOperationException(
+                $"Could not add the dependency {dependent} -> {blocker} in beads: {result.Combined}");
+
+        log($"the dependency {dependent} -> {blocker} is not recorded in beads: the pair already " +
+            $"carries a '{occupying}' edge, and beads allows only one edge per pair");
+    }
+
+    // Whatever single edge joins this ordered pair, of any type, or null when nothing does. Read from
+    // the dependent, which the field write just proved exists.
+    private string? EdgeTypeJoining(string dependent, string blocker) =>
+        cli.Json<BeadRecord>([.. BeadMapper.GetArgs(dependent)])
+           .SelectMany(bead => bead.Dependencies)
+           .FirstOrDefault(dependency => dependency.BlockerId == blocker)
+           ?.Type;
 
     private void Write(IReadOnlyList<string> args, string what)
     {
