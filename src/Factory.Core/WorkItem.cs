@@ -72,8 +72,21 @@ public sealed record WorkItem
     public WorkItemState State { get; init; } = WorkItemState.Draft;
 
     /// <summary>Dispatch priority, <see cref="Priorities.Highest"/> to
-    /// <see cref="Priorities.Lowest"/>. Lower sorts first.</summary>
-    public int Priority { get; init; } = Priorities.Default;
+    /// <see cref="Priorities.Lowest"/>. Lower sorts first.
+    ///
+    /// Brought into the band on the way in rather than merely documented as being in it. The band is
+    /// the backlog store's — beads refuses anything outside it with a non-zero exit, which the store
+    /// raises as a halt — so this is the one place that can guarantee no item the factory holds is an
+    /// item the backlog will refuse. Every construction path lands here: object initialiser,
+    /// <c>with</c>, and deserialisation, which is how a ledger written before the band was narrowed
+    /// replays without stopping the factory.</summary>
+    public int Priority
+    {
+        get => _priority;
+        init => _priority = Priorities.Clamp(value);
+    }
+
+    private readonly int _priority = Priorities.Default;
 
     public IReadOnlyList<string> Labels { get; init; } = [];
     public string? ParentId { get; init; }

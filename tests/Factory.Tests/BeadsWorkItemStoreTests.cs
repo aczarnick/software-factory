@@ -78,10 +78,20 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     /// cannot see another's corrections. <c>Open</c> is what the orchestrator does at run start.</summary>
     private sealed class Fold : IDisposable
     {
-        private readonly JsonlRunHistory _history =
-            new(Path.Combine(TempDir.Create(), "ledger.jsonl"));
+        private readonly JsonlRunHistory _history;
 
-        public Fold() => State = _history.Replay();
+        public Fold(params string[] existingLines)
+        {
+            var path = Path.Combine(TempDir.Create(), "ledger.jsonl");
+
+            // Written as text, never through the ports: a fold that already holds values the current
+            // code would refuse is exactly what the real cutover opens, and any line this test built
+            // through a WorkItem would be normalised before it ever reached the file.
+            if (existingLines.Length > 0) File.WriteAllLines(path, existingLines);
+
+            _history = new JsonlRunHistory(path);
+            State = _history.Replay();
+        }
 
         public FactoryState State { get; }
 
@@ -564,6 +574,61 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         Assert.DoesNotContain(id, fold.State.Dispatchable().Select(item => item.Id));
         Assert.Null(store.TryClaim(Owner));
     }
+
+    [Fact]
+    public void A_legacy_priority_on_an_item_does_not_halt_the_backlog_write()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var filed = store.Add(WorkItem.Create("work filed before the band was narrowed") with
+        {
+            State = WorkItemState.Ready
+        });
+
+        // bd refuses -p 100 with exit 1 and writes nothing (probed), and Write turns any non-zero exit
+        // into a throw that GuardedWorkItemStore raises as a WorkItemStoreException -- so on the real
+        // checkout this is a factory that halts on the first update of a pre-existing item, and halts
+        // again on every retry.
+        store.Update(filed with { Priority = 100 });
+
+        Assert.InRange(Bead(filed.Id).Priority, Priorities.Highest, Priorities.Lowest);
+    }
+
+    [Fact]
+    public void A_fold_already_holding_a_legacy_priority_opens_reconciles_and_updates_without_halting()
+    {
+        if (Unavailable) return;
+        var store = Store();
+        var filed = store.Add(WorkItem.Create("the item the cutover meets first") with
+        {
+            State = WorkItemState.Ready
+        });
+
+        using var fold = new Fold(LegacyFiledLine(filed.Id, filed.Title, priority: 100));
+
+        // The load-bearing assertion. Normalised on the way in, before beads is consulted at all: the
+        // fold is what `factory ls`, the budget and the orphan requeue read, and it is the copy a write
+        // is built from. The update below is belt-and-braces -- probed, a reconcile against a bead
+        // beads already holds also corrects the fold's priority (100 -> 2), so this open would survive
+        // the write on its own; it is the item beads does not hold at all, the cutover's own case,
+        // where the fold's own value is the only one there is.
+        Assert.Equal(Priorities.Lowest, fold.State.Items[filed.Id].Priority);
+
+        fold.Open(store);
+        store.Update(fold.State.Items[filed.Id]);
+
+        Assert.InRange(Bead(filed.Id).Priority, Priorities.Highest, Priorities.Lowest);
+    }
+
+    /// <summary>One <c>work_item_filed</c> line in the shape this repository's own ledger holds 87
+    /// of, with the legacy priority it holds them at.</summary>
+    private static string LegacyFiledLine(string id, string title, int priority) =>
+        $$"""
+        {"type":"work_item_filed","item":{"id":"{{id}}","title":"{{title}}","kind":"Feature",
+         "state":"Ready","priority":{{priority}},"createdAt":"2026-08-13T06:23:37+00:00",
+         "updatedAt":"2026-08-13T06:23:37+00:00"},
+         "eventId":"evt_645fd1b2a793","at":"2026-08-13T06:23:37+00:00","seq":1}
+        """.ReplaceLineEndings("");
 
     [Fact]
     public void Reclaim_reverts_nothing_while_every_lease_is_live()

@@ -456,6 +456,59 @@ public class PriorityBandTests
 
         Assert.InRange(derived, Priorities.Highest, Priorities.Lowest);
     }
+
+    [Theory]
+    [InlineData(5, 4)]
+    [InlineData(100, 4)]
+    [InlineData(150, 4)]
+    [InlineData(200, 4)]
+    [InlineData(-1, 0)]
+    [InlineData(int.MinValue, 0)]
+    public void Clamp_brings_a_value_outside_the_band_to_its_nearest_edge(int given, int expected)
+    {
+        Assert.Equal(expected, Priorities.Clamp(given));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    [InlineData(4)]
+    public void Clamp_leaves_a_value_already_in_the_band_alone(int priority)
+    {
+        Assert.Equal(priority, Priorities.Clamp(priority));
+    }
+
+    [Fact]
+    public void No_caller_can_construct_a_work_item_outside_the_band()
+    {
+        // bd refuses -p 5 and -p -1 outright (exit 1, probed), so an out-of-band value on an item is
+        // not a cosmetic inconsistency: it is a backlog write that fails, and BeadsWorkItemStore.Write
+        // turns that into a halt. The band is enforced where the field lives so no construction path
+        // can produce one -- object initialiser, `with`, or deserialisation.
+        Assert.Equal(Priorities.Lowest, (WorkItem.Create("filed") with { Priority = 100 }).Priority);
+        Assert.Equal(Priorities.Highest, (WorkItem.Create("filed") with { Priority = -7 }).Priority);
+        Assert.Equal(Priorities.Lowest, new WorkItem { Id = "wi-1", Title = "built", Priority = 200 }.Priority);
+    }
+
+    [Fact]
+    public void A_ledger_line_carrying_a_legacy_priority_is_normalised_as_the_fold_replays_it()
+    {
+        // The seam that matters for the cutover: this repository's own fold holds 87 items at
+        // priorities 100, 150 and 200, and every one of them arrives through Replay rather than
+        // through a constructor. The line is written as text for that reason -- an item built in C#
+        // would already have been normalised and would prove nothing about the 87.
+        const string legacyLine = """
+            {"type":"work_item_filed","item":{"id":"wi_97db7ca6a29b","title":"legacy work",
+             "intent":"filed before the band was narrowed","kind":"Feature","state":"Ready",
+             "priority":100,"createdAt":"2026-08-13T06:23:37+00:00",
+             "updatedAt":"2026-08-13T06:23:37+00:00"},
+             "eventId":"evt_645fd1b2a793","at":"2026-08-13T06:23:37+00:00","seq":1}
+            """;
+
+        var replayed = FactoryState.Replay([FactoryJson.Read<FactoryEvent>(legacyLine)!]);
+
+        Assert.Equal(Priorities.Lowest, replayed.Items["wi_97db7ca6a29b"].Priority);
+    }
 }
 
 internal static class TempDir
