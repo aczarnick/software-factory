@@ -408,13 +408,19 @@ public static class Commands
 
     /// <summary>How many acceptance criteria actually passed. A dash means the item was never
     /// verified, which must not look like a pass: the column used to show how many criteria a shell
-    /// *could* settle, so an item that skipped verification entirely still rendered as "5/5".</summary>
+    /// *could* settle, so an item that skipped verification entirely still rendered as "5/5".
+    ///
+    /// Counted against the criteria a command can settle rather than all of them. Judged criteria are
+    /// deferred to the review station and never appear in a deterministic verdict, so including them
+    /// in the total would leave a fully verified item reading "3/5" for the rest of its life.</summary>
     private static string Verdict(VerificationReport? report, WorkItem item)
     {
         if (item.AcceptanceCriteria.Count == 0) return "—";
-        if (report is null) return $"—/{item.AcceptanceCriteria.Count}";
 
-        return $"{report.Results.Count(r => r.Passed)}/{item.AcceptanceCriteria.Count}";
+        var machine = item.AcceptanceCriteria.Count(c => c.Verification.IsDeterministic);
+        if (machine == 0) return "judged";
+
+        return report is null ? $"—/{machine}" : $"{report.Results.Count(r => r.Passed)}/{machine}";
     }
 
     public static int Show(CommandLine cli)
@@ -458,6 +464,9 @@ public static class Commands
                 {
                     { Passed: true } => $"    {Output.Green("passed")} — {result.Detail}",
                     { Passed: false } => $"    {Output.Red("failed")} — {result.Detail}",
+                    // A judged criterion has no deterministic verdict by design; saying it was never
+                    // checked would blame verification for declining to settle what it cannot.
+                    _ when !c.Verification.IsDeterministic => $"    {Output.Dim("deferred to review")}",
                     _ => $"    {Output.Dim("never checked")}"
                 });
             }

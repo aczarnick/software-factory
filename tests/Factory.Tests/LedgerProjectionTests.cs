@@ -81,7 +81,7 @@ public class LedgerProjectionTests
 
         Assert.NotNull(verdict);
         Assert.Equal(2, verdict!.Results.Count);
-        Assert.Single(verdict.Results.Where(r => r.Passed));
+        Assert.Single(verdict.Results, r => r.Passed);
         Assert.False(verdict.AllPassed);
     }
 
