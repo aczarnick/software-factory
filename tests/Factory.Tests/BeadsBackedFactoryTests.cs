@@ -10,6 +10,10 @@ namespace Factory.Tests;
 ///
 /// A deployment per test rather than a shared fixture: each test opens its own factory, and a
 /// shared ledger would let one test's Ready item answer another's claim.
+///
+/// Every test here returns at <c>if (!Available) return;</c> when <c>bd</c> is absent, and xunit
+/// 2.9.2 has no dynamic skip, so it reports as passed rather than skipped.
+/// <see cref="BeadsAvailabilityTests"/> is the one red that says so.
 /// </summary>
 public class BeadsBackedFactoryTests : IDisposable
 {

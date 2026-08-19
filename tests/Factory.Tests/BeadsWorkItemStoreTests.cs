@@ -37,8 +37,10 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     private BeadsCli Cli() => new(database.Directory, Owner);
     private BeadsWorkItemStore Store() => new(Cli(), Owner, _ => { });
 
-    // bd is on PATH in this environment, so these run for real. A machine without bd skips them
-    // rather than failing: the rest of the suite must stay offline-clean.
+    // bd is on PATH in this environment, so these run for real. A machine without bd does not skip
+    // these tests -- xunit 2.9.2 has no dynamic skip, so each one returns here and reports as passed.
+    // That keeps the rest of the suite offline-clean at the cost of a green that asserts nothing, which
+    // is what BeadsAvailabilityTests exists to turn into a single red.
     private bool Unavailable => !database.Available;
 
     private BeadRecord Bead(string id) =>
