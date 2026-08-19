@@ -187,6 +187,38 @@ public class LedgerMirroringWorkItemStoreTests
 
         Assert.Equal(item.Id, claimed?.Id);
         Assert.Contains(logged, message => message.Contains(item.Id));
+
+        // And the fold learned it. The append is the fallible half; applying to the fold cannot fail
+        // for a reason the ledger file caused, and the fold is what `factory ls`, the budget,
+        // InFlight() and RequeueOrphans read for the rest of this process. A claim lost here leaves the
+        // run holding a lease on an item its own fold does not believe is in flight.
+        Assert.Equal(WorkItemState.InProgress, state.Items[item.Id].State);
+        Assert.Equal("claimant", state.Items[item.Id].Owner);
+    }
+
+    [Fact]
+    public void A_transition_survives_a_ledger_this_process_may_not_write()
+    {
+        var state = FactoryState.Replay([]);
+        var item = WorkItem.Create("returned to the queue while the ledger is read-only") with
+        {
+            State = WorkItemState.InProgress,
+            Owner = "claimant"
+        };
+        state.Apply(new WorkItemFiled(item));
+
+        using var ledger = new UnwritableLedger();
+        using var history = new JsonlRunHistory(ledger.LedgerPath);
+        var mirror = new LedgerMirroringWorkItemStore(new FakeStore(), history, state, _ => { });
+
+        mirror.Transition(item, WorkItemState.Ready, "requeued");
+
+        // The divergence that outlasts the log line's promise: without this the fold still calls the
+        // item in flight while the backlog has it queued, so InFlight() and RequeueOrphans work from a
+        // fold that disagrees with beads for the whole run -- and "corrected at the next open" is true
+        // of the file and false of this process.
+        Assert.Equal(WorkItemState.Ready, state.Items[item.Id].State);
+        Assert.DoesNotContain(item.Id, state.InFlight().Select(inFlight => inFlight.Id));
     }
 
     [Fact]

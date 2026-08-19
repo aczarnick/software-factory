@@ -97,19 +97,31 @@ public sealed class LedgerMirroringWorkItemStore(
             : new WorkItemStateChanged(after.Id, from, after.State, reason));
     }
 
+    // The fold is applied even when the append was lost, because only the append is fallible for a
+    // reason the environment caused. Wrapping both meant a tolerated append also skipped the fold --
+    // and the fold is what `factory ls`, the budget, InFlight() and RequeueOrphans read for the rest
+    // of this process, so a Ready-bound transition lost that way left the item listed in flight here
+    // while the backlog had it queued. "Corrected at the next open" is true of the ledger file and
+    // false of this run.
     private void Mirror(FactoryEvent evt)
+    {
+        TryAppendToLedger(evt);
+        state.Apply(evt);
+    }
+
+    // See LedgerFaultTolerance for what this catches and why -- the same predicate
+    // BacklogReconciler.TryAppend uses for the identical append, so the two agree by construction
+    // rather than by two comments promising they match.
+    private void TryAppendToLedger(FactoryEvent evt)
     {
         try
         {
             history.Append(evt);
-            state.Apply(evt);
         }
-        // See LedgerFaultTolerance for what this catches and why -- the same predicate
-        // BacklogReconciler.TryAppend uses for the identical append, so the two agree by
-        // construction rather than by two comments promising they match.
         catch (Exception ex) when (LedgerFaultTolerance.IsTolerable(ex))
         {
-            log($"the audit copy of {Describe(evt)} could not be written and will be corrected at the next open: {ex.Message}");
+            log($"the audit copy of {Describe(evt)} could not be written to the ledger and will be " +
+                $"restored at the next open; the change itself stands: {ex.Message}");
         }
     }
 
