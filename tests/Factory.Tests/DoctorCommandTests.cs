@@ -30,10 +30,17 @@ public class DoctorCommandTests : IDisposable
     {
         var exe = Path.Combine(_binDir, "claude");
         File.WriteAllText(exe, "#!/bin/sh\nexit 0\n");
-        File.SetUnixFileMode(exe,
-            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
-            UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
-            UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+
+        // Windows has no executable bit and resolves by extension, so the mode is both
+        // unsupported there and unnecessary. Guarded rather than suppressed: the analyser is
+        // right that the call site was reachable on a platform that cannot run it.
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(exe,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
         Environment.SetEnvironmentVariable("FACTORY_CLAUDE_BIN", exe);
     }
 

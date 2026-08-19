@@ -360,7 +360,10 @@ public class TokenEconomyTests
     {
         RunRecord Run(TokenProfile profile) => new()
         {
-            RunId = "r", ItemId = "i", StationId = "s", Profile = profile,
+            RunId = "r",
+            ItemId = "i",
+            StationId = "s",
+            Profile = profile,
             Usage = new TokenUsage(100, 50, 0, 0)
         };
 

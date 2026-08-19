@@ -877,7 +877,8 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
 
         var stranded = store.Add(
             WorkItem.Create("stranded by a worker that died", "so another machine has to get it back")
-                with { State = WorkItemState.Ready });
+                with
+            { State = WorkItemState.Ready });
         var live = store.Add(WorkItem.Create("still being worked") with { State = WorkItemState.Ready });
         var claimed = Cli().Exec("update", live.Id, "--claim", "--actor", Owner);
         Assert.True(claimed.Ok, claimed.Combined);
