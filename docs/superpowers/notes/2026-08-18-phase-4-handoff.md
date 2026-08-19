@@ -50,6 +50,13 @@ Plus five Importants: a heartbeat failure and a `Sync()` failure were both invis
 starved the rest of a heartbeat tick; and a tolerated ledger append also skipped the in-memory fold
 for the rest of the run.
 
+**The plugin contract is now 2.** This branch bumped `FactoryVersion.ContractVersion` from 1 to 2 for
+its own widening of types the ports expose (five `WorkItemKind` members, `WorkItem.Owner`,
+`WorkItem.StoreStatus`), and the `Factory.TestPlugin` fixtures now track the constant instead of a
+literal. **The next contract number is 3**, and the sync-gate plan needs it: `Sync()` → `SyncStatus`
+is a real signature break where this branch's additive widening was not. See SG1 and SG8 in the
+pre-flight note.
+
 ---
 
 ## Accepted costs

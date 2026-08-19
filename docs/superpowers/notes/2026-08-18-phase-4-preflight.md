@@ -129,9 +129,14 @@ test doubles: `GuardedProviderTests.ThrowingStore`, `BacklogReconcilerTests.Stub
 contract version exists to protect: it will fail to compile against the new interface, which is the
 proof that the break is real.
 
-**Ruling:** bump `FactoryVersion.ContractVersion` to 2 and the fixtures' `Contract` to 2 in the same
-task. `PluginCatalog.cs:47` refuses a mismatch with a log line and skips the provider, so leaving the
-fixtures at 1 would silently un-register them and fail `PluginCatalogTests` for a misleading reason.
+**Ruling, as amended at the end of the branch:** bump `FactoryVersion.ContractVersion` to **3**.
+Contract **2 is already spent** — this branch bumped to it for its own type widening (see SG8), so a
+sync-gate plan that bumps "to 2" would ship a genuine `MissingMethodException`-class break on
+`IWorkItemStore` with no contract change at all, and `PluginCatalog.cs:47` — the gate that exists for
+exactly this — would load every contract-2 plugin against a signature it was never compiled against.
+The fixtures now track `FactoryVersion.ContractVersion` rather than a literal, so only the
+deliberately-relative `FutureContractSink`/`PastContractSink` need touching; a root `dotnet build`
+proves the rest.
 
 ### SG2 — `bd sync` has five outcomes, not two
 
@@ -207,12 +212,13 @@ Raised by the final whole-branch review at `db7234e` and deliberately left unfix
 These three are the ones that change what the **next** plan has to do, so they are recorded here
 rather than only in the review, because this note is the artefact the next session reads.
 
-### SG8 — the contract bump has to cover this branch's type widening, and record why it waited
+### SG8 — this branch bumped the contract to 2 itself; the next one needs 3
 
 `FactoryVersion.cs`'s own rule is "bump on a breaking change to … any type they expose". This branch
-widened three things `IWorkItemStore` and `IRunHistorySink` expose and did **not** bump: five new
-`WorkItemKind` members, `WorkItem.Owner`, and `WorkItem.StoreStatus`. That was safe, for a reason
-that is not currently written beside any of them:
+widened three things `IWorkItemStore` and `IRunHistorySink` expose: five new `WorkItemKind` members,
+`WorkItem.Owner`, and `WorkItem.StoreStatus`. **`ContractVersion` is now 2, bumped on this branch**
+(`aaee61b`). The widening was additive and would have been safe without a bump, for reasons worth
+keeping beside the types:
 
 - an enum member addition is binary-compatible, so it cannot produce the `MissingMethodException`
   the contract major exists to prevent;
@@ -221,9 +227,12 @@ that is not currently written beside any of them:
 - the only real exposure is a contract-1 **sink** handed `Kind = Task` with no case for it, and none
   ships.
 
-**For SG1:** the bump to 2 already planned for `Sync()` → `SyncStatus` is the bump that covers all of
-this. When it lands, record the reasoning above next to the enum and next to the two new properties,
-so the rule's exception is documented where the next reader will look rather than only in a review.
+It was bumped anyway rather than left to ride the next plan's bump, because a version dependency
+recorded only in a gitignored ledger is one slipped plan away from being skipped, and the guard that
+would have caught the omission never fires on a version that never changed.
+
+**For SG1, therefore: the next contract number is 3, not 2.** `Sync()` → `SyncStatus` is a real
+signature break where this branch's widening was not, so it needs its own major regardless.
 
 ### SG9 — a ledger line from this branch is unreadable by an earlier build
 
