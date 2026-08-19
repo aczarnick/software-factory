@@ -11,6 +11,10 @@ public class ToolchainBaselineStalenessTests : IDisposable
     private sealed class FakeRepoStateProvider(string sha) : IRepoStateProvider
     {
         public Task<string> GetCurrentMasterShaAsync(CancellationToken ct = default) => Task.FromResult(sha);
+
+        // Baseline staleness does not consult harness staleness; these tests never reach it.
+        public Task<int?> CommitsBehindHeadAsync(string commit, CancellationToken ct = default) =>
+            Task.FromResult<int?>(null);
     }
 
     private static Toolchain OneCheck() => new()

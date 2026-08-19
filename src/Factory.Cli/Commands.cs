@@ -72,6 +72,12 @@ public static class Commands
         using var host = OpenOrInit(cli);
         var daemon = cli.Has("daemon") || cli.Has("watch");
 
+        // Said before any work starts: a factory improving its own source will otherwise build with
+        // code it is not running, and every command it adds to itself stays missing until reinstall.
+        if (await HarnessStaleness.ProbeAsync(host.Paths.RepoRoot, ct).ConfigureAwait(false)
+            is { IsStale: true } stale)
+            Output.Warn(stale.Describe);
+
         if (cli.Has("include-proposed"))
         {
             var activated = 0;
@@ -312,6 +318,11 @@ public static class Commands
 
     // ── inspection ──────────────────────────────────────────────────────────
 
+    /// <summary>Probes harness staleness from a synchronous command. Blocking is safe here: a CLI has
+    /// no synchronisation context to deadlock against, and the probe is two short git invocations.</summary>
+    private static HarnessStaleness ProbeHarness(FactoryHost host) =>
+        HarnessStaleness.ProbeAsync(host.Paths.RepoRoot).GetAwaiter().GetResult();
+
     public static int Status(CommandLine cli)
     {
         using var host = OpenOrInit(cli, quiet: true);
@@ -321,6 +332,9 @@ public static class Commands
         Output.Header($"factory '{host.Config.Name}'");
         Output.Info($"version   {FactoryVersion.Full}");
         Output.Info($"root      {host.Paths.RepoRoot}");
+
+        if (ProbeHarness(host) is { IsStale: true } stale)
+            Output.Warn($"harness   {stale.Describe}");
         Output.Info($"blueprint {host.Blueprint.Name} · {string.Join(" → ", host.Blueprint.Pipeline)}");
 
         // The deterministic gates the repository itself provides, shown so it is obvious
@@ -684,6 +698,14 @@ public static class Commands
         {
             Output.Success(toolchain.Describe);
         }
+
+        // Reported but never fatal: a stale binary still runs, and refusing to start would be a
+        // worse answer than saying which build is running and how to replace it.
+        Output.Header("Harness");
+        var harness = ProbeHarness(host);
+        if (harness.IsStale) Output.Warn(harness.Describe);
+        else if (harness.SelfHosted) Output.Success($"built from this repository at {FactoryVersion.Commit}");
+        else Output.Info("not built from this repository — nothing to compare");
 
         Output.Header("Claude CLI");
         var claudeExe = Environment.GetEnvironmentVariable("FACTORY_CLAUDE_BIN") ?? "claude";
