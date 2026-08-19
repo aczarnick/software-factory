@@ -28,9 +28,9 @@ internal static class LedgerFaultTolerance
     /// ships: <see cref="IRunHistory"/> is resolved by provider name, and a plugin ledger over a
     /// database or an HTTP endpoint reports its transport faults as the very types excluded above --
     /// <see cref="InvalidOperationException"/> for a closed connection, <see cref="ObjectDisposedException"/>
-    /// for a recycled client, and others again. Those stay loud rather than being tolerated here:
-    /// whether D2's tolerance should be provider-agnostic is a spec question, not this predicate's to
-    /// answer.
+    /// for a recycled client, and others again. Those stay loud rather than being tolerated here.
+    /// Whether D2's tolerance should be provider-agnostic is a spec question, recorded on the
+    /// sync-gate decision list in <c>docs/superpowers/notes/2026-08-18-phase-4-handoff.md</c>.
     /// </summary>
     public static bool IsTolerable(Exception ex) => ex is IOException or UnauthorizedAccessException;
 }
