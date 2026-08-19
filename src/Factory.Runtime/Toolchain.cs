@@ -423,6 +423,32 @@ public static class ToolchainProbes
     public static IToolchainProbe ForDotnet() => new DotnetToolchainProbe();
 }
 
+/// <summary>Serialises every toolchain invocation across one factory instance — each item's own
+/// check and every baseline capture or recapture — so concurrency above 1 never puts two
+/// compiles on the host's shared MSBuild node-reuse processes and Roslyn compiler server at
+/// once. <see cref="ToolchainRunner.BaselineAsync"/> documents why a baseline taken while
+/// something else is building is unreliable; this gate is what keeps that invariant true once
+/// items run concurrently. Model calls are never serialised by this — only the toolchain.</summary>
+public sealed class ToolchainGate
+{
+    private readonly SemaphoreSlim _gate = new(1, 1);
+
+    public async Task<IDisposable> AcquireAsync(CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        return new Release(_gate);
+    }
+
+    private sealed class Release(SemaphoreSlim gate) : IDisposable
+    {
+        private int _released;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0) gate.Release();
+        }
+    }
+}
+
 public static class ToolchainRunner
 {
     /// <summary>

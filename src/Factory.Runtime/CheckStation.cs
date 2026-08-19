@@ -15,10 +15,15 @@ namespace Factory.Runtime;
 public sealed class CheckStation(
     IRemediationRunner remediationRunner,
     IToolchainProbe? probe = null,
-    IRepoStateProvider? repoStateProvider = null) : IStation
+    IRepoStateProvider? repoStateProvider = null,
+    Func<ToolchainCheck, string, CancellationToken, Task<ShellResult>>? execute = null) : IStation
 {
     private readonly IToolchainProbe _probe = probe ?? new DotnetToolchainProbe();
     private readonly IRepoStateProvider? _repoStateProvider = repoStateProvider;
+
+    /// <summary>Overrides how a check is actually run. Only ever set by tests, so they can
+    /// observe concurrency around a fake compile without shelling out to a real one.</summary>
+    private readonly Func<ToolchainCheck, string, CancellationToken, Task<ShellResult>>? _execute = execute;
 
     public StationRole Role => StationRole.Check;
 
@@ -43,17 +48,7 @@ public sealed class CheckStation(
             return StationResult.Ok("no toolchain detected");
         }
 
-        // The baseline is taken once before dispatch, while nothing else is building. If the
-        // repo has since moved to a different commit — whether from the factory's own work or
-        // an external push — the cached baseline no longer describes the mainline being
-        // checked against, so it is recaptured rather than trusted.
-        var cached = ToolchainRunner.TryLoadBaseline(ctx.Services.Paths.BaselineFile) ?? new ToolchainBaseline();
-        var repoState = _repoStateProvider ?? new GitRepoStateProvider(ctx.Services.Workspace.RepoRoot);
-        var baseline = await ToolchainRunner.GetOrRecaptureBaselineAsync(
-            cached, toolchain, ctx.Services.Workspace.RepoRoot, ctx.Services.Paths.BaselineFile,
-            repoState, ctx.Ct).ConfigureAwait(false);
-
-        var results = await ToolchainRunner.RunAsync(toolchain, ctx.Run.WorkDir, ctx.Ct).ConfigureAwait(false);
+        var (baseline, results) = await RunCheckedAsync(ctx, toolchain).ConfigureAwait(false);
         var verdict = ToolchainRunner.Compare(results, baseline);
 
         var elapsed = results.Sum(r => r.DurationMs);
@@ -65,6 +60,28 @@ public sealed class CheckStation(
         return verdict.Passed
             ? StationResult.Ok(verdict.Summary)
             : StationResult.GateFailed(string.Join("\n", verdict.Regressions.Select(r => r.Detail)));
+    }
+
+    /// <summary>Recaptures the baseline if it has gone stale and runs this item's own checks,
+    /// both under the factory's shared <see cref="ToolchainGate"/> — so this item's compile
+    /// never overlaps another item's compile, or a baseline recapture, on the same machine.</summary>
+    private async Task<(ToolchainBaseline Baseline, IReadOnlyList<CheckOutcome> Results)> RunCheckedAsync(
+        StationContext ctx, Toolchain toolchain)
+    {
+        using var _ = await ctx.Services.ToolchainGate.AcquireAsync(ctx.Ct).ConfigureAwait(false);
+
+        // The baseline is taken once before dispatch, while nothing else is building. If the
+        // repo has since moved to a different commit — whether from the factory's own work or
+        // an external push — the cached baseline no longer describes the mainline being
+        // checked against, so it is recaptured rather than trusted.
+        var cached = ToolchainRunner.TryLoadBaseline(ctx.Services.Paths.BaselineFile) ?? new ToolchainBaseline();
+        var repoState = _repoStateProvider ?? new GitRepoStateProvider(ctx.Services.Workspace.RepoRoot);
+        var baseline = await ToolchainRunner.GetOrRecaptureBaselineAsync(
+            cached, toolchain, ctx.Services.Workspace.RepoRoot, ctx.Services.Paths.BaselineFile,
+            repoState, ctx.Ct, _execute).ConfigureAwait(false);
+
+        var results = await ToolchainRunner.RunAsync(toolchain, ctx.Run.WorkDir, ctx.Ct, _execute).ConfigureAwait(false);
+        return (baseline, results);
     }
 
     /// <summary>
@@ -137,6 +154,9 @@ public sealed class CheckStation(
 
         services.Log($"  [check] baselining {toolchain.Describe} on the mainline…");
 
+        // Shares the factory's ToolchainGate with every per-item check, so a recapture here
+        // never overlaps a concurrent item's own compile.
+        using var _ = await services.ToolchainGate.AcquireAsync(ct).ConfigureAwait(false);
         var baseline = await ToolchainRunner.BaselineAsync(
             toolchain, services.Workspace.RepoRoot, services.Paths.BaselineFile, repoState, ct).ConfigureAwait(false);
 

@@ -10,6 +10,8 @@ namespace Factory.Runtime;
 /// </summary>
 public sealed class Workspace(string repoRoot, FactoryPaths paths)
 {
+    // Serialises merges only. Compiles are serialised separately, by the factory-wide
+    // ToolchainGate on FactoryServices — the two never nest, so there is no ordering to deadlock.
     private readonly SemaphoreSlim _integrateGate = new(1, 1);
 
     public string RepoRoot { get; } = Path.GetFullPath(repoRoot);
