@@ -52,7 +52,9 @@ public class PluginHostTests : IDisposable
         using var host = FactoryHost.Open(_repo, log.Add, transport: new FakeTransport());
         host.Services.Record(new FactoryNote("started anyway"));
 
-        Assert.Contains(log, line => line.Contains("future") && line.Contains("v2") && line.Contains("v1"));
+        Assert.Contains(log, line => line.Contains("future")
+                                     && line.Contains($"v{FactoryVersion.ContractVersion + 1}")
+                                     && line.Contains($"v{FactoryVersion.ContractVersion}"));
         Assert.Single(host.Services.History.ReadFrom(0));
     }
 

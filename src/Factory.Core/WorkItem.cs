@@ -13,10 +13,23 @@ public enum WorkItemState
     Cancelled
 }
 
-/// <summary>What kind of work an item is. The factory's pipeline treats every kind the same way; the
-/// kinds past <see cref="Improvement"/> exist so an <see cref="IWorkItemStore"/> that has its own item
-/// vocabulary can round-trip a type the factory did not file, rather than flattening it to
-/// <see cref="Feature"/> and writing that back over the store's own value.</summary>
+/// <summary>What kind of work an item is. The factory's pipeline treats every kind the same way.
+///
+/// The kinds past <see cref="Improvement"/> were added so an <see cref="IWorkItemStore"/> with its own
+/// item vocabulary can round-trip a type the factory did not file, rather than flattening it to
+/// <see cref="Feature"/> and writing that back over the store's own value. They are not confined to
+/// that: <c>ItemContract.ToDomain</c> parses a decompose station's model output into this enum, and
+/// <c>factory add --kind</c> parses an operator's word, so both now mint the new members too —
+/// <c>factory add --kind milestone</c> files a Milestone where it used to file a Feature.
+///
+/// That widening is deliberate rather than an oversight. Nothing in the pipeline branches on kind, so
+/// no station behaves differently; refusing the new words at the CLI would mean a special case listing
+/// which members an operator may name, to protect nothing.
+///
+/// The cost worth stating: this makes the enum a growing union of every backlog provider's vocabulary,
+/// and each growth is a plugin-ABI event (see <see cref="FactoryVersion.ContractVersion"/>). The
+/// provider-agnostic alternative — carrying the store's raw type string opaquely on the item — is
+/// named and rejected on cost grounds in <c>BeadMapper.KindFor</c>.</summary>
 public enum WorkItemKind
 {
     Feature,

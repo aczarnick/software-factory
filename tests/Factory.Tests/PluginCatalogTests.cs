@@ -173,8 +173,34 @@ public class PluginCatalogTests : IDisposable
 
         Assert.Throws<InvalidOperationException>(
             () => registry.Resolve<IRunHistorySink>(new ProviderRef("future")));
-        Assert.Contains(log, line => line.Contains("future") && line.Contains("v2") && line.Contains("v1"));
+        Assert.Contains(log, line => line.Contains("future") && Names(line, Newer) && Names(line, Host));
     }
+
+    [Fact]
+    public void A_provider_built_against_the_previous_contract_major_is_refused_and_named()
+    {
+        var registry = new ProviderRegistry();
+        var log = new List<string>();
+
+        PluginCatalog.LoadInto(registry, PluginsDirWithFixture(), log.Add);
+
+        // The direction a contract bump exists to protect, and the one the gate had no test for: it is
+        // the *older* plugin that gets handed a type it was never compiled against -- a WorkItemKind
+        // member added after it shipped, in a type IRunHistorySink exposes. A gate that refused only
+        // newer plugins would satisfy the test above and leave this open.
+        Assert.Throws<InvalidOperationException>(
+            () => registry.Resolve<IRunHistorySink>(new ProviderRef("past")));
+        Assert.Contains(log, line => line.Contains("past") && Names(line, Older) && Names(line, Host));
+    }
+
+    // Written against FactoryVersion.ContractVersion rather than as literals, so a bump does not have
+    // to be chased through the fixtures and these assertions -- the failure mode that left the enum
+    // widening on this branch riding an untracked promise in the first place.
+    private const int Host = FactoryVersion.ContractVersion;
+    private const int Newer = Host + 1;
+    private const int Older = Host - 1;
+
+    private static bool Names(string line, int contractVersion) => line.Contains($"v{contractVersion}");
 
     [Fact]
     public void Scanning_the_same_directory_twice_reuses_one_load_context_per_assembly()
