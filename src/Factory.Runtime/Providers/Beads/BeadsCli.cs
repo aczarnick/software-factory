@@ -25,14 +25,24 @@ namespace Factory.Runtime;
 /// unique per machine wherever the backlog is shared.</remarks>
 public class BeadsCli(string workingDirectory, string owner)
 {
+    private const string Executable = "bd";
+
     private readonly Dictionary<string, string> _environment =
         new() { ["BD_NON_INTERACTIVE"] = "1", ["BEADS_NODE_ID"] = owner };
+
+    /// <summary>Whether the executable this wraps is on PATH. Overridable for the same reason
+    /// <see cref="Exec"/> is: <see cref="Shell.Which"/> resolves through <c>/bin/sh -c "command -v
+    /// bd"</c> and so reads the login shell's PATH, which no test process can take <c>bd</c> out
+    /// of. Without a seam here the guard that turns a missing <c>bd</c> into a message an operator
+    /// can act on is unreachable on any machine that has <c>bd</c> — which is every machine the
+    /// suite runs on.</summary>
+    public virtual bool IsAvailable => Shell.Which(Executable);
 
     /// <summary>Runs <c>bd</c>. Overridable so a test can interpose at a specific call — the window
     /// between the two writes that file a non-Ready item is bounded by one process start, so nothing
     /// outside this seam can reach it deterministically.</summary>
     public virtual ShellResult Exec(params string[] args) =>
-        Shell.Run("bd", args, workingDirectory, _environment);
+        Shell.Run(Executable, args, workingDirectory, _environment);
 
     /// <summary>Runs a command expected to emit JSON, failing loudly when it does not. <c>bd</c>
     /// returns an array for <c>show</c> and <c>list</c> and an object for <c>create</c>, so both

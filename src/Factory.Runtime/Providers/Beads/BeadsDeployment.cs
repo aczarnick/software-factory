@@ -7,7 +7,7 @@ public static class BeadsDeployment
 {
     public static void EnsureInitialised(BeadsCli cli, string prefix, Action<string> log)
     {
-        if (!Shell.Which("bd"))
+        if (!cli.IsAvailable)
             throw new InvalidOperationException(
                 "The beads backlog provider needs `bd` on PATH. Install it, or set " +
                 "\"workItemStore\": { \"provider\": \"ledger\" } in .factory/factory.json.");
