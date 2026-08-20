@@ -59,7 +59,7 @@ public sealed record AgentEvent(string Type, string? Subtype, JsonElement Raw)
     public decimal Dec(string prop) =>
         Raw.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDecimal() : 0m;
 
-    public int Int(string prop) =>
+    public int Num(string prop) =>
         Raw.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
 
     public bool Bool(string prop) =>

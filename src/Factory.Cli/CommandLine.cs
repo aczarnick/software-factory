@@ -54,10 +54,10 @@ public sealed class CommandLine
     public string? Get(string name) => _flags.GetValueOrDefault(name);
     public string Get(string name, string fallback) => _flags.GetValueOrDefault(name) ?? fallback;
 
-    public int? Int(string name) =>
+    public int? Number(string name) =>
         _flags.TryGetValue(name, out var v) && int.TryParse(v, out var n) ? n : null;
 
-    public decimal? Decimal(string name) =>
+    public decimal? Amount(string name) =>
         _flags.TryGetValue(name, out var v) && decimal.TryParse(v, out var n) ? n : null;
 
     public string? First => Positional.Count > 0 ? Positional[0] : null;

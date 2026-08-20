@@ -12,8 +12,8 @@ public static class Commands
 
     private static BudgetSpec? BudgetOverride(CommandLine cli)
     {
-        var daily = cli.Decimal("budget");
-        var perItem = cli.Decimal("item-budget");
+        var daily = cli.Amount("budget");
+        var perItem = cli.Amount("item-budget");
         if (daily is null && perItem is null) return null;
 
         var baseline = new BudgetSpec();
@@ -102,9 +102,9 @@ public static class Commands
         var report = await host.CreateOrchestrator().RunAsync(new OrchestratorOptions
         {
             StopWhenIdle = !daemon,
-            MaxConcurrency = cli.Int("concurrency"),
-            MaxItems = cli.Int("max-items") ?? int.MaxValue,
-            PollInterval = TimeSpan.FromSeconds(cli.Int("poll") ?? host.Config.PollSeconds)
+            MaxConcurrency = cli.Number("concurrency"),
+            MaxItems = cli.Number("max-items") ?? int.MaxValue,
+            PollInterval = TimeSpan.FromSeconds(cli.Number("poll") ?? host.Config.PollSeconds)
         }, ct);
 
         Output.Header("Result");
@@ -144,7 +144,7 @@ public static class Commands
         var report = await host.CreateOrchestrator().RunAsync(new OrchestratorOptions
         {
             StopWhenIdle = true,
-            MaxConcurrency = cli.Int("concurrency"),
+            MaxConcurrency = cli.Number("concurrency"),
             PollInterval = TimeSpan.FromSeconds(2)
         }, ct);
 
@@ -590,8 +590,8 @@ public static class Commands
 
         var settings = new GateSettings
         {
-            MinSamples = cli.Int("min-samples") ?? GateSettings.Default.MinSamples,
-            MinChampionSamples = cli.Int("min-champion-samples") ?? GateSettings.Default.MinChampionSamples
+            MinSamples = cli.Number("min-samples") ?? GateSettings.Default.MinSamples,
+            MinChampionSamples = cli.Number("min-champion-samples") ?? GateSettings.Default.MinChampionSamples
         };
 
         var report = await new EvolutionService(host).RunAsync(settings, ct);
@@ -696,7 +696,7 @@ public static class Commands
             var versions = registry.Versions(station.Id);
             if (versions.Count == 0) continue;
 
-            var pointer = registry.Pointer(station.Id);
+            var pointer = registry.Routing(station.Id);
             Output.Header($"{station.Id}  ({station.Tier}, {station.Profile})");
 
             foreach (var v in versions)

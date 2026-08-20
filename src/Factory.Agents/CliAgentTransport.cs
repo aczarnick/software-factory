@@ -134,7 +134,7 @@ public sealed class CliAgentTransport(string? executable = null, TimeSpan? timeo
             SessionId = sessionId ?? evt.Str("session_id"),
             CostUsd = evt.Dec("total_cost_usd"),
             Usage = usage,
-            Turns = evt.Int("num_turns"),
+            Turns = evt.Num("num_turns"),
             StopReason = evt.Str("stop_reason") ?? evt.Subtype,
             // Carried as its own flag rather than left for a caller to recognise in the error text:
             // the turn ceiling arrives as the subtype while stop_reason still reads "tool_use", so
@@ -164,7 +164,7 @@ public sealed class CliAgentTransport(string? executable = null, TimeSpan? timeo
         if (evt.Subtype is { Length: > 0 } subtype && subtype != "success") return subtype;
 
         var stop = evt.Str("stop_reason");
-        var turns = evt.Int("num_turns");
+        var turns = evt.Num("num_turns");
 
         return stop is { Length: > 0 }
             ? $"run ended abnormally after {turns} turn(s) (stop_reason: {stop})"

@@ -48,7 +48,7 @@ public sealed class PromptRegistry(string directory)
         File.WriteAllText(PointerFile, FactoryJson.Write(pointers, pretty: true));
     }
 
-    public PromptPointer Pointer(string stationId) =>
+    public PromptPointer Routing(string stationId) =>
         LoadPointers().GetValueOrDefault(stationId) ?? new PromptPointer();
 
     public IReadOnlyList<PromptVersion> Versions(string stationId)
@@ -75,7 +75,7 @@ public sealed class PromptRegistry(string directory)
 
     public PromptVersion Champion(string stationId)
     {
-        var ptr = Pointer(stationId);
+        var ptr = Routing(stationId);
         var versions = Versions(stationId);
         return Get(stationId, ptr.Champion)
             ?? (versions.Count > 0 ? versions[^1] : null)
@@ -85,7 +85,7 @@ public sealed class PromptRegistry(string directory)
 
     public PromptVersion? Challenger(string stationId)
     {
-        var ptr = Pointer(stationId);
+        var ptr = Routing(stationId);
         return ptr.Challenger is { } v ? Get(stationId, v) : null;
     }
 
@@ -94,7 +94,7 @@ public sealed class PromptRegistry(string directory)
     /// conditions.</summary>
     public PromptVersion Select(string stationId, Random rng)
     {
-        var ptr = Pointer(stationId);
+        var ptr = Routing(stationId);
         if (ptr.Challenger is { } cv && rng.NextDouble() < ptr.ChallengerShare && Get(stationId, cv) is { } challenger)
             return challenger;
         return Champion(stationId);

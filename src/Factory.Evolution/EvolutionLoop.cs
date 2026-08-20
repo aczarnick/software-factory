@@ -66,7 +66,7 @@ public sealed class EvolutionLoop(PromptRegistry prompts, AgentRunner runner, Ac
         CancellationToken ct = default)
     {
         var cfg = settings ?? GateSettings.Default;
-        var pointer = prompts.Pointer(stationId);
+        var pointer = prompts.Routing(stationId);
         var champion = prompts.Champion(stationId);
         var stats = Evaluator.ByVersion(runs, stationId);
 
