@@ -552,14 +552,23 @@ becomes:
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(cachePath))!);
-            await File.WriteAllTextAsync(cachePath, FactoryJson.Write(baseline, pretty: true))
+            await File.WriteAllTextAsync(cachePath, FactoryJson.Write(baseline, pretty: true), ct)
                       .ConfigureAwait(false);
         }
         catch (IOException) { }
 ```
 
-At `:562` the local is named `fresh`, not `baseline` — substitute accordingly. Do not widen the
-`catch`: `WriteAllTextAsync` throws the same `IOException` family.
+At `:562` the local is named `fresh`, not `baseline` — substitute accordingly.
+
+Forward `ct`. `File.WriteAllTextAsync` has a `CancellationToken` overload and `ct` is in scope in
+both methods; omitting it leaves an uncancellable write inside a cancellable async method, and
+CA2016 will flag it. Do both sites even if the analyzer only reports one — they are structurally
+identical and equally uncancellable.
+
+Do **not** widen the `catch (IOException)`. A cancelled write throws `OperationCanceledException`,
+which that catch does not handle, so cancellation propagates — which is correct, and consistent
+with the `await`s above it. The catch exists to make cache-writing best-effort against disk
+failure, not to swallow cancellation.
 
 - [ ] **Step 3: Constrain the native library search path**
 
@@ -598,11 +607,16 @@ public void UsageGovernorReportsARejectionThroughAStandardEvent()
     string? reported = null;
     governor.Changed += (_, e) => reported = e.Message;
 
-    governor.ObserveRejection("rate limit exceeded");
+    governor.ObserveRejection("usage limit exceeded");
 
     Assert.NotNull(reported);
 }
 ```
+
+The input string matters. `ObserveRejection` (`UsageGovernor.cs:107-112`) returns early unless the
+error contains `"rate_limit"` (with an underscore) or `"usage limit"`. A plausible-looking
+`"rate limit exceeded"` matches neither and the event never fires, so the test fails for a reason
+that has nothing to do with the signature change.
 
 The assertion is on delivery, not on wording: the message is composed by
 `RateLimitSnapshot.Describe` from a clock reading, and asserting its text would test the
