@@ -30,7 +30,7 @@ public sealed class DeterministicVerifierTests : IDisposable
     [Fact]
     public async Task FileExistenceIsCheckedAgainstTheWorkspace()
     {
-        File.WriteAllText(Path.Combine(_dir, "present.txt"), "hi");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "present.txt"), "hi");
 
         var item = WorkItem.Create("thing") with
         {
@@ -326,10 +326,10 @@ public sealed class PipelineTests : IDisposable
 
         // A tracked file the user is midway through editing.
         var userFile = Path.Combine(_dir, "user-edit.txt");
-        File.WriteAllText(userFile, "committed\n");
+        await File.WriteAllTextAsync(userFile, "committed\n");
         await Shell.GitAsync(_dir, default, "add", "-A");
         await Shell.GitAsync(_dir, default, "commit", "-q", "-m", "user work");
-        File.WriteAllText(userFile, "half-finished edit\n");
+        await File.WriteAllTextAsync(userFile, "half-finished edit\n");
 
         var item = host.Submit(WorkItem.Create("create hello.txt") with
         {
@@ -344,7 +344,7 @@ public sealed class PipelineTests : IDisposable
         Assert.Equal(WorkItemState.Blocked, host.Services.State.Items[item.Id].State);
 
         // The user's in-progress edit must survive untouched.
-        Assert.Equal("half-finished edit\n", File.ReadAllText(userFile));
+        Assert.Equal("half-finished edit\n", await File.ReadAllTextAsync(userFile));
 
         // And the verified work must not have been thrown away.
         Assert.True(Directory.Exists(Path.Combine(host.Paths.WorktreesDir, item.Id)),
@@ -438,7 +438,7 @@ public sealed class DotnetToolchainRequirementReaderTests : IDisposable
     [Fact]
     public async Task GlobalJsonSdkVersionIsExtracted()
     {
-        File.WriteAllText(Path.Combine(_dir, "global.json"), """{"sdk":{"version":"8.0.100"}}""");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "global.json"), """{"sdk":{"version":"8.0.100"}}""");
 
         var requirement = await _reader.ReadRequirementsAsync(_dir);
 
@@ -456,7 +456,7 @@ public sealed class DotnetToolchainRequirementReaderTests : IDisposable
     [Fact]
     public async Task AGlobalJsonWithoutSdkVersionYieldsNoRequiredSdkVersion()
     {
-        File.WriteAllText(Path.Combine(_dir, "global.json"), """{"sdk":{"rollForward":"latestMinor"}}""");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "global.json"), """{"sdk":{"rollForward":"latestMinor"}}""");
 
         var requirement = await _reader.ReadRequirementsAsync(_dir);
 
@@ -466,7 +466,7 @@ public sealed class DotnetToolchainRequirementReaderTests : IDisposable
     [Fact]
     public async Task SingleTargetFrameworkIsReadFromACsproj()
     {
-        File.WriteAllText(Path.Combine(_dir, "a.csproj"),
+        await File.WriteAllTextAsync(Path.Combine(_dir, "a.csproj"),
             "<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
 
         var requirement = await _reader.ReadRequirementsAsync(_dir);
@@ -477,9 +477,9 @@ public sealed class DotnetToolchainRequirementReaderTests : IDisposable
     [Fact]
     public async Task SemicolonSeparatedTargetFrameworksAreSplitAndDeduplicatedAcrossFiles()
     {
-        File.WriteAllText(Path.Combine(_dir, "multi.csproj"),
+        await File.WriteAllTextAsync(Path.Combine(_dir, "multi.csproj"),
             "<Project><PropertyGroup><TargetFrameworks>net8.0;net9.0</TargetFrameworks></PropertyGroup></Project>");
-        File.WriteAllText(Path.Combine(_dir, "single.csproj"),
+        await File.WriteAllTextAsync(Path.Combine(_dir, "single.csproj"),
             "<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
 
         var requirement = await _reader.ReadRequirementsAsync(_dir);
@@ -606,7 +606,7 @@ public sealed class RemediationRunnerTests : IDisposable
     [Fact]
     public async Task DefaultRunnerExecutesTheDiscoveredInstallScript()
     {
-        File.WriteAllText(Path.Combine(_dir, "install.sh"), "#!/bin/sh\necho remediated\n");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "install.sh"), "#!/bin/sh\necho remediated\n");
         var runner = new DefaultRemediationRunner(_dir);
 
         var result = await runner.RemediateAsync(new ToolchainRequirement("dotnet"));
