@@ -76,8 +76,9 @@ public sealed class PromptRegistry(string directory)
     public PromptVersion Champion(string stationId)
     {
         var ptr = Pointer(stationId);
+        var versions = Versions(stationId);
         return Get(stationId, ptr.Champion)
-            ?? Versions(stationId).LastOrDefault()
+            ?? (versions.Count > 0 ? versions[^1] : null)
             ?? throw new InvalidOperationException(
                 $"No prompt registered for station '{stationId}'. Run `factory init` to seed the kit.");
     }

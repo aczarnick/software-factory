@@ -175,9 +175,10 @@ public sealed class Orchestrator : IDisposable
                 // with this checkout's name on it, and the refresh loop is the only thing keeping it.
                 _claimsHeld[claimed.Id] = true;
 
+                var pipeline = _s.Blueprint.Pipeline;
                 claimed = _s.Items.Update(claimed with
                 {
-                    Station = claimed.Station ?? _s.Blueprint.Pipeline.FirstOrDefault()
+                    Station = claimed.Station ?? (pipeline.Count > 0 ? pipeline[0] : null)
                 });
                 TouchProgress(claimed.Id);
                 started++;
@@ -320,7 +321,8 @@ public sealed class Orchestrator : IDisposable
         Shell.CurrentItemId.Value = item.Id;
         try
         {
-            var stationId = item.Station ?? _s.Blueprint.Pipeline.FirstOrDefault();
+            var pipeline = _s.Blueprint.Pipeline;
+            var stationId = item.Station ?? (pipeline.Count > 0 ? pipeline[0] : null);
 
             while (stationId is not null)
             {

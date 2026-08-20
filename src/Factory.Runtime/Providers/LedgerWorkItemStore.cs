@@ -47,8 +47,10 @@ public sealed class LedgerWorkItemStore(IRunHistory history, FactoryState state)
     {
         lock (_gate)
         {
-            if (state.Dispatchable().FirstOrDefault() is not { } next) return null;
-            return Transition(next, WorkItemState.InProgress, $"claimed by {owner}");
+            var dispatchable = state.Dispatchable();
+            if (dispatchable.Count == 0) return null;
+
+            return Transition(dispatchable[0], WorkItemState.InProgress, $"claimed by {owner}");
         }
     }
 
