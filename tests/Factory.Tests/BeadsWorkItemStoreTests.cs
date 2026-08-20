@@ -771,7 +771,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     /// names are bd's own, so the naming policy is overridden on every one of them.</summary>
     private sealed record StaleLeaseRow
     {
-        [JsonPropertyName("_type")] public string Type => "issue";
+        [JsonPropertyName("_type")] public string Type { get; init; } = "issue";
         [JsonPropertyName("id")] public required string Id { get; init; }
         [JsonPropertyName("title")] public required string Title { get; init; }
         [JsonPropertyName("status")] public required string Status { get; init; }

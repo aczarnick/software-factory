@@ -189,7 +189,7 @@ public sealed class ImplementStation : AgentStation
         if (!run.Success)
             return StationResult.Failed(run.Error ?? "implementation failed", record with { GatePassed = false });
 
-        if (!await s.Workspace.HasChangesAsync(ctx.Run.WorkDir, ctx.Ct).ConfigureAwait(false))
+        if (!await Workspace.HasChangesAsync(ctx.Run.WorkDir, ctx.Ct).ConfigureAwait(false))
         {
             return StationResult.GateFailed(
                 "no file changes were produced. " + PromptText.Cap(run.Text, 800),
@@ -250,7 +250,7 @@ public sealed class ReviewStation : AgentStation
         }
 
         var prompt = s.Prompts.Select(ctx.Def.Id, s.Rng);
-        var diff = await s.Workspace.DiffAsync(ctx.Run.WorkDir, ctx.Ct).ConfigureAwait(false);
+        var diff = await Workspace.DiffAsync(ctx.Run.WorkDir, ctx.Ct).ConfigureAwait(false);
 
         var sb = new StringBuilder();
         sb.AppendLine(PromptText.Item(ctx.Item));

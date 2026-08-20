@@ -67,7 +67,7 @@ public sealed class Workspace(string repoRoot, FactoryPaths paths) : IDisposable
         return Directory.Exists(path) ? path : RepoRoot;
     }
 
-    public async Task<string> DiffAsync(string workDir, CancellationToken ct = default)
+    public static async Task<string> DiffAsync(string workDir, CancellationToken ct = default)
     {
         await Shell.GitAsync(workDir, ct, "add", "-A").ConfigureAwait(false);
         var diff = await Shell.GitAsync(workDir, ct, "diff", "--cached", "--stat").ConfigureAwait(false);
@@ -75,7 +75,7 @@ public sealed class Workspace(string repoRoot, FactoryPaths paths) : IDisposable
         return $"{diff.Stdout}\n\n{full.Stdout}";
     }
 
-    public async Task<bool> HasChangesAsync(string workDir, CancellationToken ct = default)
+    public static async Task<bool> HasChangesAsync(string workDir, CancellationToken ct = default)
     {
         var status = await Shell.GitAsync(workDir, ct, "status", "--porcelain").ConfigureAwait(false);
         return !string.IsNullOrWhiteSpace(status.Stdout);
