@@ -300,6 +300,16 @@ public class BlueprintTests
         // A composite spends nothing itself: its children do the work.
         Assert.Equal(TokenProfile.None, composite.Require("web").Profile);
     }
+
+    [Fact]
+    public void ConcurrencyDefault_MatchesDocumentedValue()
+    {
+        // HANDOFF.md's "Operating notes" states this same number and why. If either changes
+        // without the other, this test — and not a stale ledger — is what catches it.
+        const int documentedDefault = 1;
+        Assert.Equal(documentedDefault, Blueprint.DefaultMaxConcurrency);
+        Assert.Equal(documentedDefault, Blueprint.Standard().MaxConcurrency);
+    }
 }
 
 public class HeartbeatStatusTests

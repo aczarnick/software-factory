@@ -92,7 +92,14 @@ public sealed record Blueprint
     /// <summary>Ordered station ids forming the default route for a work item.</summary>
     public IReadOnlyList<string> Pipeline { get; init; } = [];
 
-    public int MaxConcurrency { get; init; } = 2;
+    /// <summary>Concurrency is limited to 1 by default (see HANDOFF.md's "Operating notes"):
+    /// the toolchain gate is now serialised across a factory instance, so compiles can no
+    /// longer stomp each other, but integrate still merges (not rebases) into the mainline,
+    /// so two items finishing at once still contend for the same checkout. Raise this only
+    /// once integrate rebases before merging.</summary>
+    public const int DefaultMaxConcurrency = 1;
+
+    public int MaxConcurrency { get; init; } = DefaultMaxConcurrency;
     public int MaxDelegationDepth { get; init; } = 3;
 
     /// <summary>Child factories linked into this one, by name -> path.</summary>
@@ -145,7 +152,7 @@ public sealed record Blueprint
         Name = "standard",
         Description = "General-purpose software production pipeline.",
         Budget = new BudgetSpec(),
-        MaxConcurrency = 2,
+        MaxConcurrency = DefaultMaxConcurrency,
         // check runs before verify: a repository that no longer compiles makes every
         // acceptance criterion meaningless, and the compiler says why in one step.
         Pipeline = ["decompose", "plan", "implement", "check", "verify", "review", "integrate"],
