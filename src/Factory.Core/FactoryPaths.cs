@@ -70,7 +70,7 @@ public sealed record FactoryConfig
     /// value is read as unset and silently disarms the guard, same as leaving it unconfigured.</summary>
     public required string Name { get; init; }
     public string BlueprintName { get; init; } = "standard";
-    public int MaxConcurrency { get; init; } = 2;
+    public int MaxConcurrency { get; init; } = Blueprint.DefaultMaxConcurrency;
     public int PollSeconds { get; init; } = 10;
 
     /// <summary>Child factories linked into this one: name -> path (absolute or relative).</summary>
