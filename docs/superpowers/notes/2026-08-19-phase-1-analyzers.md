@@ -144,6 +144,43 @@ Verified both ways:
    `dotnet`/git subprocess contention under xUnit's parallel collections); neither fired in
    this run.
 
+## What the final review found that this phase did not
+
+Three findings, all verified, none blocking. Filed as beads so they cannot be lost.
+
+**1. Fixing the `Orchestrator` leak exposed a design flaw underneath it** (`software-factory-v3z.7`).
+`Shell.OnCommandStarted` / `OnCommandCompleted` (`Shell.cs:26-27`) are `internal static` —
+process-wide. `Orchestrator`'s constructor points them at its own `TouchProgress`
+(`Orchestrator.cs:98-99`) and `Dispose` nulls them (`:542-543`). So a child orchestrator created
+by `DelegateStation` clobbers the parent's hooks on construction and nulls them outright on
+disposal, leaving the parent and any concurrent sibling with no progress signal for the rest of
+the run.
+
+Latent today: `_lastProgressUtc` is written by `TouchProgress` and never read, and
+`StallThreshold` is only read by tests asserting its own value — stall detection is not wired up.
+But note what happened: the CA2000 leak was *masking* this. Before the fix, the child's hooks
+stayed installed pointing at the child's dead dictionary; after it, nobody gets progress at all.
+Broken either way. The fix changed how. This is worth remembering as a general shape — a resource
+leak can be the thing holding a design together, and removing it is when you find out.
+
+**2. `Workspace.Dispose()` is never called by its owner** (`software-factory-v3z.8`).
+`Workspace` became `IDisposable` to satisfy CA1001, and the semaphore it frees is real. But
+`FactoryHost` constructs it (`FactoryHost.cs:154`) and `FactoryHost.Dispose()` disposes only
+`_history` (`:271`). Nothing in `src/` disposes a `Workspace`. The analyzer is satisfied while the
+resource is not — an incomplete fix, not a regression, since nothing released it before either.
+
+**3. `EnforceCodeStyleInBuild=true` currently enforces nothing** (`software-factory-v3z.9`).
+That flag only promotes IDE-prefixed style diagnostics whose severity is explicitly set in
+`.editorconfig`. This file sets four CA severities and no `IDE*` or `category-Style` entries, and
+most IDE rules default to silent or suggestion, which the flag does not elevate. Confirmed: zero
+IDE diagnostics appeared even in the `AnalysisMode=All` measurement.
+
+That third one is the answer to the question this phase most needed asked. It is the same shape as
+the counting-regex defect above: **a control that reads as coverage but is not wired to anything.**
+Two of those in one phase, found by two different means, neither by the person who introduced them.
+The lesson generalises past regexes — when adding a gate, verify it *fails* on something, not just
+that it is switched on.
+
 ## What phase 5 needs from this
 
 The coverage gate phase 5 adds must not reintroduce a suppression to satisfy its own thresholds
