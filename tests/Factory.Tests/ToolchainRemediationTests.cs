@@ -3,7 +3,7 @@ using Factory.Runtime;
 
 namespace Factory.Tests;
 
-public class ToolchainRemediationTests : IDisposable
+public sealed class ToolchainRemediationTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);

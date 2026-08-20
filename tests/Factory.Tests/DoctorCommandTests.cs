@@ -5,7 +5,7 @@ using Factory.Runtime;
 namespace Factory.Tests;
 
 [Collection("Console")]
-public class DoctorCommandTests : IDisposable
+public sealed class DoctorCommandTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     private readonly string _binDir = TempDir.Create();

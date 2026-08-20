@@ -3,7 +3,7 @@ using Factory.Runtime;
 
 namespace Factory.Tests;
 
-public class DeterministicVerifierTests : IDisposable
+public sealed class DeterministicVerifierTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);
@@ -114,7 +114,7 @@ public class DeterministicVerifierTests : IDisposable
     }
 }
 
-public class PipelineTests : IDisposable
+public sealed class PipelineTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);
@@ -383,7 +383,7 @@ public class PipelineTests : IDisposable
     }
 }
 
-public class HeartbeatStoppedTests : IDisposable
+public sealed class HeartbeatStoppedTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);
@@ -404,7 +404,7 @@ public class HeartbeatStoppedTests : IDisposable
     }
 }
 
-public class OrchestratorStallThresholdTests : IDisposable
+public sealed class OrchestratorStallThresholdTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);
@@ -428,7 +428,7 @@ public class OrchestratorStallThresholdTests : IDisposable
     }
 }
 
-public class DotnetToolchainRequirementReaderTests : IDisposable
+public sealed class DotnetToolchainRequirementReaderTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);
@@ -490,7 +490,7 @@ public class DotnetToolchainRequirementReaderTests : IDisposable
     }
 }
 
-public class CompositionTests : IDisposable
+public sealed class CompositionTests : IDisposable
 {
     private readonly string _parent = TempDir.Create();
     private readonly string _child = TempDir.Create();
@@ -570,7 +570,7 @@ public class CompositionTests : IDisposable
     }
 }
 
-public class RemediationRunnerTests : IDisposable
+public sealed class RemediationRunnerTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);

@@ -5,7 +5,7 @@ namespace Factory.Tests;
 
 /// <summary>The join D5 rests on: a provider named in <c>factory.json</c>, loaded from
 /// <c>.factory/plugins</c>, composed into a live host.</summary>
-public class PluginHostTests : IDisposable
+public sealed class PluginHostTests : IDisposable
 {
     private readonly string _repo = TempDir.Create();
     public void Dispose() => TempDir.Delete(_repo);

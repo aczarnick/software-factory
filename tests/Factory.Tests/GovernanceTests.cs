@@ -158,7 +158,7 @@ public class UsageGovernorTests
     }
 }
 
-public class ShellTests : IDisposable
+public sealed class ShellTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);
@@ -200,7 +200,7 @@ public class ShellTests : IDisposable
     }
 }
 
-public class ToolchainTests : IDisposable
+public sealed class ToolchainTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);

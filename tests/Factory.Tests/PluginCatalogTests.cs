@@ -3,7 +3,7 @@ using Factory.Runtime;
 
 namespace Factory.Tests;
 
-public class PluginCatalogTests : IDisposable
+public sealed class PluginCatalogTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);

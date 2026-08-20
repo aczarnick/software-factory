@@ -3,7 +3,7 @@ using Factory.Runtime;
 
 namespace Factory.Tests;
 
-public class BacklogReconcilerTests : IDisposable
+public sealed class BacklogReconcilerTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);

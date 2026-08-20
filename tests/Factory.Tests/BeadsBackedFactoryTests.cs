@@ -15,7 +15,7 @@ namespace Factory.Tests;
 /// 2.9.2 has no dynamic skip, so it reports as passed rather than skipped.
 /// <see cref="BeadsAvailabilityTests"/> is the one red that says so.
 /// </summary>
-public class BeadsBackedFactoryTests : IDisposable
+public sealed class BeadsBackedFactoryTests : IDisposable
 {
     private const string Owner = "test-machine";
 

@@ -208,7 +208,7 @@ public class StructuredOutputTests
     }
 }
 
-public class ResponseCacheTests : IDisposable
+public sealed class ResponseCacheTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);
@@ -264,7 +264,7 @@ public class ResponseCacheTests : IDisposable
     }
 }
 
-public class AgentRunnerTests : IDisposable
+public sealed class AgentRunnerTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);

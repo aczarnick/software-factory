@@ -150,7 +150,7 @@ public class EvaluatorTests
     }
 }
 
-public class PromptRegistryTests : IDisposable
+public sealed class PromptRegistryTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);
@@ -230,7 +230,7 @@ public class PromptRegistryTests : IDisposable
     }
 }
 
-public class EvolutionImprovementTests : IDisposable
+public sealed class EvolutionImprovementTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);

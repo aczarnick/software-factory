@@ -2,7 +2,7 @@ using Factory.Runtime;
 
 namespace Factory.Tests;
 
-public class BeadsDeploymentTests : IDisposable
+public sealed class BeadsDeploymentTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     private static bool Available => Shell.Which("bd");

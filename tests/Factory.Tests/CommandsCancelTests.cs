@@ -10,7 +10,7 @@ namespace Factory.Tests;
 public class ConsoleCollection;
 
 [Collection("Console")]
-public class CommandsCancelTests : IDisposable
+public sealed class CommandsCancelTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);
