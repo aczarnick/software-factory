@@ -558,7 +558,8 @@ public static class ToolchainRunner
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(cachePath))!);
-            File.WriteAllText(cachePath, FactoryJson.Write(baseline, pretty: true));
+            await File.WriteAllTextAsync(cachePath, FactoryJson.Write(baseline, pretty: true))
+                      .ConfigureAwait(false);
         }
         catch (IOException) { }
 
@@ -585,7 +586,8 @@ public static class ToolchainRunner
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(cachePath))!);
-            File.WriteAllText(cachePath, FactoryJson.Write(fresh, pretty: true));
+            await File.WriteAllTextAsync(cachePath, FactoryJson.Write(fresh, pretty: true))
+                      .ConfigureAwait(false);
         }
         catch (IOException) { }
 

@@ -52,7 +52,7 @@ public sealed class UsageGovernor
     public UsagePolicy Policy { get; }
 
     /// <summary>Raised when the governor changes what it will allow, so callers can report it.</summary>
-    public event Action<string>? Changed;
+    public event EventHandler<UsageChangedEventArgs>? Changed;
 
     public UsageGovernor(UsagePolicy? policy = null, string? statePath = null, TimeProvider? clock = null)
     {
@@ -134,7 +134,7 @@ public sealed class UsageGovernor
 
         Save();
         if (changed && snapshot.Status != RateLimitStatus.Allowed)
-            Changed?.Invoke(snapshot.Describe(_clock.GetUtcNow()));
+            Changed?.Invoke(this, new UsageChangedEventArgs(snapshot.Describe(_clock.GetUtcNow())));
     }
 
     /// <summary>How many items may be in flight, given what the provider has told us.</summary>
@@ -186,11 +186,12 @@ public sealed class UsageGovernor
 
         if (wait > Policy.MaxWait)
         {
-            Changed?.Invoke($"{reason} — longer than the {RateLimitSnapshot.Format(Policy.MaxWait)} wait ceiling, stopping");
+            Changed?.Invoke(this, new UsageChangedEventArgs(
+                $"{reason} — longer than the {RateLimitSnapshot.Format(Policy.MaxWait)} wait ceiling, stopping"));
             return false;
         }
 
-        Changed?.Invoke($"{reason} — waiting {RateLimitSnapshot.Format(wait)}");
+        Changed?.Invoke(this, new UsageChangedEventArgs($"{reason} — waiting {RateLimitSnapshot.Format(wait)}"));
         await Task.Delay(wait, ct).ConfigureAwait(false);
 
         // A rejection is cleared by the passage of time, not by another event arriving.

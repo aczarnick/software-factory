@@ -56,7 +56,8 @@ public sealed class DelegateStation : IStation
             Provenance = Provenance.FromAgent($"{s.Config.Name}/{ctx.Def.Id}")
         });
 
-        var report = await child.CreateOrchestrator().RunAsync(new OrchestratorOptions
+        using var orchestrator = child.CreateOrchestrator();
+        var report = await orchestrator.RunAsync(new OrchestratorOptions
         {
             StopWhenIdle = true,
             Depth = ctx.Run.Depth + 1,

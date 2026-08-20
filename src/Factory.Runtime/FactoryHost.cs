@@ -137,7 +137,7 @@ public sealed class FactoryHost : IDisposable
         var cache = new ResponseCache(paths.CacheDir);
 
         var governor = new UsageGovernor(statePath: paths.UsageFile);
-        governor.Changed += message => (log ?? (_ => { }))($"  [usage] {message}");
+        governor.Changed += (_, e) => (log ?? (_ => { }))($"  [usage] {e.Message}");
 
         var runner = new AgentRunner(transport ?? new CliAgentTransport(), cache, governor: governor);
 

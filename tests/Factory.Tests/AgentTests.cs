@@ -385,4 +385,16 @@ public class TokenEconomyTests
         Assert.Equal(1500, TokenEconomy.CacheAvoided(runs));
         Assert.Equal(0, TokenEconomy.OverheadAvoided(runs));   // no call was made to strip
     }
+
+    [Fact]
+    public void UsageGovernorReportsARejectionThroughAStandardEvent()
+    {
+        var governor = new UsageGovernor();
+        string? reported = null;
+        governor.Changed += (_, e) => reported = e.Message;
+
+        governor.ObserveRejection("usage limit exceeded");
+
+        Assert.NotNull(reported);
+    }
 }

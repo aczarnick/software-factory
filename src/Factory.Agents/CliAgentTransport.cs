@@ -229,6 +229,8 @@ public sealed class CliAgentTransport(string? executable = null, TimeSpan? timeo
         catch (DllNotFoundException) { return false; }
     }
 
+    [System.Runtime.InteropServices.DefaultDllImportSearchPaths(
+        System.Runtime.InteropServices.DllImportSearchPath.SafeDirectories)]
     [System.Runtime.InteropServices.DllImport("libc", EntryPoint = "geteuid")]
     private static extern uint Geteuid();
 
