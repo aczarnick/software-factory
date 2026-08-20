@@ -38,7 +38,7 @@ public sealed class ToolchainRemediationTests : IDisposable
     };
 
     [Fact]
-    public async Task RemediationSucceeds_ProceedsToRegularCheck()
+    public async Task RemediationSucceedsProceedsToRegularCheck()
     {
         using var host = FactoryHost.Init(_dir, transport: new FakeTransport());
         var item = WorkItem.Create("needs a newer toolchain");
@@ -58,7 +58,7 @@ public sealed class ToolchainRemediationTests : IDisposable
     }
 
     [Fact]
-    public async Task NoRemediationAvailable_ReturnsBlocked()
+    public async Task NoRemediationAvailableReturnsBlocked()
     {
         using var host = FactoryHost.Init(_dir, transport: new FakeTransport());
         var item = WorkItem.Create("needs a newer toolchain");
@@ -76,7 +76,7 @@ public sealed class ToolchainRemediationTests : IDisposable
     }
 
     [Fact]
-    public async Task RemediationFailsOrRecheckMismatches_ReturnsBlocked()
+    public async Task RemediationFailsOrRecheckMismatchesReturnsBlocked()
     {
         using var host = FactoryHost.Init(_dir, transport: new FakeTransport());
         var item = WorkItem.Create("needs a newer toolchain");
@@ -96,7 +96,7 @@ public sealed class ToolchainRemediationTests : IDisposable
     }
 
     [Fact]
-    public async Task ToolchainMismatch_IsNeverCapturedIntoTheBaseline()
+    public async Task ToolchainMismatchIsNeverCapturedIntoTheBaseline()
     {
         using var host = FactoryHost.Init(_dir, transport: new FakeTransport());
         File.WriteAllText(Path.Combine(_dir, "App.csproj"), "<Project/>");
@@ -110,7 +110,7 @@ public sealed class ToolchainRemediationTests : IDisposable
     }
 
     [Fact]
-    public async Task GenuineFailure_IsStillCapturedIntoTheBaseline()
+    public async Task GenuineFailureIsStillCapturedIntoTheBaseline()
     {
         using var host = FactoryHost.Init(_dir, transport: new FakeTransport());
         // Broken XML so `dotnet build` fails fast without needing a restorable project.

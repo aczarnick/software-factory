@@ -21,7 +21,7 @@ public sealed class JsonlRunHistoryTests : IDisposable
     };
 
     [Fact]
-    public void RunsForItem_returns_only_that_items_runs()
+    public void RunsForItemReturnsOnlyThatItemsRuns()
     {
         using var history = Open();
         history.Append(new RunCompleted(Run("wi-a", "implement", 0.10m)));
@@ -34,7 +34,7 @@ public sealed class JsonlRunHistoryTests : IDisposable
     }
 
     [Fact]
-    public void RunsForStation_returns_only_that_stations_runs()
+    public void RunsForStationReturnsOnlyThatStationsRuns()
     {
         using var history = Open();
         history.Append(new RunCompleted(Run("wi-a", "implement", 0.10m)));
@@ -47,7 +47,7 @@ public sealed class JsonlRunHistoryTests : IDisposable
     }
 
     [Fact]
-    public void Totals_aggregates_count_cost_and_usage()
+    public void TotalsAggregatesCountCostAndUsage()
     {
         using var history = Open();
         history.Append(new RunCompleted(Run("wi-a", "implement", 0.10m)));
@@ -61,7 +61,7 @@ public sealed class JsonlRunHistoryTests : IDisposable
     }
 
     [Fact]
-    public void Champions_reflects_the_latest_promotion_per_station()
+    public void ChampionsReflectsTheLatestPromotionPerStation()
     {
         using var history = Open();
         history.Append(new PromptPromoted("implement", "v1", "v2", 0.1, "better"));
@@ -75,7 +75,7 @@ public sealed class JsonlRunHistoryTests : IDisposable
     }
 
     [Fact]
-    public void ForBudget_sums_per_item_always_and_daily_only_for_today()
+    public void ForBudgetSumsPerItemAlwaysAndDailyOnlyForToday()
     {
         var now = new DateTimeOffset(2026, 8, 13, 12, 0, 0, TimeSpan.Zero);
         var clock = new FakeTimeProvider(now);
@@ -92,7 +92,7 @@ public sealed class JsonlRunHistoryTests : IDisposable
     }
 
     [Fact]
-    public void ForBudget_attributes_evolution_spend_from_item_provenance()
+    public void ForBudgetAttributesEvolutionSpendFromItemProvenance()
     {
         var now = new DateTimeOffset(2026, 8, 13, 12, 0, 0, TimeSpan.Zero);
         var clock = new FakeTimeProvider(now);
@@ -116,7 +116,7 @@ public sealed class JsonlRunHistoryTests : IDisposable
     }
 
     [Fact]
-    public void Appends_and_replays_events_in_order()
+    public void AppendsAndReplaysEventsInOrder()
     {
         var path = Path.Combine(_dir, "ledger.jsonl");
         var item = WorkItem.Create("build a thing");
@@ -137,7 +137,7 @@ public sealed class JsonlRunHistoryTests : IDisposable
     }
 
     [Fact]
-    public void ReadFrom_returns_only_events_strictly_after_the_given_sequence()
+    public void ReadFromReturnsOnlyEventsStrictlyAfterTheGivenSequence()
     {
         using var history = Open();
         history.Append(new FactoryNote("one"));
@@ -150,7 +150,7 @@ public sealed class JsonlRunHistoryTests : IDisposable
     }
 
     [Fact]
-    public void Continues_sequence_numbers_across_reopen()
+    public void ContinuesSequenceNumbersAcrossReopen()
     {
         var path = Path.Combine(_dir, "ledger.jsonl");
         using (var first = new JsonlRunHistory(path)) first.Append(new FactoryNote("one"));
@@ -161,7 +161,7 @@ public sealed class JsonlRunHistoryTests : IDisposable
     }
 
     [Fact]
-    public void Torn_final_line_does_not_lose_earlier_history()
+    public void TornFinalLineDoesNotLoseEarlierHistory()
     {
         var path = Path.Combine(_dir, "ledger.jsonl");
         using (var history = new JsonlRunHistory(path)) history.Append(new FactoryNote("intact"));
@@ -177,7 +177,7 @@ public sealed class JsonlRunHistoryTests : IDisposable
     }
 
     [Fact]
-    public void Round_trips_polymorphic_verifications()
+    public void RoundTripsPolymorphicVerifications()
     {
         var path = Path.Combine(_dir, "ledger.jsonl");
         var item = WorkItem.Create("thing") with

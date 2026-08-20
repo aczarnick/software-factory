@@ -11,7 +11,7 @@ public class LedgerProjectionTests
         AcceptanceCriterion.Command(statement, "true") with { Id = id };
 
     [Fact]
-    public void Spend_survives_an_update_that_carries_a_stale_item()
+    public void SpendSurvivesAnUpdateThatCarriesAStaleItem()
     {
         var item = WorkItem.Create("thing");
         var state = FactoryState.Replay([
@@ -28,7 +28,7 @@ public class LedgerProjectionTests
     }
 
     [Fact]
-    public void An_item_with_no_runs_has_spent_nothing()
+    public void AnItemWithNoRunsHasSpentNothing()
     {
         var item = WorkItem.Create("thing");
         var state = FactoryState.Replay([new WorkItemFiled(item)]);
@@ -37,7 +37,7 @@ public class LedgerProjectionTests
     }
 
     [Fact]
-    public void Spend_is_attributed_to_the_item_that_incurred_it()
+    public void SpendIsAttributedToTheItemThatIncurredIt()
     {
         var mine = WorkItem.Create("mine");
         var yours = WorkItem.Create("yours");
@@ -52,7 +52,7 @@ public class LedgerProjectionTests
     }
 
     [Fact]
-    public void An_item_that_was_never_verified_has_no_verdict()
+    public void AnItemThatWasNeverVerifiedHasNoVerdict()
     {
         var item = WorkItem.Create("thing") with { AcceptanceCriteria = [Command("c1", "it works")] };
         var state = FactoryState.Replay([new WorkItemFiled(item)]);
@@ -63,7 +63,7 @@ public class LedgerProjectionTests
     }
 
     [Fact]
-    public void A_recorded_verdict_counts_the_criteria_that_actually_passed()
+    public void ARecordedVerdictCountsTheCriteriaThatActuallyPassed()
     {
         var item = WorkItem.Create("thing") with
         {
@@ -86,7 +86,7 @@ public class LedgerProjectionTests
     }
 
     [Fact]
-    public void A_verdict_survives_an_update_that_carries_a_stale_item()
+    public void AVerdictSurvivesAnUpdateThatCarriesAStaleItem()
     {
         var item = WorkItem.Create("thing") with { AcceptanceCriteria = [Command("c1", "one")] };
         var state = FactoryState.Replay([
@@ -100,7 +100,7 @@ public class LedgerProjectionTests
     }
 
     [Fact]
-    public void A_later_verdict_replaces_an_earlier_one()
+    public void ALaterVerdictReplacesAnEarlierOne()
     {
         var item = WorkItem.Create("thing") with { AcceptanceCriteria = [Command("c1", "one")] };
         var state = FactoryState.Replay([

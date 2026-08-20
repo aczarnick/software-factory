@@ -9,7 +9,7 @@ public sealed class DeterministicVerifierTests : IDisposable
     public void Dispose() => TempDir.Delete(_dir);
 
     [Fact]
-    public async Task Passing_and_failing_commands_are_reported_accurately()
+    public async Task PassingAndFailingCommandsAreReportedAccurately()
     {
         var item = WorkItem.Create("thing") with
         {
@@ -28,7 +28,7 @@ public sealed class DeterministicVerifierTests : IDisposable
     }
 
     [Fact]
-    public async Task File_existence_is_checked_against_the_workspace()
+    public async Task FileExistenceIsCheckedAgainstTheWorkspace()
     {
         File.WriteAllText(Path.Combine(_dir, "present.txt"), "hi");
 
@@ -48,7 +48,7 @@ public sealed class DeterministicVerifierTests : IDisposable
     }
 
     [Fact]
-    public async Task Judged_criteria_are_deferred_rather_than_guessed_at()
+    public async Task JudgedCriteriaAreDeferredRatherThanGuessedAt()
     {
         var item = WorkItem.Create("thing") with
         {
@@ -67,7 +67,7 @@ public sealed class DeterministicVerifierTests : IDisposable
     }
 
     [Fact]
-    public async Task Stdout_matching_is_enforced()
+    public async Task StdoutMatchingIsEnforced()
     {
         var item = WorkItem.Create("thing") with
         {
@@ -93,7 +93,7 @@ public sealed class DeterministicVerifierTests : IDisposable
     }
 
     [Fact]
-    public async Task Runaway_commands_are_killed_and_reported_as_failures()
+    public async Task RunawayCommandsAreKilledAndReportedAsFailures()
     {
         var item = WorkItem.Create("thing") with
         {
@@ -143,7 +143,7 @@ public sealed class PipelineTests : IDisposable
     }
 
     [Fact]
-    public async Task An_item_flows_from_ready_to_done_and_lands_on_the_mainline()
+    public async Task AnItemFlowsFromReadyToDoneAndLandsOnTheMainline()
     {
         using var host = Open(Scripted());
 
@@ -161,7 +161,7 @@ public sealed class PipelineTests : IDisposable
     }
 
     [Fact]
-    public async Task Two_independent_ready_items_are_both_claimed_and_completed()
+    public async Task TwoIndependentReadyItemsAreBothClaimedAndCompleted()
     {
         // Each item must produce its own file: two items racing to write the same path would
         // let a lucky merge order mask a claim that never actually ran.
@@ -200,7 +200,7 @@ public sealed class PipelineTests : IDisposable
     }
 
     [Fact]
-    public async Task Review_is_skipped_when_every_criterion_was_machine_checked()
+    public async Task ReviewIsSkippedWhenEveryCriterionWasMachineChecked()
     {
         var transport = Scripted();
         using var host = Open(transport);
@@ -217,7 +217,7 @@ public sealed class PipelineTests : IDisposable
     }
 
     [Fact]
-    public async Task A_failing_gate_routes_back_to_implementation_with_the_failure_attached()
+    public async Task AFailingGateRoutesBackToImplementationWithTheFailureAttached()
     {
         var transport = Scripted(produces: "wrong-name.txt");
         using var host = Open(transport);
@@ -240,7 +240,7 @@ public sealed class PipelineTests : IDisposable
     }
 
     [Fact]
-    public async Task Decomposition_into_several_children_files_them_and_supersedes_the_parent()
+    public async Task DecompositionIntoSeveralChildrenFilesThemAndSupersedesTheParent()
     {
         var transport = Scripted().Respond("decompose",
             """
@@ -269,7 +269,7 @@ public sealed class PipelineTests : IDisposable
     }
 
     [Fact]
-    public async Task Work_agents_file_about_their_own_observations_lands_as_a_proposal()
+    public async Task WorkAgentsFileAboutTheirOwnObservationsLandsAsAProposal()
     {
         var transport = Scripted()
             .Respond("decompose",
@@ -304,7 +304,7 @@ public sealed class PipelineTests : IDisposable
     }
 
     [Fact]
-    public async Task Exhausting_the_budget_blocks_the_item_instead_of_overspending()
+    public async Task ExhaustingTheBudgetBlocksTheItemInsteadOfOverspending()
     {
         using var host = FactoryHost.Init(_dir, transport: Scripted());
 
@@ -319,7 +319,7 @@ public sealed class PipelineTests : IDisposable
     }
 
     [Fact]
-    public async Task A_dirty_mainline_blocks_integration_and_keeps_the_verified_work()
+    public async Task ADirtyMainlineBlocksIntegrationAndKeepsTheVerifiedWork()
     {
         using var host = Open(Scripted());
         await host.Services.Workspace.EnsureRepoAsync();
@@ -356,7 +356,7 @@ public sealed class PipelineTests : IDisposable
     }
 
     [Fact]
-    public async Task Orphaned_work_is_requeued_after_a_restart()
+    public async Task OrphanedWorkIsRequeuedAfterARestart()
     {
         using var host = Open(Scripted());
 
@@ -373,7 +373,7 @@ public sealed class PipelineTests : IDisposable
     }
 
     [Fact]
-    public void Deploying_twice_preserves_history()
+    public void DeployingTwicePreservesHistory()
     {
         using (var first = FactoryHost.Init(_dir, transport: new FakeTransport()))
             first.Submit(WorkItem.Create("earlier work"));
@@ -389,7 +389,7 @@ public sealed class HeartbeatStoppedTests : IDisposable
     public void Dispose() => TempDir.Delete(_dir);
 
     [Fact]
-    public void HeartbeatStopped_OnDispose()
+    public void HeartbeatStoppedOnDispose()
     {
         using var host = FactoryHost.Init(_dir, transport: new FakeTransport());
         var orchestrator = host.CreateOrchestrator();
@@ -410,7 +410,7 @@ public sealed class OrchestratorStallThresholdTests : IDisposable
     public void Dispose() => TempDir.Delete(_dir);
 
     [Fact]
-    public void StallThreshold_defaults_to_120_seconds()
+    public void StallThresholdDefaultsTo120Seconds()
     {
         using var host = FactoryHost.Init(_dir, transport: new FakeTransport());
         using var orchestrator = new Orchestrator(host);
@@ -419,7 +419,7 @@ public sealed class OrchestratorStallThresholdTests : IDisposable
     }
 
     [Fact]
-    public void StallThreshold_is_settable_via_the_constructor()
+    public void StallThresholdIsSettableViaTheConstructor()
     {
         using var host = FactoryHost.Init(_dir, transport: new FakeTransport());
         using var orchestrator = new Orchestrator(host, TimeSpan.FromSeconds(45));
@@ -436,7 +436,7 @@ public sealed class DotnetToolchainRequirementReaderTests : IDisposable
     private readonly DotnetToolchainRequirementReader _reader = new();
 
     [Fact]
-    public async Task Global_json_sdk_version_is_extracted()
+    public async Task GlobalJsonSdkVersionIsExtracted()
     {
         File.WriteAllText(Path.Combine(_dir, "global.json"), """{"sdk":{"version":"8.0.100"}}""");
 
@@ -446,7 +446,7 @@ public sealed class DotnetToolchainRequirementReaderTests : IDisposable
     }
 
     [Fact]
-    public async Task A_missing_global_json_yields_no_required_sdk_version_rather_than_throwing()
+    public async Task AMissingGlobalJsonYieldsNoRequiredSdkVersionRatherThanThrowing()
     {
         var requirement = await _reader.ReadRequirementsAsync(_dir);
 
@@ -454,7 +454,7 @@ public sealed class DotnetToolchainRequirementReaderTests : IDisposable
     }
 
     [Fact]
-    public async Task A_global_json_without_sdk_version_yields_no_required_sdk_version()
+    public async Task AGlobalJsonWithoutSdkVersionYieldsNoRequiredSdkVersion()
     {
         File.WriteAllText(Path.Combine(_dir, "global.json"), """{"sdk":{"rollForward":"latestMinor"}}""");
 
@@ -464,7 +464,7 @@ public sealed class DotnetToolchainRequirementReaderTests : IDisposable
     }
 
     [Fact]
-    public async Task Single_target_framework_is_read_from_a_csproj()
+    public async Task SingleTargetFrameworkIsReadFromACsproj()
     {
         File.WriteAllText(Path.Combine(_dir, "a.csproj"),
             "<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
@@ -475,7 +475,7 @@ public sealed class DotnetToolchainRequirementReaderTests : IDisposable
     }
 
     [Fact]
-    public async Task Semicolon_separated_target_frameworks_are_split_and_deduplicated_across_files()
+    public async Task SemicolonSeparatedTargetFrameworksAreSplitAndDeduplicatedAcrossFiles()
     {
         File.WriteAllText(Path.Combine(_dir, "multi.csproj"),
             "<Project><PropertyGroup><TargetFrameworks>net8.0;net9.0</TargetFrameworks></PropertyGroup></Project>");
@@ -502,7 +502,7 @@ public sealed class CompositionTests : IDisposable
     }
 
     [Fact]
-    public async Task A_parent_factory_delegates_an_item_to_its_child_and_rolls_up_the_cost()
+    public async Task AParentFactoryDelegatesAnItemToItsChildAndRollsUpTheCost()
     {
         // One transport serves the whole composite, as it does in production: the child
         // inherits it from the parent rather than silently opening a default one.
@@ -550,7 +550,7 @@ public sealed class CompositionTests : IDisposable
     }
 
     [Fact]
-    public async Task Delegation_depth_is_bounded_so_a_factory_containing_itself_cannot_run_away()
+    public async Task DelegationDepthIsBoundedSoAFactoryContainingItselfCannotRunAway()
     {
         var blueprint = Blueprint.Composite("loop", new Dictionary<string, string> { ["self"] = _parent })
             with
@@ -582,7 +582,7 @@ public sealed class RemediationRunnerTests : IDisposable
     }
 
     [Fact]
-    public async Task A_fake_runner_can_stand_in_via_constructor_injection()
+    public async Task AFakeRunnerCanStandInViaConstructorInjection()
     {
         IRemediationRunner runner = new FakeRemediationRunner();
 
@@ -593,7 +593,7 @@ public sealed class RemediationRunnerTests : IDisposable
     }
 
     [Fact]
-    public async Task Default_runner_reports_not_found_when_no_script_is_present()
+    public async Task DefaultRunnerReportsNotFoundWhenNoScriptIsPresent()
     {
         var runner = new DefaultRemediationRunner(_dir);
 
@@ -604,7 +604,7 @@ public sealed class RemediationRunnerTests : IDisposable
     }
 
     [Fact]
-    public async Task Default_runner_executes_the_discovered_install_script()
+    public async Task DefaultRunnerExecutesTheDiscoveredInstallScript()
     {
         File.WriteAllText(Path.Combine(_dir, "install.sh"), "#!/bin/sh\necho remediated\n");
         var runner = new DefaultRemediationRunner(_dir);
@@ -644,7 +644,7 @@ public class ClaimRefreshTests
     }
 
     [Fact]
-    public void One_claim_the_backlog_will_not_refresh_does_not_cost_the_others_theirs()
+    public void OneClaimTheBacklogWillNotRefreshDoesNotCostTheOthersTheirs()
     {
         var inner = new PoisonsOneHeartbeat("wi-sick");
         var logged = new List<string>();

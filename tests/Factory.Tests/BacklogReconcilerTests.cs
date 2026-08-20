@@ -25,7 +25,7 @@ public sealed class BacklogReconcilerTests : IDisposable
     }
 
     [Fact]
-    public void The_store_wins_when_the_ledger_disagrees()
+    public void TheStoreWinsWhenTheLedgerDisagrees()
     {
         using var history = History();
         var item = WorkItem.Create("thing") with { State = WorkItemState.Ready };
@@ -40,7 +40,7 @@ public sealed class BacklogReconcilerTests : IDisposable
     }
 
     [Fact]
-    public void An_item_only_the_store_knows_about_is_folded_in()
+    public void AnItemOnlyTheStoreKnowsAboutIsFoldedIn()
     {
         using var history = History();
         var state = history.Replay();
@@ -52,7 +52,7 @@ public sealed class BacklogReconcilerTests : IDisposable
     }
 
     [Fact]
-    public void A_correction_survives_a_restart_because_it_is_written_to_the_ledger()
+    public void ACorrectionSurvivesARestartBecauseItIsWrittenToTheLedger()
     {
         var item = WorkItem.Create("thing") with { State = WorkItemState.Ready };
 
@@ -73,7 +73,7 @@ public sealed class BacklogReconcilerTests : IDisposable
     [InlineData("priority")]
     [InlineData("dependencies")]
     [InlineData("criteria")]
-    public void The_store_wins_for_every_field_it_owns_not_only_the_state(string field)
+    public void TheStoreWinsForEveryFieldItOwnsNotOnlyTheState(string field)
     {
         using var history = History();
         var item = WorkItem.Create("original title") with
@@ -105,7 +105,7 @@ public sealed class BacklogReconcilerTests : IDisposable
     }
 
     [Fact]
-    public void A_correction_keeps_the_local_run_state_the_backlog_does_not_store()
+    public void ACorrectionKeepsTheLocalRunStateTheBacklogDoesNotStore()
     {
         using var history = History();
 
@@ -138,7 +138,7 @@ public sealed class BacklogReconcilerTests : IDisposable
     }
 
     [Fact]
-    public void An_agreeing_backlog_writes_nothing()
+    public void AnAgreeingBacklogWritesNothing()
     {
         using var history = History();
         var item = WorkItem.Create("thing") with { State = WorkItemState.Ready };
@@ -153,7 +153,7 @@ public sealed class BacklogReconcilerTests : IDisposable
     }
 
     [Fact]
-    public void Reconciling_twice_over_the_same_divergence_corrects_once()
+    public void ReconcilingTwiceOverTheSameDivergenceCorrectsOnce()
     {
         using var history = History();
         var item = WorkItem.Create("thing") with { State = WorkItemState.Ready };
@@ -169,7 +169,7 @@ public sealed class BacklogReconcilerTests : IDisposable
     }
 
     [Fact]
-    public void The_number_of_corrections_is_reported()
+    public void TheNumberOfCorrectionsIsReported()
     {
         using var history = History();
         var item = WorkItem.Create("thing") with { State = WorkItemState.Ready };
@@ -184,7 +184,7 @@ public sealed class BacklogReconcilerTests : IDisposable
     }
 
     [Fact]
-    public void A_bead_deleted_from_the_backlog_is_reported_but_kept_in_the_fold()
+    public void ABeadDeletedFromTheBacklogIsReportedButKeptInTheFold()
     {
         using var history = History();
         var vanished = WorkItem.Create("thing") with { State = WorkItemState.Ready };
@@ -234,7 +234,7 @@ public sealed class BacklogReconcilerTests : IDisposable
     }
 
     [Fact]
-    public void A_correction_the_ledger_refuses_to_write_does_not_stop_reconcile()
+    public void ACorrectionTheLedgerRefusesToWriteDoesNotStopReconcile()
     {
         var item = WorkItem.Create("thing") with { State = WorkItemState.Ready };
         using var ledger = new UnwritableLedger();

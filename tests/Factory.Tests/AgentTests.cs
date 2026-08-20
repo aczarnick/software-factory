@@ -12,7 +12,7 @@ public class AgentProfileTests
     }
 
     [Fact]
-    public void Thin_strips_tools_settings_skills_and_mcp()
+    public void ThinStripsToolsSettingsSkillsAndMcp()
     {
         var args = AgentProfile.Thin(ModelTier.Haiku, "You classify things.").ToArgs();
 
@@ -25,7 +25,7 @@ public class AgentProfileTests
     }
 
     [Fact]
-    public void Thick_keeps_the_default_preamble_so_the_cache_prefix_stays_stable()
+    public void ThickKeepsTheDefaultPreambleSoTheCachePrefixStaysStable()
     {
         var args = AgentProfile.Thick(ModelTier.Sonnet, ["Read", "Edit", "Bash"]).ToArgs();
 
@@ -38,13 +38,13 @@ public class AgentProfileTests
     }
 
     [Fact]
-    public void Thick_never_carries_a_replacement_system_prompt()
+    public void ThickNeverCarriesAReplacementSystemPrompt()
     {
         Assert.Null(AgentProfile.Thick(ModelTier.Sonnet, ["Read"]).SystemPrompt);
     }
 
     [Fact]
-    public void Structured_output_raises_the_turn_limit_above_one()
+    public void StructuredOutputRaisesTheTurnLimitAboveOne()
     {
         // A structured call spends one turn answering and another emitting against the
         // schema, so max-turns 1 can only ever terminate as error_max_turns.
@@ -57,7 +57,7 @@ public class AgentProfileTests
     }
 
     [Fact]
-    public void Transport_applies_the_turn_floor_whenever_a_schema_is_attached()
+    public void TransportAppliesTheTurnFloorWheneverASchemaIsAttached()
     {
         var request = new AgentRequest
         {
@@ -72,7 +72,7 @@ public class AgentProfileTests
     }
 
     [Fact]
-    public void Budget_ceiling_is_passed_to_the_transport()
+    public void BudgetCeilingIsPassedToTheTransport()
     {
         var request = new AgentRequest
         {
@@ -85,7 +85,7 @@ public class AgentProfileTests
     }
 
     [Fact]
-    public void Root_gets_the_sandbox_opt_in_that_bypassPermissions_requires()
+    public void RootGetsTheSandboxOptInThatBypassPermissionsRequires()
     {
         // Without it the CLI refuses the run outright — "--dangerously-skip-permissions cannot
         // be used with root/sudo privileges" — and every station in a root container fails.
@@ -96,7 +96,7 @@ public class AgentProfileTests
     }
 
     [Fact]
-    public void An_inherited_sandbox_setting_is_never_overridden()
+    public void AnInheritedSandboxSettingIsNeverOverridden()
     {
         var thick = AgentProfile.Thick(ModelTier.Sonnet, ["Read"]);
 
@@ -105,7 +105,7 @@ public class AgentProfileTests
     }
 
     [Fact]
-    public void Thin_stations_never_need_the_sandbox_opt_in()
+    public void ThinStationsNeverNeedTheSandboxOptIn()
     {
         // Thin runs carry no tools and no permission mode, so root is not a constraint on them.
         var thin = AgentProfile.Thin(ModelTier.Haiku, "sys");
@@ -114,7 +114,7 @@ public class AgentProfileTests
     }
 
     [Fact]
-    public void A_station_that_opts_out_of_bypass_is_left_alone()
+    public void AStationThatOptsOutOfBypassIsLeftAlone()
     {
         var prompting = AgentProfile.Thick(ModelTier.Sonnet, ["Read"]) with { PermissionMode = "acceptEdits" };
 
@@ -129,7 +129,7 @@ public class ResultParsingTests
             AgentEvent.TryParse(json)!, sessionId: "s", assistantText: "", toolsUsed: [], durationMs: 1);
 
     [Fact]
-    public void A_clean_result_is_a_success_with_usage_and_cost()
+    public void ACleanResultIsASuccessWithUsageAndCost()
     {
         var run = Parse(
             """
@@ -146,7 +146,7 @@ public class ResultParsingTests
     }
 
     [Fact]
-    public void An_abnormal_end_is_described_rather_than_echoed_as_success()
+    public void AnAbnormalEndIsDescribedRatherThanEchoedAsSuccess()
     {
         // Observed in a real run: the transport reported is_error with the subtype still
         // reading "success", which naive handling surfaced as "gate failed: success".
@@ -163,7 +163,7 @@ public class ResultParsingTests
     }
 
     [Fact]
-    public void A_failure_keeps_the_raw_message_for_diagnosis()
+    public void AFailureKeepsTheRawMessageForDiagnosis()
     {
         var run = Parse("""{"type":"result","subtype":"error_max_turns","is_error":true,"num_turns":1}""");
 
@@ -173,7 +173,7 @@ public class ResultParsingTests
     }
 
     [Fact]
-    public void An_api_error_status_wins_over_the_subtype()
+    public void AnApiErrorStatusWinsOverTheSubtype()
     {
         var run = Parse(
             """{"type":"result","subtype":"error","is_error":true,"api_error_status":"rate_limit_error","num_turns":0}""");
@@ -189,17 +189,17 @@ public class StructuredOutputTests
     [InlineData("```json\n{\"a\":1}\n```", "{\"a\":1}")]
     [InlineData("```\n{\"a\":1}\n```", "{\"a\":1}")]
     [InlineData("Here you go:\n{\"a\":1}", "{\"a\":1}")]
-    public void Extracts_json_however_the_model_wrapped_it(string input, string expected) =>
+    public void ExtractsJsonHoweverTheModelWrappedIt(string input, string expected) =>
         Assert.Equal(expected, AgentRunResult.ExtractJson(input));
 
     [Fact]
-    public void Returns_null_when_there_is_no_json()
+    public void ReturnsNullWhenThereIsNoJson()
         => Assert.Null(AgentRunResult.ExtractJson("no json at all"));
 
     private sealed record Shape(string Name, int Count);
 
     [Fact]
-    public void Deserialises_structured_payloads()
+    public void DeserialisesStructuredPayloads()
     {
         var result = FakeTransport.Success("```json\n{\"name\":\"x\",\"count\":3}\n```");
         Assert.True(result.TryStructured<Shape>(out var shape, out _));
@@ -221,7 +221,7 @@ public sealed class ResponseCacheTests : IDisposable
     };
 
     [Fact]
-    public void Hit_returns_the_stored_result_without_a_model_call()
+    public void HitReturnsTheStoredResultWithoutAModelCall()
     {
         var cache = new ResponseCache(_dir);
         var request = Request("same question");
@@ -235,7 +235,7 @@ public sealed class ResponseCacheTests : IDisposable
     }
 
     [Fact]
-    public void Same_words_about_a_different_world_is_a_miss()
+    public void SameWordsAboutADifferentWorldIsAMiss()
     {
         var cache = new ResponseCache(_dir);
         cache.Put(Request("q", digest: "repo-v1"), FakeTransport.Success("answer"));
@@ -244,7 +244,7 @@ public sealed class ResponseCacheTests : IDisposable
     }
 
     [Fact]
-    public void Failures_are_not_cached()
+    public void FailuresAreNotCached()
     {
         var cache = new ResponseCache(_dir);
         var request = Request("q");
@@ -254,7 +254,7 @@ public sealed class ResponseCacheTests : IDisposable
     }
 
     [Fact]
-    public void NoCache_requests_bypass_the_cache_entirely()
+    public void NoCacheRequestsBypassTheCacheEntirely()
     {
         var cache = new ResponseCache(_dir);
         var request = Request("q");
@@ -276,7 +276,7 @@ public sealed class AgentRunnerTests : IDisposable
     };
 
     [Fact]
-    public async Task Second_identical_call_is_served_from_cache()
+    public async Task SecondIdenticalCallIsServedFromCache()
     {
         var transport = new FakeTransport().Respond("plan", "result");
         var runner = new AgentRunner(transport, new ResponseCache(_dir));
@@ -290,7 +290,7 @@ public sealed class AgentRunnerTests : IDisposable
     }
 
     [Fact]
-    public async Task Transient_failures_are_retried_and_permanent_ones_are_not()
+    public async Task TransientFailuresAreRetriedAndPermanentOnesAreNot()
     {
         var transient = new FakeTransport().Fail("plan", "connection reset by peer");
         var runner = new AgentRunner(transient, cache: null,
@@ -308,7 +308,7 @@ public sealed class AgentRunnerTests : IDisposable
     }
 
     [Fact]
-    public async Task A_rate_limited_failure_cools_down_before_retrying_rather_than_stalling()
+    public async Task ARateLimitedFailureCoolsDownBeforeRetryingRatherThanStalling()
     {
         // An inferred limit is a guess, so its cooldown must stay short. Treating it like a
         // measured window made one transient rate-limit error stall the factory for minutes.
@@ -331,7 +331,7 @@ public sealed class AgentRunnerTests : IDisposable
     }
 
     [Fact]
-    public async Task Spend_and_usage_accumulate_for_reporting()
+    public async Task SpendAndUsageAccumulateForReporting()
     {
         var transport = new FakeTransport().Respond("plan", _ => FakeTransport.Success("ok", cost: 0.05m));
         var runner = new AgentRunner(transport, cache: null);
@@ -347,7 +347,7 @@ public sealed class AgentRunnerTests : IDisposable
 public class TokenEconomyTests
 {
     [Fact]
-    public void Thin_profile_reduction_matches_the_measurement()
+    public void ThinProfileReductionMatchesTheMeasurement()
     {
         Assert.Equal(19_336, TokenEconomy.NaiveBaselineInputTokens);
         Assert.Equal(165, TokenEconomy.ThinProfileInputTokens);
@@ -356,7 +356,7 @@ public class TokenEconomyTests
     }
 
     [Fact]
-    public void Only_thin_runs_claim_overhead_savings()
+    public void OnlyThinRunsClaimOverheadSavings()
     {
         RunRecord Run(TokenProfile profile) => new()
         {
@@ -374,7 +374,7 @@ public class TokenEconomyTests
     }
 
     [Fact]
-    public void Cache_hits_avoid_the_whole_call_not_just_the_overhead()
+    public void CacheHitsAvoidTheWholeCallNotJustTheOverhead()
     {
         var runs = new[]
         {

@@ -24,7 +24,7 @@ public sealed class PluginHostTests : IDisposable
     }
 
     [Fact]
-    public void A_sink_named_in_config_receives_events_recorded_through_the_host()
+    public void ASinkNamedInConfigReceivesEventsRecordedThroughTheHost()
     {
         var recorded = Path.Combine(_repo, "sink.log");
         DeployWithPluginInstalled();
@@ -44,7 +44,7 @@ public sealed class PluginHostTests : IDisposable
     }
 
     [Fact]
-    public void A_plugin_targeting_another_contract_version_does_not_stop_the_factory_opening()
+    public void APluginTargetingAnotherContractVersionDoesNotStopTheFactoryOpening()
     {
         DeployWithPluginInstalled();
         var log = new List<string>();
@@ -59,7 +59,7 @@ public sealed class PluginHostTests : IDisposable
     }
 
     [Fact]
-    public void A_sink_that_fails_to_construct_is_dropped_and_the_host_keeps_recording()
+    public void ASinkThatFailsToConstructIsDroppedAndTheHostKeepsRecording()
     {
         DeployWithPluginInstalled();
         Reconfigure(config => config with
@@ -78,7 +78,7 @@ public sealed class PluginHostTests : IDisposable
     }
 
     [Fact]
-    public void A_store_that_fails_to_construct_halts_the_host_with_a_named_store_exception()
+    public void AStoreThatFailsToConstructHaltsTheHostWithANamedStoreException()
     {
         DeployWithPluginInstalled();
         Reconfigure(config => config with { WorkItemStore = new ProviderRef("exploding-store") });

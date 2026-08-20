@@ -16,7 +16,7 @@ namespace Factory.Tests;
 public class BeadsAvailabilityTests
 {
     [Fact]
-    public void Bd_is_on_path_so_the_beads_tests_are_not_passing_vacuously()
+    public void BdIsOnPathSoTheBeadsTestsAreNotPassingVacuously()
     {
         Assert.True(Shell.Which("bd"),
             "bd is not on PATH, so every beads-backed test returned at its availability guard and " +

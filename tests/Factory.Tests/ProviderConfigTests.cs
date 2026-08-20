@@ -5,7 +5,7 @@ namespace Factory.Tests;
 public class ProviderConfigTests
 {
     [Fact]
-    public void Defaults_select_the_built_in_providers()
+    public void DefaultsSelectTheBuiltInProviders()
     {
         var config = new FactoryConfig { Name = "demo" };
 
@@ -15,7 +15,7 @@ public class ProviderConfigTests
     }
 
     [Fact]
-    public void Round_trips_a_sink_with_options()
+    public void RoundTripsASinkWithOptions()
     {
         var config = new FactoryConfig
         {
@@ -34,7 +34,7 @@ public class ProviderConfigTests
     }
 
     [Fact]
-    public void A_provider_named_with_no_options_still_has_an_empty_option_set()
+    public void AProviderNamedWithNoOptionsStillHasAnEmptyOptionSet()
     {
         // What the spec's own config example writes, and what `factory init` leaves behind.
         var restored = FactoryJson.Read<ProviderRef>("""{"provider":"beads"}""")!;

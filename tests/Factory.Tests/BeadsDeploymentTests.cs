@@ -20,7 +20,7 @@ public sealed class BeadsDeploymentTests : IDisposable
     }
 
     [Fact]
-    public void Deploying_without_bd_installed_names_both_ways_out_and_writes_nothing()
+    public void DeployingWithoutBdInstalledNamesBothWaysOutAndWritesNothing()
     {
         var error = Assert.Throws<InvalidOperationException>(() =>
             BeadsDeployment.EnsureInitialised(new ReportsBeadsMissing(_dir, "test-machine"), "wi", _ => { }));
@@ -38,7 +38,7 @@ public sealed class BeadsDeploymentTests : IDisposable
     }
 
     [Fact]
-    public void Deploying_installs_the_vocabulary_the_mapping_needs()
+    public void DeployingInstallsTheVocabularyTheMappingNeeds()
     {
         if (!Available) return;
         var cli = new BeadsCli(_dir, "test-machine");
@@ -52,7 +52,7 @@ public sealed class BeadsDeploymentTests : IDisposable
     }
 
     [Fact]
-    public void Deploying_twice_is_not_an_error()
+    public void DeployingTwiceIsNotAnError()
     {
         if (!Available) return;
         var cli = new BeadsCli(_dir, "test-machine");
@@ -64,7 +64,7 @@ public sealed class BeadsDeploymentTests : IDisposable
     }
 
     [Fact]
-    public void Deploying_keeps_work_that_is_already_filed()
+    public void DeployingKeepsWorkThatIsAlreadyFiled()
     {
         if (!Available) return;
         var cli = new BeadsCli(_dir, "test-machine");

@@ -16,7 +16,7 @@ public sealed class CommandsCancelTests : IDisposable
     public void Dispose() => TempDir.Delete(_dir);
 
     [Fact]
-    public void Cancel_transitions_the_item_to_cancelled_and_confirms_it()
+    public void CancelTransitionsTheItemToCancelledAndConfirmsIt()
     {
         WorkItem item;
         using (var host = FactoryHost.Init(_dir, transport: new FakeTransport()))

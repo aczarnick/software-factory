@@ -21,21 +21,21 @@ public class BeadMapperTests
     private static JsonElement Element(string json) => JsonDocument.Parse(json).RootElement.Clone();
 
     [Fact]
-    public void Every_work_item_state_maps_to_a_status_and_back()
+    public void EveryWorkItemStateMapsToAStatusAndBack()
     {
         foreach (var state in Enum.GetValues<WorkItemState>())
             Assert.Equal(state, BeadMapper.StateFor(BeadMapper.StatusFor(state)));
     }
 
     [Fact]
-    public void Every_work_item_kind_maps_to_a_type_and_back()
+    public void EveryWorkItemKindMapsToATypeAndBack()
     {
         foreach (var kind in Enum.GetValues<WorkItemKind>())
             Assert.Equal(kind, BeadMapper.KindFor(BeadMapper.TypeFor(kind)));
     }
 
     [Fact]
-    public void Every_type_beads_has_built_in_round_trips_rather_than_flattening()
+    public void EveryTypeBeadsHasBuiltInRoundTripsRatherThanFlattening()
     {
         // `bd create --help` lists these nine as bd's built-in types, and `task` is its default — so
         // it is the type on every bead filed without an explicit -t, this repository's own captured
@@ -47,7 +47,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void A_custom_type_no_one_mapped_falls_back_instead_of_throwing()
+    public void ACustomTypeNoOneMappedFallsBackInsteadOfThrowing()
     {
         // The fallback stays for genuinely unknown custom vocabulary: a read that threw would take
         // down every command that lists the backlog. Such a type is still rewritten on the next
@@ -56,7 +56,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void Create_args_carry_the_explicit_id_and_native_fields()
+    public void CreateArgsCarryTheExplicitIdAndNativeFields()
     {
         var item = WorkItem.Create("add a flag", "users want it", WorkItemKind.Feature) with
         {
@@ -72,7 +72,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void Create_args_declare_every_dependency_as_a_blocker()
+    public void CreateArgsDeclareEveryDependencyAsABlocker()
     {
         var item = WorkItem.Create("second") with { DependsOn = ["wi-aaaa11112222", "wi-bbbb11112222"] };
 
@@ -83,7 +83,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void Structured_criteria_survive_the_metadata_round_trip()
+    public void StructuredCriteriaSurviveTheMetadataRoundTrip()
     {
         var item = WorkItem.Create("thing") with
         {
@@ -106,7 +106,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void The_structured_remainder_survives_the_metadata_round_trip()
+    public void TheStructuredRemainderSurvivesTheMetadataRoundTrip()
     {
         var item = WorkItem.Create("thing", "the underlying goal") with
         {
@@ -126,7 +126,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void Native_fields_are_read_from_the_bead_rather_than_its_metadata()
+    public void NativeFieldsAreReadFromTheBeadRatherThanItsMetadata()
     {
         var item = WorkItem.Create("titled", kind: WorkItemKind.Bug) with
         {
@@ -143,7 +143,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void Blockers_are_restored_as_the_dependencies_of_the_item_they_block()
+    public void BlockersAreRestoredAsTheDependenciesOfTheItemTheyBlock()
     {
         var bead = new BeadRecord
         {
@@ -161,7 +161,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void A_bead_with_no_metadata_still_maps()
+    public void ABeadWithNoMetadataStillMaps()
     {
         var restored = BeadMapper.ToWorkItem(new BeadRecord { Id = "wi-cccc11112222", Title = "bare" });
 
@@ -181,7 +181,7 @@ public class BeadMapperTests
     ];
 
     [Fact]
-    public void The_metadata_blob_carries_exactly_the_fields_beads_has_no_native_home_for()
+    public void TheMetadataBlobCarriesExactlyTheFieldsBeadsHasNoNativeHomeFor()
     {
         // Two things must not reach it, for two different reasons. Volatile run state — station,
         // worktree, attempts, spend — belongs to the local ledger, and a copy in a shared backlog
@@ -219,7 +219,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void Nothing_the_metadata_blob_carries_is_lost_on_the_way_back()
+    public void NothingTheMetadataBlobCarriesIsLostOnTheWayBack()
     {
         var item = WorkItem.Create("thing", "the intent") with
         {
@@ -246,7 +246,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void The_assignee_is_read_as_the_checkout_holding_the_item()
+    public void TheAssigneeIsReadAsTheCheckoutHoldingTheItem()
     {
         var bead = new BeadRecord { Id = "wi-eeee11112222", Title = "held", Assignee = "other-machine" };
 
@@ -258,7 +258,7 @@ public class BeadMapperTests
     [Theory]
     [InlineData(null)]
     [InlineData("")]
-    public void An_unassigned_bead_is_owned_by_nobody(string? assignee)
+    public void AnUnassignedBeadIsOwnedByNobody(string? assignee)
     {
         var bead = new BeadRecord { Id = "wi-eeee11112222", Title = "unheld", Assignee = assignee };
 
@@ -268,14 +268,14 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void Refactor_and_improvement_map_to_custom_types()
+    public void RefactorAndImprovementMapToCustomTypes()
     {
         Assert.Equal("refactor", BeadMapper.TypeFor(WorkItemKind.Refactor));
         Assert.Equal("improvement", BeadMapper.TypeFor(WorkItemKind.Improvement));
     }
 
     [Fact]
-    public void Update_args_carry_the_mapped_status()
+    public void UpdateArgsCarryTheMappedStatus()
     {
         var item = WorkItem.Create("thing") with { State = WorkItemState.Verified };
 
@@ -286,7 +286,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void Every_status_beads_has_built_in_reads_as_a_state_rather_than_throwing()
+    public void EveryStatusBeadsHasBuiltInReadsAsAStateRatherThanThrowing()
     {
         // bd's own refusal enumerates the set: `invalid status "tombstone" (built-in: open,
         // in_progress, blocked, deferred, closed, pinned, hooked ...)`. The factory maps four of the
@@ -300,13 +300,13 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void A_custom_status_no_one_mapped_falls_back_rather_than_throwing()
+    public void ACustomStatusNoOneMappedFallsBackRatherThanThrowing()
     {
         Assert.Equal(WorkItemState.Blocked, BeadMapper.StateFor("a-status-nobody-mapped"));
     }
 
     [Fact]
-    public void Every_status_the_factory_writes_is_one_it_owns()
+    public void EveryStatusTheFactoryWritesIsOneItOwns()
     {
         // The guard that keeps StateFor's list and UnownedStatus' answer from drifting: a status the
         // factory writes but reports as unowned would have its own --status suppressed for ever.
@@ -315,7 +315,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void A_status_the_factory_does_not_own_is_carried_on_the_item_verbatim()
+    public void AStatusTheFactoryDoesNotOwnIsCarriedOnTheItemVerbatim()
     {
         var item = ToWorkItemWithStatus("pinned");
 
@@ -326,7 +326,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void A_status_the_factory_does_own_carries_nothing()
+    public void AStatusTheFactoryDoesOwnCarriesNothing()
     {
         Assert.Null(ToWorkItemWithStatus("blocked").StoreStatus);
     }
@@ -383,7 +383,7 @@ public class BeadMapperTests
         """;
 
     [Fact]
-    public void Output_beads_really_emits_deserialises_into_every_mapped_field()
+    public void OutputBeadsReallyEmitsDeserialisesIntoEveryMappedField()
     {
         var bead = FactoryJson.Read<BeadRecord>(RealBeadJson)!;
 
@@ -416,7 +416,7 @@ public class BeadMapperTests
     [Theory]
     [InlineData(nameof(RealBlockedBeadFromShow))]
     [InlineData(nameof(RealBlockedBeadFromList))]
-    public void Blockers_beads_really_emits_become_the_items_dependencies(string fixture)
+    public void BlockersBeadsReallyEmitsBecomeTheItemsDependencies(string fixture)
     {
         // `show` embeds the blocking issue and `list` reports the edge, so reading only one of the
         // two shapes loses every dependency edge from whichever command was not sampled.
@@ -437,7 +437,7 @@ public class BeadMapperTests
     [InlineData("validates")]
     [InlineData("relates-to")]
     [InlineData("supersedes")]
-    public void An_edge_beads_does_not_treat_as_blocking_is_not_read_as_a_blocker(string type)
+    public void AnEdgeBeadsDoesNotTreatAsBlockingIsNotReadAsABlocker(string type)
     {
         // Probed against bd 1.2.1: of its ten edge types only `blocks` withholds the dependent from
         // `bd ready`, and only `blocks` counts towards the dependent's own dependency_count. Reading
@@ -471,7 +471,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void An_edge_with_no_type_recorded_still_blocks()
+    public void AnEdgeWithNoTypeRecordedStillBlocks()
     {
         var bead = new BeadRecord
         {
@@ -486,7 +486,7 @@ public class BeadMapperTests
     }
 
     [Fact]
-    public void A_reversed_dependency_edge_is_not_read_as_the_item_depending_on_itself()
+    public void AReversedDependencyEdgeIsNotReadAsTheItemDependingOnItself()
     {
         var bead = new BeadRecord
         {

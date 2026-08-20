@@ -29,7 +29,7 @@ public class UsageGovernorTests
     }
 
     [Fact]
-    public void An_allowed_window_does_not_narrow_the_factory()
+    public void AnAllowedWindowDoesNotNarrowTheFactory()
     {
         var governor = new UsageGovernor(clock: new FakeClock(Start));
         governor.Observe(Event("allowed"));
@@ -39,7 +39,7 @@ public class UsageGovernorTests
     }
 
     [Fact]
-    public void A_warning_narrows_concurrency_and_paces_runs()
+    public void AWarningNarrowsConcurrencyAndPacesRuns()
     {
         var governor = new UsageGovernor(clock: new FakeClock(Start));
         governor.Observe(Event("warning"));
@@ -52,7 +52,7 @@ public class UsageGovernorTests
     }
 
     [Fact]
-    public void A_rejected_window_holds_until_it_resets()
+    public void ARejectedWindowHoldsUntilItResets()
     {
         var clock = new FakeClock(Start);
         var governor = new UsageGovernor(clock: clock);
@@ -65,7 +65,7 @@ public class UsageGovernorTests
     }
 
     [Fact]
-    public async Task A_wait_longer_than_the_ceiling_stops_rather_than_blocking()
+    public async Task AWaitLongerThanTheCeilingStopsRatherThanBlocking()
     {
         var governor = new UsageGovernor(
             new UsagePolicy { MaxWait = TimeSpan.FromMinutes(1) }, clock: new FakeClock(Start));
@@ -77,7 +77,7 @@ public class UsageGovernorTests
     }
 
     [Fact]
-    public void The_worst_window_binds_when_several_are_known()
+    public void TheWorstWindowBindsWhenSeveralAreKnown()
     {
         var governor = new UsageGovernor(clock: new FakeClock(Start));
         governor.Observe(Event("allowed", "five_hour"));
@@ -89,7 +89,7 @@ public class UsageGovernorTests
     }
 
     [Fact]
-    public void A_window_that_has_reset_no_longer_constrains_anything()
+    public void AWindowThatHasResetNoLongerConstrainsAnything()
     {
         var clock = new FakeClock(Start);
         var governor = new UsageGovernor(clock: clock);
@@ -104,7 +104,7 @@ public class UsageGovernorTests
     }
 
     [Fact]
-    public void A_restart_inside_an_exhausted_window_still_knows_it_is_exhausted()
+    public void ARestartInsideAnExhaustedWindowStillKnowsItIsExhausted()
     {
         var dir = TempDir.Create();
         try
@@ -124,7 +124,7 @@ public class UsageGovernorTests
     }
 
     [Fact]
-    public void A_rate_limited_failure_is_treated_as_a_limit_even_without_an_event()
+    public void ARateLimitedFailureIsTreatedAsALimitEvenWithoutAnEvent()
     {
         var governor = new UsageGovernor(clock: new FakeClock(Start));
 
@@ -137,7 +137,7 @@ public class UsageGovernorTests
     }
 
     [Fact]
-    public async Task The_runner_holds_a_run_back_when_the_window_is_spent()
+    public async Task TheRunnerHoldsARunBackWhenTheWindowIsSpent()
     {
         var governor = new UsageGovernor(
             new UsagePolicy { MaxWait = TimeSpan.FromSeconds(1) }, clock: new FakeClock(Start));
@@ -164,7 +164,7 @@ public sealed class ShellTests : IDisposable
     public void Dispose() => TempDir.Delete(_dir);
 
     [Fact]
-    public async Task A_daemon_child_holding_the_pipe_does_not_stall_the_command()
+    public async Task ADaemonChildHoldingThePipeDoesNotStallTheCommand()
     {
         // Build tools do exactly this: `dotnet build` leaves MSBuild nodes alive that
         // inherited its stdout. Reading to end-of-file therefore waits on the daemon, not on
@@ -183,7 +183,7 @@ public sealed class ShellTests : IDisposable
     }
 
     [Fact]
-    public async Task Output_is_still_captured_for_ordinary_commands()
+    public async Task OutputIsStillCapturedForOrdinaryCommands()
     {
         var result = await Shell.RunAsync("echo out; echo err 1>&2; exit 3", _dir, timeoutSeconds: 30);
 
@@ -193,7 +193,7 @@ public sealed class ShellTests : IDisposable
     }
 
     [Fact]
-    public void Which_finds_a_present_tool_and_not_an_absent_one()
+    public void WhichFindsAPresentToolAndNotAnAbsentOne()
     {
         Assert.True(Shell.Which("sh"));
         Assert.False(Shell.Which("definitely-not-a-real-tool-xyz"));
@@ -206,7 +206,7 @@ public sealed class ToolchainTests : IDisposable
     public void Dispose() => TempDir.Delete(_dir);
 
     [Fact]
-    public void A_dotnet_project_is_detected_with_a_build_check()
+    public void ADotnetProjectIsDetectedWithABuildCheck()
     {
         File.WriteAllText(Path.Combine(_dir, "App.csproj"), "<Project/>");
 
@@ -217,7 +217,7 @@ public sealed class ToolchainTests : IDisposable
     }
 
     [Fact]
-    public void A_node_project_declares_its_own_checks_rather_than_being_guessed_at()
+    public void ANodeProjectDeclaresItsOwnChecksRatherThanBeingGuessedAt()
     {
         File.WriteAllText(Path.Combine(_dir, "package.json"),
             """{"name":"x","scripts":{"build":"tsc","lint":"eslint ."}}""");
@@ -232,7 +232,7 @@ public sealed class ToolchainTests : IDisposable
     }
 
     [Fact]
-    public void A_repository_with_no_recognisable_toolchain_yields_nothing()
+    public void ARepositoryWithNoRecognisableToolchainYieldsNothing()
     {
         File.WriteAllText(Path.Combine(_dir, "notes.txt"), "hello");
         Assert.True(Toolchain.Detect(_dir).IsEmpty);
@@ -242,7 +242,7 @@ public sealed class ToolchainTests : IDisposable
         new() { Name = "fake", Checks = [new ToolchainCheck(name, "irrelevant", 30)] };
 
     [Fact]
-    public async Task A_check_that_fails_once_then_passes_is_recorded_as_flaky_not_broken()
+    public async Task ACheckThatFailsOnceThenPassesIsRecordedAsFlakyNotBroken()
     {
         var calls = 0;
         var results = await ToolchainRunner.RunAsync(OneCheck(), "/tmp", default,
@@ -258,7 +258,7 @@ public sealed class ToolchainTests : IDisposable
     }
 
     [Fact]
-    public async Task A_check_that_fails_twice_is_believed()
+    public async Task ACheckThatFailsTwiceIsBelieved()
     {
         var calls = 0;
         var results = await ToolchainRunner.RunAsync(OneCheck(), "/tmp", default,
@@ -271,7 +271,7 @@ public sealed class ToolchainTests : IDisposable
     }
 
     [Fact]
-    public async Task A_check_that_passes_first_time_is_not_run_again()
+    public async Task ACheckThatPassesFirstTimeIsNotRunAgain()
     {
         var calls = 0;
         var results = await ToolchainRunner.RunAsync(OneCheck(), "/tmp", default,
@@ -283,7 +283,7 @@ public sealed class ToolchainTests : IDisposable
     }
 
     [Fact]
-    public async Task Checks_run_in_order_and_a_failed_build_stops_the_cascade()
+    public async Task ChecksRunInOrderAndAFailedBuildStopsTheCascade()
     {
         var toolchain = new Toolchain
         {
@@ -304,7 +304,7 @@ public sealed class ToolchainTests : IDisposable
     }
 
     [Fact]
-    public void Only_regressions_block_and_pre_existing_failures_are_excused()
+    public void OnlyRegressionsBlockAndPreExistingFailuresAreExcused()
     {
         var baseline = new ToolchainBaseline
         {
@@ -326,7 +326,7 @@ public sealed class ToolchainTests : IDisposable
     }
 
     [Fact]
-    public void A_check_that_did_not_exist_at_baseline_must_pass()
+    public void ACheckThatDidNotExistAtBaselineMustPass()
     {
         var verdict = ToolchainRunner.Compare(
             [new CheckOutcome("test", false, "new suite fails", 10)],
@@ -338,7 +338,7 @@ public sealed class ToolchainTests : IDisposable
     }
 
     [Fact]
-    public void Everything_passing_is_a_pass()
+    public void EverythingPassingIsAPass()
     {
         var verdict = ToolchainRunner.Compare(
             [new CheckOutcome("build", true, "ok", 10), new CheckOutcome("test", true, "ok", 20)],

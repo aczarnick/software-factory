@@ -54,7 +54,7 @@ public sealed class BeadsBackedFactoryTests : IDisposable
         new BeadsCli(_dir, Owner).Json<BeadRecord>([.. BeadMapper.GetArgs(id)]).Single();
 
     [Fact]
-    public void Selecting_the_provider_by_config_files_work_into_beads()
+    public void SelectingTheProviderByConfigFilesWorkIntoBeads()
     {
         if (!Available) return;
         using var host = OpenBeadsBacked(Scripted());
@@ -67,7 +67,7 @@ public sealed class BeadsBackedFactoryTests : IDisposable
     }
 
     [Fact]
-    public async Task A_claim_is_refreshed_while_its_station_works()
+    public async Task AClaimIsRefreshedWhileItsStationWorks()
     {
         if (!Available) return;
 
@@ -142,7 +142,7 @@ public sealed class BeadsBackedFactoryTests : IDisposable
     }
 
     [Fact]
-    public async Task A_refresh_follows_this_runs_own_claims_rather_than_the_folds_in_progress_items()
+    public async Task ARefreshFollowsThisRunsOwnClaimsRatherThanTheFoldsInProgressItems()
     {
         if (!Available) return;
 
@@ -243,7 +243,7 @@ public sealed class BeadsBackedFactoryTests : IDisposable
     }
 
     [Fact]
-    public async Task An_orphan_is_requeued_with_its_claim_dropped_so_another_machine_can_take_it()
+    public async Task AnOrphanIsRequeuedWithItsClaimDroppedSoAnotherMachineCanTakeIt()
     {
         if (!Available) return;
 
@@ -274,7 +274,7 @@ public sealed class BeadsBackedFactoryTests : IDisposable
     }
 
     [Fact]
-    public async Task An_orphan_the_backlog_will_not_take_back_is_reported_and_the_rest_are_requeued()
+    public async Task AnOrphanTheBacklogWillNotTakeBackIsReportedAndTheRestAreRequeued()
     {
         if (!Available) return;
 
@@ -310,7 +310,7 @@ public sealed class BeadsBackedFactoryTests : IDisposable
     }
 
     [Fact]
-    public void Reopening_an_unchanged_backlog_reports_no_corrections()
+    public void ReopeningAnUnchangedBacklogReportsNoCorrections()
     {
         if (!Available) return;
 
@@ -327,14 +327,14 @@ public sealed class BeadsBackedFactoryTests : IDisposable
     }
 
     [Fact]
-    public async Task Reopening_after_a_claim_returns_to_the_queue_reports_no_corrections()
+    public async Task ReopeningAfterAClaimReturnsToTheQueueReportsNoCorrections()
     {
         if (!Available) return;
 
         using var cancellation = new CancellationTokenSource();
 
         // Claimed, then cancelled mid-station and returned to Ready — the same path
-        // An_item_a_cancelled_run_returns_to_the_queue_is_claimable_again exercises, but this test
+        // AnItemACancelledRunReturnsToTheQueueIsClaimableAgain exercises, but this test
         // cares about what the fold learned from it rather than about the bead itself.
         var transport = new FakeTransport().Respond("decompose", _ =>
         {
@@ -365,7 +365,7 @@ public sealed class BeadsBackedFactoryTests : IDisposable
     // intact is Ready everywhere and claimable nowhere, and a status assertion sees nothing wrong.
 
     [Fact]
-    public void Activating_a_blocked_item_leaves_it_claimable_again()
+    public void ActivatingABlockedItemLeavesItClaimableAgain()
     {
         if (!Available) return;
         using var host = OpenBeadsBacked(new FakeTransport());
@@ -380,7 +380,7 @@ public sealed class BeadsBackedFactoryTests : IDisposable
     }
 
     [Fact]
-    public void Retrying_a_failed_item_leaves_it_claimable_again()
+    public void RetryingAFailedItemLeavesItClaimableAgain()
     {
         if (!Available) return;
         using var host = OpenBeadsBacked(new FakeTransport());
@@ -395,7 +395,7 @@ public sealed class BeadsBackedFactoryTests : IDisposable
     }
 
     [Fact]
-    public async Task An_item_a_cancelled_run_returns_to_the_queue_is_claimable_again()
+    public async Task AnItemACancelledRunReturnsToTheQueueIsClaimableAgain()
     {
         if (!Available) return;
 
@@ -420,7 +420,7 @@ public sealed class BeadsBackedFactoryTests : IDisposable
     }
 
     [Fact]
-    public async Task Requeueing_orphans_leaves_an_item_another_checkout_holds_in_progress_alone()
+    public async Task RequeueingOrphansLeavesAnItemAnotherCheckoutHoldsInProgressAlone()
     {
         if (!Available) return;
 
@@ -470,7 +470,7 @@ public sealed class BeadsBackedFactoryTests : IDisposable
     // fold verbatim erases them.
 
     [Fact]
-    public void A_claim_keeps_the_run_state_the_backlog_does_not_store()
+    public void AClaimKeepsTheRunStateTheBacklogDoesNotStore()
     {
         if (!Available) return;
         using var host = OpenBeadsBacked(new FakeTransport());
@@ -514,7 +514,7 @@ public sealed class BeadsBackedFactoryTests : IDisposable
     }
 
     [Fact]
-    public async Task A_station_working_a_retried_item_is_told_which_attempt_it_is_on()
+    public async Task AStationWorkingARetriedItemIsToldWhichAttemptItIsOn()
     {
         if (!Available) return;
         using var host = OpenBeadsBacked(Scripted());

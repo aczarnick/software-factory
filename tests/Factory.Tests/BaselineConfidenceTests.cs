@@ -12,7 +12,7 @@ public class BaselineConfidenceTests
         new(name, passed, passed ? "passed" : "failed", 10, attempts);
 
     [Fact]
-    public void A_baseline_keeps_how_many_attempts_each_check_needed()
+    public void ABaselineKeepsHowManyAttemptsEachCheckNeeded()
     {
         var baseline = ToolchainBaseline.From("sha1", [Outcome("build", true, 1), Outcome("test", false, 2)]);
 
@@ -21,7 +21,7 @@ public class BaselineConfidenceTests
     }
 
     [Fact]
-    public void A_check_recorded_as_failing_is_named_as_a_gate_that_no_longer_blocks()
+    public void ACheckRecordedAsFailingIsNamedAsAGateThatNoLongerBlocks()
     {
         var baseline = ToolchainBaseline.From("sha1", [Outcome("build", true, 1), Outcome("test", false, 2)]);
 
@@ -29,7 +29,7 @@ public class BaselineConfidenceTests
     }
 
     [Fact]
-    public void A_fully_passing_baseline_disables_nothing()
+    public void AFullyPassingBaselineDisablesNothing()
     {
         var baseline = ToolchainBaseline.From("sha1", [Outcome("build", true, 1), Outcome("test", true, 1)]);
 
@@ -37,7 +37,7 @@ public class BaselineConfidenceTests
     }
 
     [Fact]
-    public void A_check_that_passed_only_on_retry_is_reported_as_flaky()
+    public void ACheckThatPassedOnlyOnRetryIsReportedAsFlaky()
     {
         // Passing on the second attempt means the machine, not the code, decided the first one.
         // The gate stays on, but the evidence that the host is unreliable must not be discarded.
@@ -48,7 +48,7 @@ public class BaselineConfidenceTests
     }
 
     [Fact]
-    public void A_baseline_written_before_attempts_were_recorded_still_loads()
+    public void ABaselineWrittenBeforeAttemptsWereRecordedStillLoads()
     {
         // Old cache files on disk predate the Attempts map; a JSON failure here would discard a
         // usable baseline and force a recapture at the worst possible moment.

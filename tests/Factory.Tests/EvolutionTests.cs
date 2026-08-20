@@ -19,7 +19,7 @@ public class PromotionGateTests
         };
 
     [Fact]
-    public void Wilson_lower_bound_punishes_small_samples()
+    public void WilsonLowerBoundPunishesSmallSamples()
     {
         // Same observed rate, very different confidence.
         var few = PromotionGate.WilsonLowerBound(4, 4);
@@ -30,7 +30,7 @@ public class PromotionGateTests
     }
 
     [Fact]
-    public void Wilson_bounds_are_ordered_and_within_range()
+    public void WilsonBoundsAreOrderedAndWithinRange()
     {
         var lower = PromotionGate.WilsonLowerBound(7, 10);
         var upper = PromotionGate.WilsonUpperBound(7, 10);
@@ -41,7 +41,7 @@ public class PromotionGateTests
     }
 
     [Fact]
-    public void Holds_while_the_challenger_is_still_undersampled()
+    public void HoldsWhileTheChallengerIsStillUndersampled()
     {
         var decision = PromotionGate.Decide(Stats("v1", 50, 40), Stats("v2", 4, 4));
         Assert.Equal(PromotionAction.Hold, decision.Action);
@@ -49,7 +49,7 @@ public class PromotionGateTests
     }
 
     [Fact]
-    public void Refuses_to_promote_on_a_lucky_streak()
+    public void RefusesToPromoteOnALuckyStreak()
     {
         // A perfect run of 20 against a champion already at 95% is not evidence of improvement.
         var decision = PromotionGate.Decide(Stats("v1", 200, 190), Stats("v2", 20, 20));
@@ -57,7 +57,7 @@ public class PromotionGateTests
     }
 
     [Fact]
-    public void Promotes_on_a_clear_and_well_sampled_win()
+    public void PromotesOnAClearAndWellSampledWin()
     {
         var champion = Stats("v1", 100, 50);      // 50% pass
         var challenger = Stats("v2", 60, 57);     // 95% pass, same cost
@@ -70,7 +70,7 @@ public class PromotionGateTests
     }
 
     [Fact]
-    public void Discards_a_challenger_that_is_clearly_worse_without_waiting_for_full_samples()
+    public void DiscardsAChallengerThatIsClearlyWorseWithoutWaitingForFullSamples()
     {
         var decision = PromotionGate.Decide(Stats("v1", 200, 200), Stats("v2", 8, 1));
         Assert.Equal(PromotionAction.Demote, decision.Action);
@@ -78,7 +78,7 @@ public class PromotionGateTests
     }
 
     [Fact]
-    public void A_challenger_that_wins_on_quality_but_loses_on_cost_is_refused()
+    public void AChallengerThatWinsOnQualityButLosesOnCostIsRefused()
     {
         var champion = Stats("v1", 100, 80, costPerRun: 0.01m);
         var expensive = Stats("v2", 40, 36, costPerRun: 0.20m);   // +10% pass, 20x the cost
@@ -90,7 +90,7 @@ public class PromotionGateTests
     }
 
     [Fact]
-    public void No_challenger_means_nothing_to_decide()
+    public void NoChallengerMeansNothingToDecide()
     {
         var decision = PromotionGate.Decide(Stats("v1", 10, 10), challenger: null);
         Assert.Equal(PromotionAction.Hold, decision.Action);
@@ -114,7 +114,7 @@ public class EvaluatorTests
     };
 
     [Fact]
-    public void Groups_runs_by_prompt_version()
+    public void GroupsRunsByPromptVersion()
     {
         var stats = Evaluator.ByVersion(
             [Run("plan@v1", true), Run("plan@v1", false), Run("plan@v2", true)], "plan");
@@ -125,14 +125,14 @@ public class EvaluatorTests
     }
 
     [Fact]
-    public void Cache_hits_are_excluded_because_they_did_not_test_the_prompt()
+    public void CacheHitsAreExcludedBecauseTheyDidNotTestThePrompt()
     {
         var stats = Evaluator.ByVersion([Run("plan@v1", true), Run("plan@v1", true, cacheHit: true)], "plan");
         Assert.Equal(1, stats.Single().Runs);
     }
 
     [Fact]
-    public void Fitness_penalises_a_more_expensive_prompt_at_equal_quality()
+    public void FitnessPenalisesAMoreExpensivePromptAtEqualQuality()
     {
         var cheap = new PromptStats { StationId = "plan", Version = "v1", Runs = 10, GatePasses = 9, TotalCostUsd = 0.10m, TotalTurns = 20 };
         var dear = cheap with { Version = "v2", TotalCostUsd = 1.00m };
@@ -141,7 +141,7 @@ public class EvaluatorTests
     }
 
     [Fact]
-    public void Fitness_rewards_a_higher_pass_rate()
+    public void FitnessRewardsAHigherPassRate()
     {
         var worse = new PromptStats { StationId = "plan", Version = "v1", Runs = 10, GatePasses = 5, TotalCostUsd = 0.10m, TotalTurns = 20 };
         var better = worse with { Version = "v2", GatePasses = 9 };
@@ -156,7 +156,7 @@ public sealed class PromptRegistryTests : IDisposable
     public void Dispose() => TempDir.Delete(_dir);
 
     [Fact]
-    public void Seeds_v1_and_makes_it_champion()
+    public void SeedsV1AndMakesItChampion()
     {
         var registry = new PromptRegistry(_dir);
         var seeded = registry.EnsureSeed("plan", "original text");
@@ -166,7 +166,7 @@ public sealed class PromptRegistryTests : IDisposable
     }
 
     [Fact]
-    public void Seeding_twice_does_not_create_a_second_version()
+    public void SeedingTwiceDoesNotCreateASecondVersion()
     {
         var registry = new PromptRegistry(_dir);
         registry.EnsureSeed("plan", "original");
@@ -176,7 +176,7 @@ public sealed class PromptRegistryTests : IDisposable
     }
 
     [Fact]
-    public void Identical_text_is_deduplicated_rather_than_versioned_again()
+    public void IdenticalTextIsDeduplicatedRatherThanVersionedAgain()
     {
         var registry = new PromptRegistry(_dir);
         registry.EnsureSeed("plan", "original");
@@ -187,7 +187,7 @@ public sealed class PromptRegistryTests : IDisposable
     }
 
     [Fact]
-    public void Promotion_moves_the_champion_and_clears_the_challenger()
+    public void PromotionMovesTheChampionAndClearsTheChallenger()
     {
         var registry = new PromptRegistry(_dir);
         registry.EnsureSeed("plan", "v1 text");
@@ -203,7 +203,7 @@ public sealed class PromptRegistryTests : IDisposable
     }
 
     [Fact]
-    public void Traffic_splits_between_champion_and_challenger_under_trial()
+    public void TrafficSplitsBetweenChampionAndChallengerUnderTrial()
     {
         var registry = new PromptRegistry(_dir);
         registry.EnsureSeed("plan", "v1 text");
@@ -219,7 +219,7 @@ public sealed class PromptRegistryTests : IDisposable
     }
 
     [Fact]
-    public void Rolling_back_to_an_earlier_version_is_possible()
+    public void RollingBackToAnEarlierVersionIsPossible()
     {
         var registry = new PromptRegistry(_dir);
         registry.EnsureSeed("plan", "v1 text");
@@ -249,7 +249,7 @@ public sealed class EvolutionImprovementTests : IDisposable
     };
 
     [Fact]
-    public async Task Work_the_factory_files_against_itself_sorts_last()
+    public async Task WorkTheFactoryFilesAgainstItselfSortsLast()
     {
         var prompts = new PromptRegistry(_dir);
         var champion = prompts.EnsureSeed("plan", "plan carefully");

@@ -22,7 +22,7 @@ public class BeadsCliTests
     private const string Suffix = "\"}]";
 
     [Fact]
-    public void A_complete_document_exactly_at_the_capture_bound_is_not_rejected_as_truncated()
+    public void ACompleteDocumentExactlyAtTheCaptureBoundIsNotRejectedAsTruncated()
     {
         // Shell.ReadAsync appends a whole 4096-char buffer whenever sink.Length is still under the
         // bound, so a genuine, complete document can legitimately land at exactly
@@ -38,7 +38,7 @@ public class BeadsCliTests
     }
 
     [Fact]
-    public void A_document_cut_off_at_the_capture_bound_is_reported_as_truncated_not_as_malformed_json()
+    public void ADocumentCutOffAtTheCaptureBoundIsReportedAsTruncatedNotAsMalformedJson()
     {
         // A document whose complete form is well past the bound, cut exactly where Shell would have
         // cut it -- mid-string, so it is not valid JSON on its own. This is what a real truncation
@@ -60,7 +60,7 @@ public class BeadsCliTests
     }
 
     [Fact]
-    public void A_complete_short_document_is_read_normally()
+    public void ACompleteShortDocumentIsReadNormally()
     {
         var items = new ReturnsCannedStdout("[{\"id\":\"wi-aaaa11112222\"}]").Json<IdOnly>("list");
 
@@ -68,7 +68,7 @@ public class BeadsCliTests
     }
 
     [Fact]
-    public void Malformed_json_well_under_the_bound_is_reported_as_malformed_not_as_truncated()
+    public void MalformedJsonWellUnderTheBoundIsReportedAsMalformedNotAsTruncated()
     {
         // Nowhere near the bound, so a JsonException here has nothing to do with truncation. The
         // guard has to consult the length rather than converting every parse failure, or a genuinely

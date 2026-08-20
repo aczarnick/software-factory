@@ -7,19 +7,19 @@ namespace Factory.Tests;
 public class SupersededStateTests
 {
     [Fact]
-    public void A_decomposed_parent_may_leave_the_pipeline_as_superseded() =>
+    public void ADecomposedParentMayLeaveThePipelineAsSuperseded() =>
         Assert.True(WorkItemStates.CanTransition(WorkItemState.InProgress, WorkItemState.Superseded));
 
     [Fact]
-    public void Superseded_is_terminal() =>
+    public void SupersededIsTerminal() =>
         Assert.True(WorkItemStates.IsTerminal(WorkItemState.Superseded));
 
     [Fact]
-    public void Superseded_is_not_reachable_from_done() =>
+    public void SupersededIsNotReachableFromDone() =>
         Assert.False(WorkItemStates.CanTransition(WorkItemState.Done, WorkItemState.Superseded));
 
     [Fact]
-    public void Open_work_excludes_a_superseded_parent()
+    public void OpenWorkExcludesASupersededParent()
     {
         var parent = WorkItem.Create("a big thing") with { State = WorkItemState.Ready };
         var state = FactoryState.Replay([new WorkItemFiled(parent)]);
@@ -31,7 +31,7 @@ public class SupersededStateTests
     }
 
     [Fact]
-    public void A_superseded_parent_does_not_satisfy_a_dependency_while_a_child_is_outstanding()
+    public void ASupersededParentDoesNotSatisfyADependencyWhileAChildIsOutstanding()
     {
         var parent = WorkItem.Create("a big thing") with { State = WorkItemState.Ready };
         var child = WorkItem.Create("the real work") with { State = WorkItemState.Ready, ParentId = parent.Id };
@@ -52,7 +52,7 @@ public class SupersededStateTests
     }
 
     [Fact]
-    public void A_superseded_parent_satisfies_a_dependency_once_every_child_is_done()
+    public void ASupersededParentSatisfiesADependencyOnceEveryChildIsDone()
     {
         var parent = WorkItem.Create("a big thing") with { State = WorkItemState.Ready };
         var child = WorkItem.Create("the real work") with { State = WorkItemState.Ready, ParentId = parent.Id };
@@ -67,7 +67,7 @@ public class SupersededStateTests
     }
 
     [Fact]
-    public void A_superseded_parent_with_no_children_satisfies_nothing()
+    public void ASupersededParentWithNoChildrenSatisfiesNothing()
     {
         var parent = WorkItem.Create("a big thing") with { State = WorkItemState.Ready };
         var state = FactoryState.Replay([new WorkItemFiled(parent)]);

@@ -129,7 +129,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     private const string HumanIntent = "the intent a human rewrote by hand";
 
     [Fact]
-    public void A_humans_edit_to_the_beads_own_description_is_read_reported_and_kept()
+    public void AHumansEditToTheBeadsOwnDescriptionIsReadReportedAndKept()
     {
         if (Unavailable) return;
         var store = Store();
@@ -169,7 +169,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void A_factory_item_that_has_criteria_of_its_own_still_overwrites_a_humans_acceptance_cell()
+    public void AFactoryItemThatHasCriteriaOfItsOwnStillOverwritesAHumansAcceptanceCell()
     {
         if (Unavailable) return;
         var store = Store();
@@ -195,7 +195,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Updating_a_bead_another_tool_filed_keeps_the_acceptance_criteria_it_wrote()
+    public void UpdatingABeadAnotherToolFiledKeepsTheAcceptanceCriteriaItWrote()
     {
         if (Unavailable) return;
 
@@ -208,7 +208,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Updating_a_bead_another_tool_filed_keeps_the_type_it_was_given()
+    public void UpdatingABeadAnotherToolFiledKeepsTheTypeItWasGiven()
     {
         if (Unavailable) return;
 
@@ -221,7 +221,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Add_then_Get_round_trips_a_work_item()
+    public void AddThenGetRoundTripsAWorkItem()
     {
         if (Unavailable) return;
         var store = Store();
@@ -244,7 +244,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Add_files_a_proposal_as_a_draft_rather_than_as_ready_work()
+    public void AddFilesAProposalAsADraftRatherThanAsReadyWork()
     {
         if (Unavailable) return;
         var store = Store();
@@ -255,7 +255,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Add_leaves_a_bead_another_checkout_claimed_mid_filing_alone()
+    public void AddLeavesABeadAnotherCheckoutClaimedMidFilingAlone()
     {
         if (Unavailable) return;
         const string elsewhere = "other-machine";
@@ -288,7 +288,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Add_still_fails_loudly_when_the_second_write_fails_for_any_other_reason()
+    public void AddStillFailsLoudlyWhenTheSecondWriteFailsForAnyOtherReason()
     {
         if (Unavailable) return;
         var cli = Cli();
@@ -308,7 +308,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Add_then_Get_round_trips_dependencies()
+    public void AddThenGetRoundTripsDependencies()
     {
         if (Unavailable) return;
         var store = Store();
@@ -324,7 +324,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Get_returns_null_for_an_id_the_backlog_does_not_know()
+    public void GetReturnsNullForAnIdTheBacklogDoesNotKnow()
     {
         if (Unavailable) return;
 
@@ -332,7 +332,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void TryClaim_marks_the_item_in_progress_and_assigns_it_to_the_named_owner()
+    public void TryClaimMarksTheItemInProgressAndAssignsItToTheNamedOwner()
     {
         if (Unavailable) return;
         DrainReadyQueue();
@@ -348,7 +348,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void TryClaim_stamps_the_lease_with_this_checkouts_node_id()
+    public void TryClaimStampsTheLeaseWithThisCheckoutsNodeId()
     {
         if (Unavailable) return;
         DrainReadyQueue();
@@ -365,7 +365,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void TryClaim_takes_a_lease_the_factory_can_refresh()
+    public void TryClaimTakesALeaseTheFactoryCanRefresh()
     {
         if (Unavailable) return;
         DrainReadyQueue();
@@ -384,7 +384,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void TryClaim_withholds_an_item_with_an_unmet_dependency()
+    public void TryClaimWithholdsAnItemWithAnUnmetDependency()
     {
         if (Unavailable) return;
         DrainReadyQueue();
@@ -402,7 +402,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void A_draft_item_is_never_claimed()
+    public void ADraftItemIsNeverClaimed()
     {
         if (Unavailable) return;
         DrainReadyQueue();
@@ -414,7 +414,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Release_returns_a_claimed_item_to_the_queue_and_drops_its_lease()
+    public void ReleaseReturnsAClaimedItemToTheQueueAndDropsItsLease()
     {
         if (Unavailable) return;
         DrainReadyQueue();
@@ -433,7 +433,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Release_requeues_an_item_that_a_station_has_already_moved_past_in_progress()
+    public void ReleaseRequeuesAnItemThatAStationHasAlreadyMovedPastInProgress()
     {
         if (Unavailable) return;
         DrainReadyQueue();
@@ -448,7 +448,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Transitioning_a_claimed_item_back_to_ready_leaves_it_claimable_again()
+    public void TransitioningAClaimedItemBackToReadyLeavesItClaimableAgain()
     {
         if (Unavailable) return;
         DrainReadyQueue();
@@ -464,7 +464,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Transitioning_a_claimed_item_back_to_ready_reports_nobody_holding_it()
+    public void TransitioningAClaimedItemBackToReadyReportsNobodyHoldingIt()
     {
         if (Unavailable) return;
         DrainReadyQueue();
@@ -479,7 +479,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Release_refuses_to_put_integrated_work_back_on_the_queue()
+    public void ReleaseRefusesToPutIntegratedWorkBackOnTheQueue()
     {
         if (Unavailable) return;
         var store = Store();
@@ -496,7 +496,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Release_does_nothing_for_an_id_the_backlog_does_not_know()
+    public void ReleaseDoesNothingForAnIdTheBacklogDoesNotKnow()
     {
         if (Unavailable) return;
 
@@ -504,7 +504,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Heartbeat_stays_quiet_for_an_item_this_node_does_not_hold()
+    public void HeartbeatStaysQuietForAnItemThisNodeDoesNotHold()
     {
         if (Unavailable) return;
         var logged = new List<string>();
@@ -528,7 +528,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void A_heartbeat_failing_for_any_other_reason_is_reported()
+    public void AHeartbeatFailingForAnyOtherReasonIsReported()
     {
         if (Unavailable) return;
         DrainReadyQueue();
@@ -548,7 +548,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Transition_refuses_a_move_the_state_machine_does_not_allow()
+    public void TransitionRefusesAMoveTheStateMachineDoesNotAllow()
     {
         if (Unavailable) return;
         var store = Store();
@@ -567,7 +567,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void A_transitions_note_that_beads_refuses_is_logged_rather_than_dropped_in_silence()
+    public void ATransitionsNoteThatBeadsRefusesIsLoggedRatherThanDroppedInSilence()
     {
         if (Unavailable) return;
         DrainReadyQueue();
@@ -587,7 +587,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void All_reports_work_in_every_status_including_closed_and_draft()
+    public void AllReportsWorkInEveryStatusIncludingClosedAndDraft()
     {
         if (Unavailable) return;
         var store = Store();
@@ -621,7 +621,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     [InlineData("deferred")]
     [InlineData("pinned")]
     [InlineData("hooked")]
-    public void A_status_a_human_set_does_not_stop_the_factory_opening(string status)
+    public void AStatusAHumanSetDoesNotStopTheFactoryOpening(string status)
     {
         if (Unavailable) return;
         var store = Store();
@@ -641,7 +641,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     [InlineData("deferred")]
     [InlineData("pinned")]
     [InlineData("hooked")]
-    public void An_update_keeps_the_status_a_human_set(string status)
+    public void AnUpdateKeepsTheStatusAHumanSet(string status)
     {
         if (Unavailable) return;
         var store = Store();
@@ -661,7 +661,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     [InlineData("deferred")]
     [InlineData("pinned")]
     [InlineData("hooked")]
-    public void A_status_a_human_set_is_dispatched_by_neither_authority(string status)
+    public void AStatusAHumanSetIsDispatchedByNeitherAuthority(string status)
     {
         if (Unavailable) return;
         var store = Store();
@@ -679,7 +679,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void A_status_the_factory_has_taken_over_is_not_carried_any_further()
+    public void AStatusTheFactoryHasTakenOverIsNotCarriedAnyFurther()
     {
         if (Unavailable) return;
         var store = Store();
@@ -702,7 +702,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void A_legacy_priority_on_an_item_does_not_halt_the_backlog_write()
+    public void ALegacyPriorityOnAnItemDoesNotHaltTheBacklogWrite()
     {
         if (Unavailable) return;
         var store = Store();
@@ -721,7 +721,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void A_fold_already_holding_a_legacy_priority_opens_reconciles_and_updates_without_halting()
+    public void AFoldAlreadyHoldingALegacyPriorityOpensReconcilesAndUpdatesWithoutHalting()
     {
         if (Unavailable) return;
         var store = Store();
@@ -757,11 +757,11 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         """.ReplaceLineEndings("");
 
     [Fact]
-    public void Reclaim_reverts_nothing_while_every_lease_is_live()
+    public void ReclaimRevertsNothingWhileEveryLeaseIsLive()
     {
         if (Unavailable) return;
 
-        // The counterpart to Reclaim_resolves_a_stale_lease_to_the_item_it_stranded, which builds an
+        // The counterpart to ReclaimResolvesAStaleLeaseToTheItemItStranded, which builds an
         // expired lease rather than waiting one out: what this pins is that a pass over healthy leases
         // is a no-op that neither throws nor invents items.
         Assert.Empty(Store().Reclaim(TimeSpan.FromMinutes(15)));
@@ -832,7 +832,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     private const string OtherMachine = "other-machine";
 
     [Fact]
-    public void Reclaim_leaves_a_stale_lease_another_machine_holds_alone()
+    public void ReclaimLeavesAStaleLeaseAnotherMachineHoldsAlone()
     {
         if (Unavailable) return;
         DrainReadyQueue();
@@ -846,7 +846,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
 
         // Critical 2's own acceptance criterion — "a foreign lease is not reclaimed" — asserted on the
         // reap itself rather than on the flags. The argument test and
-        // TryClaim_stamps_the_lease_with_this_checkouts_node_id each pin one guard's precondition;
+        // TryClaimStampsTheLeaseWithThisCheckoutsNodeId each pin one guard's precondition;
         // this pins the composed result, which is what the plan actually asked for. It became
         // affordable when Task 5 found the `bd import` route: bd's lease TTL is a fixed five minutes,
         // which is what made a genuinely stale lease unaffordable and is the premise this test used to
@@ -869,7 +869,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Reclaim_resolves_a_stale_lease_to_the_item_it_stranded()
+    public void ReclaimResolvesAStaleLeaseToTheItemItStranded()
     {
         if (Unavailable) return;
         DrainReadyQueue();
@@ -908,7 +908,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Reclaim_reports_itself_as_scoped_to_this_checkouts_assignee()
+    public void ReclaimReportsItselfAsScopedToThisCheckoutsAssignee()
     {
         if (Unavailable) return;
 
@@ -939,7 +939,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void A_sync_beads_could_not_complete_leaves_the_factory_able_to_work_on()
+    public void ASyncBeadsCouldNotCompleteLeavesTheFactoryAbleToWorkOn()
     {
         var cli = new FailsSyncCalls(database.Directory, Owner);
         var logged = new List<string>();
@@ -961,7 +961,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Sync_without_a_remote_reports_nothing()
+    public void SyncWithoutARemoteReportsNothing()
     {
         if (Unavailable) return;
         var logged = new List<string>();
@@ -975,7 +975,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void A_related_edge_another_tool_added_does_not_block_the_item()
+    public void ARelatedEdgeAnotherToolAddedDoesNotBlockTheItem()
     {
         if (Unavailable) return;
         DrainReadyQueue();
@@ -995,7 +995,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void An_edit_to_a_field_beads_owns_natively_survives_a_reconcile()
+    public void AnEditToAFieldBeadsOwnsNativelySurvivesAReconcile()
     {
         if (Unavailable) return;
         var store = Store();
@@ -1027,7 +1027,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void An_edit_keeps_the_beads_own_description_and_criteria_cells_current()
+    public void AnEditKeepsTheBeadsOwnDescriptionAndCriteriaCellsCurrent()
     {
         if (Unavailable) return;
         var store = Store();
@@ -1052,7 +1052,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Clearing_an_items_intent_clears_the_beads_description_rather_than_leaving_it_stale()
+    public void ClearingAnItemsIntentClearsTheBeadsDescriptionRatherThanLeavingItStale()
     {
         if (Unavailable) return;
         var store = Store();
@@ -1074,7 +1074,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void Reconciling_a_real_backlog_twice_writes_nothing_the_second_time()
+    public void ReconcilingARealBacklogTwiceWritesNothingTheSecondTime()
     {
         if (Unavailable) return;
         var store = Store();
@@ -1113,7 +1113,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
         [.. Cli().Json<BeadRecord>("ready", "--json", "--limit", "0").Select(bead => bead.Id)];
 
     [Fact]
-    public void An_edge_a_human_already_typed_as_another_type_is_logged_rather_than_halting()
+    public void AnEdgeAHumanAlreadyTypedAsAnotherTypeIsLoggedRatherThanHalting()
     {
         if (Unavailable) return;
         var logged = new List<string>();
@@ -1139,7 +1139,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void An_edge_beads_refuses_as_broken_is_still_loud()
+    public void AnEdgeBeadsRefusesAsBrokenIsStillLoud()
     {
         if (Unavailable) return;
         var store = Store();
@@ -1157,7 +1157,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void An_edge_added_after_filing_reaches_beads_and_survives_a_reconcile()
+    public void AnEdgeAddedAfterFilingReachesBeadsAndSurvivesAReconcile()
     {
         if (Unavailable) return;
         var store = Store();
@@ -1193,7 +1193,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void An_edge_removed_after_filing_is_removed_in_beads()
+    public void AnEdgeRemovedAfterFilingIsRemovedInBeads()
     {
         if (Unavailable) return;
         var store = Store();
@@ -1215,7 +1215,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void An_update_leaves_a_non_blocking_edge_another_tool_added_in_place()
+    public void AnUpdateLeavesANonBlockingEdgeAnotherToolAddedInPlace()
     {
         if (Unavailable) return;
         var store = Store();
@@ -1239,7 +1239,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     }
 
     [Fact]
-    public void An_edge_beads_refuses_fails_loudly_rather_than_leaving_the_two_disagreeing()
+    public void AnEdgeBeadsRefusesFailsLoudlyRatherThanLeavingTheTwoDisagreeing()
     {
         if (Unavailable) return;
         var store = Store();
@@ -1270,7 +1270,7 @@ public class BeadsWorkItemStoreTests(BeadsDatabase database) : IClassFixture<Bea
     private const string RenamedByTheRefusedUpdate = "renamed by the update whose edge was refused";
 
     [Fact]
-    public void An_update_that_drops_a_blocker_leaves_a_foreign_edge_on_the_same_item_alone()
+    public void AnUpdateThatDropsABlockerLeavesAForeignEdgeOnTheSameItemAlone()
     {
         if (Unavailable) return;
         var logged = new List<string>();

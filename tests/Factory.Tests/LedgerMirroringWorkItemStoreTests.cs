@@ -46,7 +46,7 @@ public class LedgerMirroringWorkItemStoreTests
     }
 
     [Fact]
-    public void Claiming_an_item_the_fold_already_holds_carries_the_new_owner_into_it()
+    public void ClaimingAnItemTheFoldAlreadyHoldsCarriesTheNewOwnerIntoIt()
     {
         var state = FactoryState.Replay([]);
         var item = WorkItem.Create("already known to the fold");
@@ -64,7 +64,7 @@ public class LedgerMirroringWorkItemStoreTests
     }
 
     [Fact]
-    public void Releasing_a_claimed_item_clears_its_owner_in_the_fold()
+    public void ReleasingAClaimedItemClearsItsOwnerInTheFold()
     {
         var state = FactoryState.Replay([]);
         var item = WorkItem.Create("claimed then released") with
@@ -86,7 +86,7 @@ public class LedgerMirroringWorkItemStoreTests
     }
 
     [Fact]
-    public void Reclaiming_a_stale_lease_keeps_the_run_state_the_backlog_does_not_store()
+    public void ReclaimingAStaleLeaseKeepsTheRunStateTheBacklogDoesNotStore()
     {
         var state = FactoryState.Replay([]);
         var item = WorkItem.Create("stalled mid-flight") with
@@ -156,7 +156,7 @@ public class LedgerMirroringWorkItemStoreTests
     }
 
     [Fact]
-    public void Appending_to_a_ledger_this_process_may_not_write_reports_access_denied()
+    public void AppendingToALedgerThisProcessMayNotWriteReportsAccessDenied()
     {
         using var ledger = new UnwritableLedger();
         using var history = new JsonlRunHistory(ledger.LedgerPath);
@@ -169,7 +169,7 @@ public class LedgerMirroringWorkItemStoreTests
     }
 
     [Fact]
-    public void A_claim_survives_a_ledger_this_process_may_not_write()
+    public void AClaimSurvivesALedgerThisProcessMayNotWrite()
     {
         var state = FactoryState.Replay([]);
         var item = WorkItem.Create("claimed while the ledger is read-only");
@@ -197,7 +197,7 @@ public class LedgerMirroringWorkItemStoreTests
     }
 
     [Fact]
-    public void A_transition_survives_a_ledger_this_process_may_not_write()
+    public void ATransitionSurvivesALedgerThisProcessMayNotWrite()
     {
         var state = FactoryState.Replay([]);
         var item = WorkItem.Create("returned to the queue while the ledger is read-only") with
@@ -222,7 +222,7 @@ public class LedgerMirroringWorkItemStoreTests
     }
 
     [Fact]
-    public void A_ledger_that_reports_itself_closed_is_not_swallowed()
+    public void ALedgerThatReportsItselfClosedIsNotSwallowed()
     {
         var state = FactoryState.Replay([]);
         var item = WorkItem.Create("mirrored after the host was disposed");

@@ -66,7 +66,7 @@ public sealed class DoctorCommandTests : IDisposable
     }
 
     [Fact]
-    public void Healthy_Deployment_Returns_ExitCode_Zero()
+    public void HealthyDeploymentReturnsExitCodeZero()
     {
         MakeToolchainDetectable();
         PutClaudeOnPath();
@@ -79,7 +79,7 @@ public sealed class DoctorCommandTests : IDisposable
     }
 
     [Fact]
-    public void Missing_Claude_Cli_Returns_NonZero_ExitCode()
+    public void MissingClaudeCliReturnsNonZeroExitCode()
     {
         MakeToolchainDetectable();
         RemoveClaudeFromPath();
@@ -92,7 +92,7 @@ public sealed class DoctorCommandTests : IDisposable
     }
 
     [Fact]
-    public void Invalid_Blueprint_Returns_NonZero_ExitCode()
+    public void InvalidBlueprintReturnsNonZeroExitCode()
     {
         MakeToolchainDetectable();
         PutClaudeOnPath();
@@ -113,7 +113,7 @@ public sealed class DoctorCommandTests : IDisposable
     }
 
     [Fact]
-    public void Output_Includes_All_Sections()
+    public void OutputIncludesAllSections()
     {
         MakeToolchainDetectable();
         PutClaudeOnPath();

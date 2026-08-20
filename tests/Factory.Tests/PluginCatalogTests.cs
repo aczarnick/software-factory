@@ -16,7 +16,7 @@ public sealed class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void Resolves_a_built_in_without_touching_the_plugins_directory()
+    public void ResolvesABuiltInWithoutTouchingThePluginsDirectory()
     {
         var registry = new ProviderRegistry();
         registry.Register<IRunHistorySink>("noop", _ => new NoopSink());
@@ -25,7 +25,7 @@ public sealed class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void Loads_a_provider_from_a_plugin_assembly()
+    public void LoadsAProviderFromAPluginAssembly()
     {
         var registry = new ProviderRegistry();
         PluginCatalog.LoadInto(registry, PluginsDirWithFixture(), _ => { });
@@ -36,7 +36,7 @@ public sealed class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void A_plugin_type_unifies_with_the_host_contract_type()
+    public void APluginTypeUnifiesWithTheHostContractType()
     {
         var registry = new ProviderRegistry();
         PluginCatalog.LoadInto(registry, PluginsDirWithFixture(), _ => { });
@@ -49,7 +49,7 @@ public sealed class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void An_unknown_provider_name_names_what_is_available()
+    public void AnUnknownProviderNameNamesWhatIsAvailable()
     {
         var registry = new ProviderRegistry();
         registry.Register<IRunHistorySink>("noop", _ => new NoopSink());
@@ -62,14 +62,14 @@ public sealed class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void A_missing_plugins_directory_is_not_an_error()
+    public void AMissingPluginsDirectoryIsNotAnError()
     {
         var registry = new ProviderRegistry();
         PluginCatalog.LoadInto(registry, Path.Combine(_dir, "absent"), _ => { });
     }
 
     [Fact]
-    public void A_built_in_registered_before_the_scan_shadows_the_plugin_provider()
+    public void ABuiltInRegisteredBeforeTheScanShadowsThePluginProvider()
     {
         var log = new List<string>();
         var registry = new ProviderRegistry(log.Add);
@@ -83,7 +83,7 @@ public sealed class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void A_built_in_registered_after_the_scan_displaces_the_plugin_provider_by_name()
+    public void ABuiltInRegisteredAfterTheScanDisplacesThePluginProviderByName()
     {
         var log = new List<string>();
         var registry = new ProviderRegistry(log.Add);
@@ -97,7 +97,7 @@ public sealed class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void A_provider_with_no_usable_constructor_is_skipped_without_stopping_the_scan()
+    public void AProviderWithNoUsableConstructorIsSkippedWithoutStoppingTheScan()
     {
         var registry = new ProviderRegistry();
         var log = new List<string>();
@@ -109,7 +109,7 @@ public sealed class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void A_provider_implementing_two_ports_is_registered_under_both()
+    public void AProviderImplementingTwoPortsIsRegisteredUnderBoth()
     {
         var registry = new ProviderRegistry();
         PluginCatalog.LoadInto(registry, PluginsDirWithFixture(), _ => { });
@@ -122,7 +122,7 @@ public sealed class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void A_provider_receives_its_options_and_runs_when_called_through_the_contract()
+    public void AProviderReceivesItsOptionsAndRunsWhenCalledThroughTheContract()
     {
         var recorded = Path.Combine(_dir, "recorded.txt");
         var registry = new ProviderRegistry();
@@ -136,7 +136,7 @@ public sealed class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void A_broken_assembly_is_reported_and_does_not_stop_the_scan()
+    public void ABrokenAssemblyIsReportedAndDoesNotStopTheScan()
     {
         var plugins = PluginsDirWithFixture();
 
@@ -153,7 +153,7 @@ public sealed class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void An_assembly_that_yields_no_providers_is_reported()
+    public void AnAssemblyThatYieldsNoProvidersIsReported()
     {
         var registry = new ProviderRegistry();
         var log = new List<string>();
@@ -164,7 +164,7 @@ public sealed class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void A_provider_built_against_another_contract_version_is_refused_and_named()
+    public void AProviderBuiltAgainstAnotherContractVersionIsRefusedAndNamed()
     {
         var registry = new ProviderRegistry();
         var log = new List<string>();
@@ -177,7 +177,7 @@ public sealed class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void A_provider_built_against_the_previous_contract_major_is_refused_and_named()
+    public void AProviderBuiltAgainstThePreviousContractMajorIsRefusedAndNamed()
     {
         var registry = new ProviderRegistry();
         var log = new List<string>();
@@ -203,7 +203,7 @@ public sealed class PluginCatalogTests : IDisposable
     private static bool Names(string line, int contractVersion) => line.Contains($"v{contractVersion}");
 
     [Fact]
-    public void Scanning_the_same_directory_twice_reuses_one_load_context_per_assembly()
+    public void ScanningTheSameDirectoryTwiceReusesOneLoadContextPerAssembly()
     {
         var plugins = PluginsDirWithFixture();
         var first = new ProviderRegistry();
@@ -220,7 +220,7 @@ public sealed class PluginCatalogTests : IDisposable
     }
 
     [Fact]
-    public void Host_falls_back_to_built_ins_when_no_plugins_are_present()
+    public void HostFallsBackToBuiltInsWhenNoPluginsArePresent()
     {
         var dir = TempDir.Create();
         try

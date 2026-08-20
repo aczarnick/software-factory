@@ -17,7 +17,7 @@ public class DotnetToolchainProbeTests
     }
 
     [Fact]
-    public async Task ProbeAsync_InstalledPatchSatisfiesRollForward_ReturnsCompatible()
+    public async Task ProbeAsyncInstalledPatchSatisfiesRollForwardReturnsCompatible()
     {
         var reader = new FakeToolchainRequirementReader(new RepoToolchainRequirement(["6.0.100"], []));
         var provider = new FakeInstalledSdkProvider(["6.0.108"]);
@@ -31,7 +31,7 @@ public class DotnetToolchainProbeTests
     }
 
     [Fact]
-    public async Task ProbeAsync_InstalledMajorVersionDiffers_ReturnsMismatchWithExactVersionStrings()
+    public async Task ProbeAsyncInstalledMajorVersionDiffersReturnsMismatchWithExactVersionStrings()
     {
         var reader = new FakeToolchainRequirementReader(new RepoToolchainRequirement(["6.0.100"], []));
         var provider = new FakeInstalledSdkProvider(["7.0.101"]);
@@ -46,7 +46,7 @@ public class DotnetToolchainProbeTests
     }
 
     [Fact]
-    public async Task ProbeAsync_InstalledFeatureBandDiffers_ReturnsMismatch()
+    public async Task ProbeAsyncInstalledFeatureBandDiffersReturnsMismatch()
     {
         // Same major and minor as required, but a different feature band (200 vs 100) — a
         // naive "same major" comparer would wrongly call this compatible.

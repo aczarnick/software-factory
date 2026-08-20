@@ -5,7 +5,7 @@ namespace Factory.Tests;
 public class ShellRunTests
 {
     [Fact]
-    public void Run_captures_stdout_and_exit_code()
+    public void RunCapturesStdoutAndExitCode()
     {
         var result = Shell.Run("/bin/echo", ["hello"], Directory.GetCurrentDirectory());
 
@@ -14,7 +14,7 @@ public class ShellRunTests
     }
 
     [Fact]
-    public void Run_reports_a_non_zero_exit()
+    public void RunReportsANonZeroExit()
     {
         var result = Shell.Run("/bin/sh", ["-c", "exit 3"], Directory.GetCurrentDirectory());
 
@@ -23,7 +23,7 @@ public class ShellRunTests
     }
 
     [Fact]
-    public void Run_passes_environment_variables_through()
+    public void RunPassesEnvironmentVariablesThrough()
     {
         var result = Shell.Run("/bin/sh", ["-c", "echo $FACTORY_PROBE"],
             Directory.GetCurrentDirectory(),
@@ -33,7 +33,7 @@ public class ShellRunTests
     }
 
     [Fact]
-    public void Run_times_out_rather_than_hanging()
+    public void RunTimesOutRatherThanHanging()
     {
         var result = Shell.Run("/bin/sh", ["-c", "sleep 5"], Directory.GetCurrentDirectory(),
             timeoutSeconds: 1);
@@ -42,7 +42,7 @@ public class ShellRunTests
     }
 
     [Fact]
-    public void Run_does_not_wait_for_a_lingering_grandchild_to_release_the_pipe()
+    public void RunDoesNotWaitForALingeringGrandchildToReleaseThePipe()
     {
         var started = System.Diagnostics.Stopwatch.StartNew();
 
@@ -58,7 +58,7 @@ public class ShellRunTests
     }
 
     [Fact]
-    public void Run_reports_rather_than_throws_when_the_executable_does_not_exist()
+    public void RunReportsRatherThanThrowsWhenTheExecutableDoesNotExist()
     {
         // Process.Start on a nonexistent file throws System.ComponentModel.Win32Exception -- a
         // SystemException that is neither an IOException nor an InvalidOperationException. That
@@ -72,7 +72,7 @@ public class ShellRunTests
     }
 
     [Fact]
-    public void Run_bounds_how_much_output_it_retains()
+    public void RunBoundsHowMuchOutputItRetains()
     {
         // 200k characters against a 64k bound. Callers that parse structured output rely on this
         // bound being knowable, because a capture cut at it is not valid JSON.

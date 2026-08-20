@@ -13,11 +13,11 @@ public class WorkItemStateTests
     [InlineData(WorkItemState.Draft, WorkItemState.Done, false)]
     [InlineData(WorkItemState.Done, WorkItemState.Ready, false)]
     [InlineData(WorkItemState.Cancelled, WorkItemState.InProgress, false)]
-    public void Transitions_are_enforced(WorkItemState from, WorkItemState to, bool allowed) =>
+    public void TransitionsAreEnforced(WorkItemState from, WorkItemState to, bool allowed) =>
         Assert.Equal(allowed, WorkItemStates.CanTransition(from, to));
 
     [Fact]
-    public void Done_and_cancelled_are_terminal()
+    public void DoneAndCancelledAreTerminal()
     {
         Assert.True(WorkItemStates.IsTerminal(WorkItemState.Done));
         Assert.True(WorkItemStates.IsTerminal(WorkItemState.Cancelled));
@@ -25,7 +25,7 @@ public class WorkItemStateTests
     }
 
     [Fact]
-    public void Item_is_fully_deterministic_only_when_every_criterion_is_machine_checkable()
+    public void ItemIsFullyDeterministicOnlyWhenEveryCriterionIsMachineCheckable()
     {
         var machine = WorkItem.Create("a") with
         {
@@ -42,7 +42,7 @@ public class WorkItemStateTests
     }
 
     [Fact]
-    public void Blocked_status_and_reason_round_trip_through_FactoryJson_distinct_from_failed()
+    public void BlockedStatusAndReasonRoundTripThroughFactoryJsonDistinctFromFailed()
     {
         var blocked = WorkItem.Create("needs a newer toolchain") with
         {
@@ -73,7 +73,7 @@ public class BudgetTests
         };
 
     [Fact]
-    public void Blocks_spending_past_the_item_ceiling()
+    public void BlocksSpendingPastTheItemCeiling()
     {
         var guard = new BudgetGuard(new BudgetSpec { DailyUsd = 100, PerItemUsd = 1m });
         var item = Item();
@@ -87,7 +87,7 @@ public class BudgetTests
     }
 
     [Fact]
-    public void Blocks_spending_past_the_daily_ceiling()
+    public void BlocksSpendingPastTheDailyCeiling()
     {
         var guard = new BudgetGuard(new BudgetSpec { DailyUsd = 1m, PerItemUsd = 100m });
         guard.Record(Item(), 1.5m);
@@ -95,7 +95,7 @@ public class BudgetTests
     }
 
     [Fact]
-    public void Self_improvement_cannot_starve_user_work()
+    public void SelfImprovementCannotStarveUserWork()
     {
         var guard = new BudgetGuard(new BudgetSpec { DailyUsd = 10m, PerItemUsd = 100m, EvolutionShare = 0.15m });
         var evolution = Item(ProvenanceKind.Evolution);
@@ -107,7 +107,7 @@ public class BudgetTests
     }
 
     [Fact]
-    public void Run_ceiling_is_the_smallest_of_station_item_and_daily_remaining()
+    public void RunCeilingIsTheSmallestOfStationItemAndDailyRemaining()
     {
         var guard = new BudgetGuard(new BudgetSpec { DailyUsd = 10m, PerItemUsd = 2m, PerRunUsd = 5m });
         var item = Item();
@@ -118,7 +118,7 @@ public class BudgetTests
     }
 
     [Fact]
-    public void Restores_spend_from_history_so_restarts_do_not_reset_the_budget()
+    public void RestoresSpendFromHistorySoRestartsDoNotResetTheBudget()
     {
         var item = Item();
         var guard = new BudgetGuard(new BudgetSpec { DailyUsd = 10m, PerItemUsd = 1m });
@@ -136,7 +136,7 @@ public class BudgetTests
 public class BudgetRestoreTests
 {
     [Fact]
-    public void Restore_rehydrates_per_item_and_daily_spend_from_a_view()
+    public void RestoreRehydratesPerItemAndDailySpendFromAView()
     {
         var guard = new BudgetGuard(new BudgetSpec { DailyUsd = 10m, PerItemUsd = 5m });
 
@@ -151,7 +151,7 @@ public class BudgetRestoreTests
     }
 
     [Fact]
-    public void Restore_replaces_prior_per_item_spend_rather_than_adding_to_it()
+    public void RestoreReplacesPriorPerItemSpendRatherThanAddingToIt()
     {
         var guard = new BudgetGuard(new BudgetSpec { DailyUsd = 10m, PerItemUsd = 5m });
 
@@ -173,7 +173,7 @@ public class BudgetRestoreTests
 public class FactoryStateTests
 {
     [Fact]
-    public void Dispatchable_withholds_items_whose_dependencies_are_unmet()
+    public void DispatchableWithholdsItemsWhoseDependenciesAreUnmet()
     {
         var first = WorkItem.Create("first") with { State = WorkItemState.Ready };
         var second = WorkItem.Create("second") with { State = WorkItemState.Ready, DependsOn = [first.Id] };
@@ -186,7 +186,7 @@ public class FactoryStateTests
     }
 
     [Fact]
-    public void Dispatchable_orders_by_priority_then_age()
+    public void DispatchableOrdersByPriorityThenAge()
     {
         var low = WorkItem.Create("low") with { State = WorkItemState.Ready, Priority = Priorities.Lowest };
         var high = WorkItem.Create("high") with { State = WorkItemState.Ready, Priority = Priorities.Highest };
@@ -196,7 +196,7 @@ public class FactoryStateTests
     }
 
     [Fact]
-    public void Run_costs_accumulate_onto_their_item()
+    public void RunCostsAccumulateOntoTheirItem()
     {
         var item = WorkItem.Create("thing");
         var state = FactoryState.Replay([
@@ -210,7 +210,7 @@ public class FactoryStateTests
     }
 
     [Fact]
-    public void Descendants_walks_the_whole_tree()
+    public void DescendantsWalksTheWholeTree()
     {
         var root = WorkItem.Create("root");
         var child = WorkItem.Create("child") with { ParentId = root.Id };
@@ -227,13 +227,13 @@ public class FactoryStateTests
 public class BlueprintTests
 {
     [Fact]
-    public void Standard_blueprint_is_valid()
+    public void StandardBlueprintIsValid()
     {
         Assert.Empty(Blueprint.Standard().Validate());
     }
 
     [Fact]
-    public void Verification_station_costs_no_tokens()
+    public void VerificationStationCostsNoTokens()
     {
         var verify = Blueprint.Standard().Require("verify");
         Assert.Equal(TokenProfile.None, verify.Profile);
@@ -241,7 +241,7 @@ public class BlueprintTests
     }
 
     [Fact]
-    public void Rejects_a_thin_station_that_declares_tools()
+    public void RejectsAThinStationThatDeclaresTools()
     {
         var bp = Blueprint.Standard();
         var broken = bp with
@@ -254,14 +254,14 @@ public class BlueprintTests
     }
 
     [Fact]
-    public void Rejects_a_pipeline_referencing_an_unknown_station()
+    public void RejectsAPipelineReferencingAnUnknownStation()
     {
         var broken = Blueprint.Standard() with { Pipeline = ["decompose", "nonexistent"] };
         Assert.Contains(broken.Validate(), e => e.Contains("unknown station 'nonexistent'"));
     }
 
     [Fact]
-    public void Rejects_a_delegate_to_an_unlinked_factory()
+    public void RejectsADelegateToAnUnlinkedFactory()
     {
         var bp = Blueprint.Standard();
         var broken = bp with
@@ -277,7 +277,7 @@ public class BlueprintTests
     }
 
     [Fact]
-    public void NextAfter_walks_the_pipeline_and_stops_at_the_end()
+    public void NextAfterWalksThePipelineAndStopsAtTheEnd()
     {
         var bp = Blueprint.Standard();
         Assert.Equal("decompose", bp.NextAfter(null));
@@ -286,7 +286,7 @@ public class BlueprintTests
     }
 
     [Fact]
-    public void Composite_routes_through_its_children_and_is_itself_valid()
+    public void CompositeRoutesThroughItsChildrenAndIsItselfValid()
     {
         var composite = Blueprint.Composite("platform", new Dictionary<string, string>
         {
@@ -315,7 +315,7 @@ public class BlueprintTests
 public class HeartbeatStatusTests
 {
     [Fact]
-    public void Round_trips_through_FactoryJson_without_loss()
+    public void RoundTripsThroughFactoryJsonWithoutLoss()
     {
         var status = new HeartbeatStatus
         {
@@ -370,7 +370,7 @@ public class HeartbeatStatusTests
     }
 
     [Fact]
-    public void Defaults_Spend_UsageWindows_and_RecentGates_to_empty()
+    public void DefaultsSpendUsageWindowsAndRecentGatesToEmpty()
     {
         var status = new HeartbeatStatus { Pid = 4242, StartedAtUtc = DateTime.UtcNow };
 
@@ -381,7 +381,7 @@ public class HeartbeatStatusTests
     }
 
     [Fact]
-    public void HeartbeatStatus_RoundTrips_HeartbeatWorkItemStatus()
+    public void HeartbeatStatusRoundTripsHeartbeatWorkItemStatus()
     {
         var status = new HeartbeatStatus
         {
@@ -412,7 +412,7 @@ public class HeartbeatStatusTests
     }
 
     [Fact]
-    public void HeartbeatStatus_WithoutWorkItemsField_DeserializesToEmptyCollection()
+    public void HeartbeatStatusWithoutWorkItemsFieldDeserializesToEmptyCollection()
     {
         var json = """{"pid":4242,"startedAtUtc":"2026-08-13T09:00:00Z","status":"running"}""";
 
@@ -425,7 +425,7 @@ public class HeartbeatStatusTests
 public class IdFormatTests
 {
     [Fact]
-    public void New_emits_a_beads_compatible_identifier()
+    public void NewEmitsABeadsCompatibleIdentifier()
     {
         var id = Ids.New("wi");
 
@@ -434,7 +434,7 @@ public class IdFormatTests
     }
 
     [Fact]
-    public void Work_items_default_to_the_middle_priority_band()
+    public void WorkItemsDefaultToTheMiddlePriorityBand()
     {
         Assert.Equal(2, WorkItem.Create("thing").Priority);
     }
@@ -443,13 +443,13 @@ public class IdFormatTests
 public class PriorityBandTests
 {
     [Fact]
-    public void Below_files_derived_work_one_step_less_urgent()
+    public void BelowFilesDerivedWorkOneStepLessUrgent()
     {
         Assert.Equal(Priorities.Default + 1, Priorities.Below(Priorities.Default));
     }
 
     [Fact]
-    public void Below_never_leaves_the_band_for_already_lowest_work()
+    public void BelowNeverLeavesTheBandForAlreadyLowestWork()
     {
         Assert.Equal(Priorities.Lowest, Priorities.Below(Priorities.Lowest));
     }
@@ -460,7 +460,7 @@ public class PriorityBandTests
     [InlineData(2)]
     [InlineData(3)]
     [InlineData(4)]
-    public void Below_stays_inside_the_band_the_backlog_store_accepts(int priority)
+    public void BelowStaysInsideTheBandTheBacklogStoreAccepts(int priority)
     {
         var derived = Priorities.Below(priority);
 
@@ -474,7 +474,7 @@ public class PriorityBandTests
     [InlineData(200, 4)]
     [InlineData(-1, 0)]
     [InlineData(int.MinValue, 0)]
-    public void Clamp_brings_a_value_outside_the_band_to_its_nearest_edge(int given, int expected)
+    public void ClampBringsAValueOutsideTheBandToItsNearestEdge(int given, int expected)
     {
         Assert.Equal(expected, Priorities.Clamp(given));
     }
@@ -483,13 +483,13 @@ public class PriorityBandTests
     [InlineData(0)]
     [InlineData(2)]
     [InlineData(4)]
-    public void Clamp_leaves_a_value_already_in_the_band_alone(int priority)
+    public void ClampLeavesAValueAlreadyInTheBandAlone(int priority)
     {
         Assert.Equal(priority, Priorities.Clamp(priority));
     }
 
     [Fact]
-    public void No_caller_can_construct_a_work_item_outside_the_band()
+    public void NoCallerCanConstructAWorkItemOutsideTheBand()
     {
         // bd refuses -p 5 and -p -1 outright (exit 1, probed), so an out-of-band value on an item is
         // not a cosmetic inconsistency: it is a backlog write that fails, and BeadsWorkItemStore.Write
@@ -501,7 +501,7 @@ public class PriorityBandTests
     }
 
     [Fact]
-    public void A_ledger_line_carrying_a_legacy_priority_is_normalised_as_the_fold_replays_it()
+    public void ALedgerLineCarryingALegacyPriorityIsNormalisedAsTheFoldReplaysIt()
     {
         // The seam that matters for the cutover: this repository's own fold holds 87 items at
         // priorities 100, 150 and 200, and every one of them arrives through Replay rather than

@@ -15,7 +15,7 @@ public sealed class LedgerWorkItemStoreTests : IDisposable
     }
 
     [Fact]
-    public void Add_makes_the_item_readable()
+    public void AddMakesTheItemReadable()
     {
         var (store, history) = Open();
         using var _ = history;
@@ -27,7 +27,7 @@ public sealed class LedgerWorkItemStoreTests : IDisposable
     }
 
     [Fact]
-    public void Transition_records_the_new_state()
+    public void TransitionRecordsTheNewState()
     {
         var (store, history) = Open();
         using var _ = history;
@@ -39,7 +39,7 @@ public sealed class LedgerWorkItemStoreTests : IDisposable
     }
 
     [Fact]
-    public void Transition_rejects_an_illegal_move()
+    public void TransitionRejectsAnIllegalMove()
     {
         var (store, history) = Open();
         using var _ = history;
@@ -51,7 +51,7 @@ public sealed class LedgerWorkItemStoreTests : IDisposable
     }
 
     [Fact]
-    public void TryClaim_takes_the_highest_priority_ready_item_and_marks_it_in_progress()
+    public void TryClaimTakesTheHighestPriorityReadyItemAndMarksItInProgress()
     {
         var (store, history) = Open();
         using var _ = history;
@@ -66,7 +66,7 @@ public sealed class LedgerWorkItemStoreTests : IDisposable
     }
 
     [Fact]
-    public void TryClaim_withholds_an_item_whose_dependency_is_unmet()
+    public void TryClaimWithholdsAnItemWhoseDependencyIsUnmet()
     {
         var (store, history) = Open();
         using var _ = history;
@@ -86,7 +86,7 @@ public sealed class LedgerWorkItemStoreTests : IDisposable
     }
 
     [Fact]
-    public void TryClaim_returns_null_when_nothing_is_ready()
+    public void TryClaimReturnsNullWhenNothingIsReady()
     {
         var (store, history) = Open();
         using var _ = history;
@@ -98,7 +98,7 @@ public sealed class LedgerWorkItemStoreTests : IDisposable
     }
 
     [Fact]
-    public void Update_persists_the_new_field_values()
+    public void UpdatePersistsTheNewFieldValues()
     {
         var (store, history) = Open();
         using var _ = history;
@@ -112,7 +112,7 @@ public sealed class LedgerWorkItemStoreTests : IDisposable
     }
 
     [Fact]
-    public void Release_returns_a_claimed_item_to_the_queue()
+    public void ReleaseReturnsAClaimedItemToTheQueue()
     {
         var (store, history) = Open();
         using var _ = history;
@@ -126,7 +126,7 @@ public sealed class LedgerWorkItemStoreTests : IDisposable
     }
 
     [Fact]
-    public void Items_survive_a_reopen()
+    public void ItemsSurviveAReopen()
     {
         var (store, history) = Open();
         var added = store.Add(WorkItem.Create("durable") with { State = WorkItemState.Ready });

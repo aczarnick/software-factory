@@ -67,7 +67,7 @@ public class GuardedProviderTests
     }
 
     [Fact]
-    public void A_failing_store_halts_with_a_named_exception()
+    public void AFailingStoreHaltsWithANamedException()
     {
         var store = new GuardedWorkItemStore(new ThrowingStore(), "beads");
 
@@ -78,7 +78,7 @@ public class GuardedProviderTests
     }
 
     [Fact]
-    public void A_failing_sink_is_disabled_after_the_failure_ceiling()
+    public void AFailingSinkIsDisabledAfterTheFailureCeiling()
     {
         var inner = new ThrowingSink();
         var warnings = new List<string>();
@@ -91,7 +91,7 @@ public class GuardedProviderTests
     }
 
     [Fact]
-    public void Fan_out_still_writes_durably_when_every_sink_fails()
+    public void FanOutStillWritesDurablyWhenEverySinkFails()
     {
         var dir = TempDir.Create();
         try
@@ -108,7 +108,7 @@ public class GuardedProviderTests
     }
 
     [Fact]
-    public void Dispose_still_disposes_the_writer_when_a_sink_flush_throws()
+    public void DisposeStillDisposesTheWriterWhenASinkFlushThrows()
     {
         var writer = new RecordingHistory();
         var history = new FanOutRunHistory(writer, [new ThrowingFlushSink()]);
@@ -119,7 +119,7 @@ public class GuardedProviderTests
     }
 
     [Fact]
-    public void Fan_out_writes_durably_before_offering_the_event_to_sinks()
+    public void FanOutWritesDurablyBeforeOfferingTheEventToSinks()
     {
         var dir = TempDir.Create();
         try
@@ -136,7 +136,7 @@ public class GuardedProviderTests
     }
 
     [Fact]
-    public void Concurrent_failures_are_counted_once_each_and_disable_the_sink_once()
+    public void ConcurrentFailuresAreCountedOnceEachAndDisableTheSinkOnce()
     {
         const int callers = 8;
         using var rendezvous = new Barrier(callers);

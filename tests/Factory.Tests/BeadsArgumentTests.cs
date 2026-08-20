@@ -8,7 +8,7 @@ namespace Factory.Tests;
 public class BeadsArgumentTests
 {
     [Fact]
-    public void Reading_the_whole_backlog_defeats_the_default_page_size()
+    public void ReadingTheWholeBacklogDefeatsTheDefaultPageSize()
     {
         var args = BeadMapper.AllArgs();
 
@@ -18,7 +18,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void Reading_one_bead_reaches_every_status()
+    public void ReadingOneBeadReachesEveryStatus()
     {
         var args = BeadMapper.GetArgs("wi-aaaa11112222");
 
@@ -27,7 +27,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void Claiming_names_the_checkout_as_the_assignee()
+    public void ClaimingNamesTheCheckoutAsTheAssignee()
     {
         var args = BeadMapper.ClaimArgs("node-a");
 
@@ -36,7 +36,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void Releasing_clears_the_assignee_as_well_as_the_status()
+    public void ReleasingClearsTheAssigneeAsWellAsTheStatus()
     {
         var args = BeadMapper.ReleaseArgs("wi-aaaa11112222", "node-a");
 
@@ -46,14 +46,14 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void Releasing_does_not_depend_on_the_bead_still_being_claimed()
+    public void ReleasingDoesNotDependOnTheBeadStillBeingClaimed()
     {
         // bd unclaim only works from in_progress; an orphan requeued from review would fail.
         Assert.DoesNotContain("unclaim", BeadMapper.ReleaseArgs("wi-aaaa11112222", "node-a"));
     }
 
     [Fact]
-    public void Updating_an_item_back_to_the_queue_clears_the_assignee()
+    public void UpdatingAnItemBackToTheQueueClearsTheAssignee()
     {
         var args = BeadMapper.UpdateArgs(WorkItem.Create("requeued") with { State = WorkItemState.Ready }, "node-a");
 
@@ -66,7 +66,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void Updating_writes_every_field_beads_owns_natively()
+    public void UpdatingWritesEveryFieldBeadsOwnsNatively()
     {
         var args = BeadMapper.UpdateArgs(
             WorkItem.Create("a new title", "a new intent", WorkItemKind.Bug) with
@@ -89,7 +89,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void Updating_sends_an_emptied_description_rather_than_omitting_the_flag()
+    public void UpdatingSendsAnEmptiedDescriptionRatherThanOmittingTheFlag()
     {
         var args = BeadMapper.UpdateArgs(WorkItem.Create("nothing to say") with { State = WorkItemState.Ready }, "node-a");
 
@@ -101,7 +101,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void Updating_an_item_with_no_criteria_of_its_own_leaves_the_beads_acceptance_cell_alone()
+    public void UpdatingAnItemWithNoCriteriaOfItsOwnLeavesTheBeadsAcceptanceCellAlone()
     {
         var args = BeadMapper.UpdateArgs(WorkItem.Create("no criteria") with { State = WorkItemState.Ready }, "node-a");
 
@@ -111,7 +111,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void Updating_an_item_that_is_not_returning_to_the_queue_leaves_the_assignee_alone()
+    public void UpdatingAnItemThatIsNotReturningToTheQueueLeavesTheAssigneeAlone()
     {
         var args = BeadMapper.UpdateArgs(WorkItem.Create("in flight") with { State = WorkItemState.InReview }, "node-a");
 
@@ -121,7 +121,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void The_write_that_finishes_filing_refuses_to_overwrite_a_bead_someone_else_claimed()
+    public void TheWriteThatFinishesFilingRefusesToOverwriteABeadSomeoneElseClaimed()
     {
         var args = BeadMapper.FilingStatusArgs(WorkItem.Create("a proposal"), "node-a");
 
@@ -136,7 +136,7 @@ public class BeadsArgumentTests
     [InlineData(90, "90s")]
     [InlineData(30, "30s")]
     [InlineData(900, "900s")]
-    public void The_reclaim_grace_window_survives_a_sub_minute_value(int seconds, string expected)
+    public void TheReclaimGraceWindowSurvivesASubMinuteValue(int seconds, string expected)
     {
         var args = BeadMapper.ReclaimArgs(TimeSpan.FromSeconds(seconds), "node-a");
 
@@ -144,7 +144,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void Reclaiming_is_scoped_to_this_checkouts_own_leases()
+    public void ReclaimingIsScopedToThisCheckoutsOwnLeases()
     {
         var args = BeadMapper.ReclaimArgs(TimeSpan.FromMinutes(15), "node-a");
 
@@ -156,7 +156,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void A_reclaim_response_reports_the_leases_it_reverted()
+    public void AReclaimResponseReportsTheLeasesItReverted()
     {
         // Captured verbatim from `bd reclaim --older-than 0s --json` after a lease expired.
         const string json = """
@@ -173,7 +173,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void A_reclaim_response_with_nothing_stale_is_not_a_failure()
+    public void AReclaimResponseWithNothingStaleIsNotAFailure()
     {
         // bd reports an absent list rather than an empty one, which a required member would reject.
         const string json = """{"count": 0, "reclaimed": null, "schema_version": 1, "scoped": false}""";
@@ -185,7 +185,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void Adding_an_edge_names_the_dependent_before_the_blocker()
+    public void AddingAnEdgeNamesTheDependentBeforeTheBlocker()
     {
         var args = BeadMapper.DependencyAddArgs("wi-dependent0001", "wi-blocker000001", "node-a");
 
@@ -196,7 +196,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void Removing_an_edge_names_the_dependent_before_the_blocker()
+    public void RemovingAnEdgeNamesTheDependentBeforeTheBlocker()
     {
         var args = BeadMapper.DependencyRemoveArgs("wi-dependent0001", "wi-blocker000001", "node-a");
 
@@ -208,7 +208,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void An_edge_is_added_as_a_type_beads_actually_treats_as_blocking()
+    public void AnEdgeIsAddedAsATypeBeadsActuallyTreatsAsBlocking()
     {
         var args = BeadMapper.DependencyAddArgs("wi-dependent0001", "wi-blocker000001", "node-a");
 
@@ -221,7 +221,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void An_update_leaves_a_status_the_factory_does_not_own_alone()
+    public void AnUpdateLeavesAStatusTheFactoryDoesNotOwnAlone()
     {
         var pinned = WorkItem.Create("a bead a human pinned") with
         {
@@ -240,7 +240,7 @@ public class BeadsArgumentTests
     }
 
     [Fact]
-    public void An_update_writes_the_status_once_a_caller_has_moved_the_item_off_it()
+    public void AnUpdateWritesTheStatusOnceACallerHasMovedTheItemOffIt()
     {
         var activated = WorkItem.Create("a bead a human pinned") with
         {
