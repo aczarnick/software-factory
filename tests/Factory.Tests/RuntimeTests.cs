@@ -659,3 +659,25 @@ public class ClaimRefreshTests
         Assert.Contains(logged, message => message.Contains("wi-sick"));
     }
 }
+
+public class WorkspaceTests
+{
+    // SemaphoreSlim.Dispose() is idempotent by design: a second call never throws, disposed or
+    // not, so it cannot prove anything got released. The real observable is that an operation
+    // which waits on the gate — IntegrateAsync does, via _integrateGate.WaitAsync — throws
+    // ObjectDisposedException once the gate is gone.
+    [Fact]
+    public async Task WorkspaceReleasesItsIntegrationGateWhenDisposed()
+    {
+        var root = Directory.CreateTempSubdirectory().FullName;
+        var workspace = new Workspace(root, new FactoryPaths(root));
+        await workspace.EnsureRepoAsync();
+        var item = new WorkItem { Id = "wi-dispose-test", Title = "dispose test" };
+        var workDir = await workspace.AcquireAsync(item);
+
+        workspace.Dispose();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => workspace.IntegrateAsync(item, workDir, "message"));
+    }
+}

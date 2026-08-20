@@ -8,7 +8,7 @@ namespace Factory.Runtime;
 /// Integration is the only step that writes to the user's checkout, and it happens only after
 /// every gate has passed.
 /// </summary>
-public sealed class Workspace(string repoRoot, FactoryPaths paths)
+public sealed class Workspace(string repoRoot, FactoryPaths paths) : IDisposable
 {
     // Serialises merges only. Compiles are serialised separately, by the factory-wide
     // ToolchainGate on FactoryServices — the two never nest, so there is no ordering to deadlock.
@@ -19,6 +19,8 @@ public sealed class Workspace(string repoRoot, FactoryPaths paths)
     public bool IsGitRepo => Directory.Exists(Path.Combine(RepoRoot, ".git"));
 
     public static string BranchFor(WorkItem item) => $"factory/{item.Id}";
+
+    public void Dispose() => _integrateGate.Dispose();
 
     /// <summary>Ensures the repository can host worktrees: initialised, with at least one commit.</summary>
     public async Task EnsureRepoAsync(CancellationToken ct = default)
