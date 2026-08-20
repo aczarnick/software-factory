@@ -69,7 +69,7 @@ public class BeadsCli(string workingDirectory, string owner)
         return ReadOrReportTruncation(() => FactoryJson.Read<T>(text), result.Stdout, args);
     }
 
-    private static IReadOnlyList<T> Parse<T>(string stdout, string[] args)
+    private static List<T> Parse<T>(string stdout, string[] args)
     {
         var text = stdout.Trim();
         if (string.IsNullOrEmpty(text) || text == "null") return [];

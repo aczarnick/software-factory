@@ -41,7 +41,7 @@ public static class BacklogReconciler
     /// providers -- where naming hundreds of ids one line each would bury the report it is part of.</summary>
     private const int MaxNamedVanishedItems = 5;
 
-    private static void ReportVanished(IReadOnlyList<string> vanishedIds, Action<string> log)
+    private static void ReportVanished(List<string> vanishedIds, Action<string> log)
     {
         foreach (var vanished in vanishedIds.Take(MaxNamedVanishedItems))
             log($"{vanished} is in the fold but no longer exists in the backlog store, so it still " +

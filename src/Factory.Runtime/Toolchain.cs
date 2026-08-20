@@ -247,7 +247,7 @@ public sealed class DotnetToolchainRequirementReader : IToolchainRequirementRead
         return [];
     }
 
-    private static IReadOnlyList<string> ReadTargetFrameworks(string repoPath)
+    private static List<string> ReadTargetFrameworks(string repoPath)
     {
         var frameworks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 

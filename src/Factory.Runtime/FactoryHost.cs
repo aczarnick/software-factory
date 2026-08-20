@@ -163,7 +163,7 @@ public sealed class FactoryHost : IDisposable
     // A sink that cannot be built is the same class of event as one that cannot be reached:
     // logged and dropped. That covers a name no provider answers to as well — a mistyped
     // tracing backend must not stop a factory whose durable writer is fine.
-    private static IRunHistorySink? BuildSink(
+    private static GuardedRunHistorySink? BuildSink(
         ProviderRegistry registry, ProviderRef reference, Action<string> log)
     {
         try
