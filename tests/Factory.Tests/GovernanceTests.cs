@@ -245,7 +245,7 @@ public sealed class ToolchainTests : IDisposable
     public async Task ACheckThatFailsOnceThenPassesIsRecordedAsFlakyNotBroken()
     {
         var calls = 0;
-        var results = await ToolchainRunner.RunAsync(OneCheck(), "/tmp", default,
+        var results = await ToolchainRunner.RunAsync(OneCheck(), "/tmp",
             (_, _, _) => Task.FromResult(++calls == 1
                 ? new ShellResult(132, "", "csc.dll exited with code 132", false)
                 : new ShellResult(0, "ok", "", false)));
@@ -261,7 +261,7 @@ public sealed class ToolchainTests : IDisposable
     public async Task ACheckThatFailsTwiceIsBelieved()
     {
         var calls = 0;
-        var results = await ToolchainRunner.RunAsync(OneCheck(), "/tmp", default,
+        var results = await ToolchainRunner.RunAsync(OneCheck(), "/tmp",
             (_, _, _) => { calls++; return Task.FromResult(new ShellResult(1, "", "real error", false)); });
 
         Assert.False(results[0].Passed);
@@ -274,7 +274,7 @@ public sealed class ToolchainTests : IDisposable
     public async Task ACheckThatPassesFirstTimeIsNotRunAgain()
     {
         var calls = 0;
-        var results = await ToolchainRunner.RunAsync(OneCheck(), "/tmp", default,
+        var results = await ToolchainRunner.RunAsync(OneCheck(), "/tmp",
             (_, _, _) => { calls++; return Task.FromResult(new ShellResult(0, "ok", "", false)); });
 
         Assert.True(results[0].Passed);

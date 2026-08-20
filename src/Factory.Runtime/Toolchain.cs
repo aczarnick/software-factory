@@ -462,8 +462,9 @@ public static class ToolchainRunner
     /// is believed; a check that fails once and then passes is recorded as flaky.
     /// </summary>
     public static async Task<IReadOnlyList<CheckOutcome>> RunAsync(
-        Toolchain toolchain, string workDir, CancellationToken ct = default,
-        Func<ToolchainCheck, string, CancellationToken, Task<ShellResult>>? execute = null)
+        Toolchain toolchain, string workDir,
+        Func<ToolchainCheck, string, CancellationToken, Task<ShellResult>>? execute = null,
+        CancellationToken ct = default)
     {
         var run = execute ?? ((c, dir, token) => Shell.RunAsync(c.Command, dir, c.TimeoutSeconds, token));
         var results = new List<CheckOutcome>();
@@ -552,7 +553,7 @@ public static class ToolchainRunner
 
         if (TryLoadBaseline(cachePath, commit) is { } cached) return cached;
 
-        var results = await RunAsync(toolchain, repoRoot, ct).ConfigureAwait(false);
+        var results = await RunAsync(toolchain, repoRoot, ct: ct).ConfigureAwait(false);
         var baseline = ToolchainBaseline.From(commit, results);
 
         try
@@ -574,13 +575,14 @@ public static class ToolchainRunner
     /// </summary>
     public static async Task<ToolchainBaseline> GetOrRecaptureBaselineAsync(
         ToolchainBaseline cached, Toolchain toolchain, string repoRoot, string cachePath,
-        IRepoStateProvider repoStateProvider, CancellationToken ct = default,
-        Func<ToolchainCheck, string, CancellationToken, Task<ShellResult>>? execute = null)
+        IRepoStateProvider repoStateProvider,
+        Func<ToolchainCheck, string, CancellationToken, Task<ShellResult>>? execute = null,
+        CancellationToken ct = default)
     {
         var currentSha = await repoStateProvider.GetCurrentMasterShaAsync(ct).ConfigureAwait(false);
         if (cached.Commit == currentSha) return cached;
 
-        var results = await RunAsync(toolchain, repoRoot, ct, execute).ConfigureAwait(false);
+        var results = await RunAsync(toolchain, repoRoot, execute, ct).ConfigureAwait(false);
         var fresh = ToolchainBaseline.From(currentSha, results);
 
         try

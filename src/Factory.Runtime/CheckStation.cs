@@ -78,9 +78,9 @@ public sealed class CheckStation(
         var repoState = _repoStateProvider ?? new GitRepoStateProvider(ctx.Services.Workspace.RepoRoot);
         var baseline = await ToolchainRunner.GetOrRecaptureBaselineAsync(
             cached, toolchain, ctx.Services.Workspace.RepoRoot, ctx.Services.Paths.BaselineFile,
-            repoState, ctx.Ct, _execute).ConfigureAwait(false);
+            repoState, execute: _execute, ct: ctx.Ct).ConfigureAwait(false);
 
-        var results = await ToolchainRunner.RunAsync(toolchain, ctx.Run.WorkDir, ctx.Ct, _execute).ConfigureAwait(false);
+        var results = await ToolchainRunner.RunAsync(toolchain, ctx.Run.WorkDir, execute: _execute, ct: ctx.Ct).ConfigureAwait(false);
         return (baseline, results);
     }
 
@@ -130,8 +130,8 @@ public sealed class CheckStation(
     /// is only blamed for what it broke. Called once by the orchestrator before any dispatch,
     /// because a baseline taken while agents are compiling is not a baseline.</summary>
     public static async Task<ToolchainBaseline?> CaptureBaselineAsync(
-        FactoryServices services, CancellationToken ct = default, IToolchainProbe? probe = null,
-        IRepoStateProvider? repoStateProvider = null)
+        FactoryServices services, IToolchainProbe? probe = null,
+        IRepoStateProvider? repoStateProvider = null, CancellationToken ct = default)
     {
         var toolchain = Toolchain.Detect(services.Workspace.RepoRoot);
         if (toolchain.IsEmpty) return null;
