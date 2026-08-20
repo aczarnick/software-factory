@@ -343,7 +343,7 @@ located an actual bug in this repository rather than a style preference:
 |---|---:|---|
 | `CA2000` | 11 | `DelegateStation` leaks an `Orchestrator` once per delegation |
 | `CA1849` | 14 | `Toolchain` does synchronous `File.WriteAllText` inside `async` methods |
-| `CA5392` | 1 | `DllImport("libc")` unconstrained, while cwd is a repo being edited |
+| `CA5392` | 1 | `DllImport("libc")` unconstrained — but see the note: the attribute has no effect on non-Windows, and this P/Invoke only ever runs on Unix, so this one is hygiene rather than a fixed defect |
 | `CA1003` | 1 | `UsageGovernor.Changed` is `Action<string>`, not a standard event |
 
 `CA1707` (identifiers should not contain underscores) is enforced everywhere, tests

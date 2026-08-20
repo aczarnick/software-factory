@@ -35,8 +35,19 @@ found a real bug on first run, not a style nit:
   calls inside `async` methods in `Toolchain`, blocking a thread pool thread on I/O that should
   have awaited.
 - **CA5392** (`DllImport` should specify `DefaultDllImportSearchPathsAttribute`) →
-  `DllImport("libc")` with no search-path constraint, letting the OS loader search an
-  attacker-influenceable default path set before finding the intended library.
+  `DllImport("libc")` with no search-path constraint. **This one is weaker than it first
+  looked, and the correction matters more than the fix.** The attribute was added and is
+  correct hygiene, but Microsoft's documentation is explicit that
+  `DefaultDllImportSearchPathsAttribute` "has no effect on non-Windows platforms", and
+  `SafeDirectories` resolves to the application directory, `%WinDir%\System32`, and user
+  directories — all Windows concepts. The only caller, `CliAgentTransport.IsRoot()`, returns
+  early unless `OperatingSystem.IsLinux() || OperatingSystem.IsMacOS()`, so `geteuid` is
+  *only* ever resolved on the platforms where the attribute does nothing.
+
+  So: the fix satisfies the rule, is safe, and would matter if this code ever ran on Windows —
+  which by construction it cannot. It did **not** close a live DLL-hijacking hole. Of the four
+  opt-in rules, this is the one whose "defect found" claim does not survive scrutiny; the other
+  three each fixed something with real runtime effect.
 - **CA1003** (use generic `EventHandler` instead of a custom delegate) →
   `UsageGovernor.Changed` was typed `Action<string>` instead of the standard event pattern.
 
