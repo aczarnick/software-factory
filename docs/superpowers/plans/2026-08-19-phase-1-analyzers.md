@@ -1,19 +1,18 @@
-# Phase 1: Analyzers at Maximum, Warnings Fail Builds — Implementation Plan
+# Phase 1: Analyzers Enforced, Warnings Fail Builds — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Every .NET analyzer runs at maximum severity across the solution, every remaining
-diagnostic is either fixed or suppressed with a written justification, and `TreatWarningsAsErrors`
-is on so a warning fails the build.
+**Goal:** `AnalysisLevel=latest-recommended` plus four named opt-in rules runs across the
+solution, every resulting diagnostic is fixed, and `TreatWarningsAsErrors` is on so a warning
+fails the build.
 
 **Architecture:** Analyzer configuration lives in `.editorconfig` (rule severities, scoped by
 path) and `Directory.Build.props` (analysis level, warning policy). No new code and no new
 mechanism — `CheckStation` already runs `dotnet build`, so flipping the warning policy is
-enforced by the existing pipeline the moment it lands. The work is triage: decide per rule
-whether it is a defect to fix or a convention that does not apply, and record why.
+enforced by the existing pipeline the moment it lands.
 
 **Tech Stack:** .NET 10 (`net10.0`), SDK pinned `10.0.400` via `global.json`, MSBuild,
-Roslyn analyzers (`AnalysisLevel=latest-all`), xUnit 2.9.2.
+Roslyn analyzers, xUnit 2.9.2.
 
 **Spec:** `docs/superpowers/specs/2026-08-19-pipeline-gates-design.md` (§5 Phase 1)
 
@@ -23,83 +22,104 @@ Roslyn analyzers (`AnalysisLevel=latest-all`), xUnit 2.9.2.
 - `Nullable`, `ImplicitUsings` are `enable`; `LangVersion` is `latest`. Do not change these.
 - One top-level type per file. Nested/private types may stay in their containing type's file.
 - XML doc comments only on **public** APIs. No explanatory prose or narration in code.
-- Every suppression MUST carry a justification comment in `.editorconfig` saying why the rule
-  does not apply here. A bare `severity = none` with no reason is a plan failure.
+- **`AnalysisMode=All` is rejected.** It was measured at 642 diagnostics; the 231-diagnostic
+  difference was almost entirely policy rules this codebase deliberately does not follow. Do
+  not raise the mode. Add individual rules by name instead, and only with a reason.
+- Every `severity = none` MUST carry a comment in `.editorconfig` saying why the rule does not
+  apply here. Every opt-in above Recommended MUST name the defect it caught.
 - Verification is `dotnet build SoftwareFactory.sln` **and** `dotnet test SoftwareFactory.sln`.
   Show actual output. Non-zero exit means not done.
 - The full suite takes ~4 minutes and is **not** safe to run concurrently with another
   `dotnet test` against the same worktree — a second run corrupts the first. Run one at a time.
+- The suite has **415** tests. That number must be 415 before and after the rename task, and
+  417 at the end of this plan. A change in count is a bug, not a detail.
 
 ## Measured Starting Point
 
-Captured on this branch at `f5e2269` with `AnalysisLevel=latest-all` and
-`EnforceCodeStyleInBuild=true`, full rebuild, deduplicated by file/line/rule:
+Measured on this branch at `416c18a`, full rebuild, deduplicated by file/line/rule.
 
 ```
-TOTAL          642
-  tests/       471
-  src/         171
+AnalysisMode=All            642      (measured, rejected)
+AnalysisMode=Recommended    411
+  + four opt-in rules       +27
+                            ---
+TOTAL TO CLEAR              438
+  src                        26
+  tests                     412
 ```
 
-| Rule | src | tests | What it is |
-|---|---:|---:|---|
-| CA1707 | 0 | 362 | Identifiers should not contain underscores |
-| CA1062 | 85 | 2 | Validate arguments of public methods |
-| CA1063 | 0 | 50 | Implement IDisposable correctly |
-| CA1816 | 0 | 25 | Call GC.SuppressFinalize |
-| CA1031 | 18 | 0 | Do not catch general exception types |
-| CA1002 | 18 | 1 | Do not expose generic lists |
-| CA2007 | 16 | 1 | Consider calling ConfigureAwait |
-| CA1849 | 2 | 12 | Call async methods in an async context |
-| CA2000 | 1 | 10 | Dispose objects before losing scope |
-| CA1515 | 3 | 3 | Consider making public types internal |
-| CA1859 | 4 | 0 | Use concrete types for improved performance |
-| CA1826 | 4 | 0 | Use property instead of Enumerable method |
-| CA1720 | 4 | 0 | Identifier contains type name |
-| CA1068 | 3 | 0 | CancellationToken parameters must come last |
-| CA1822 | 2 | 1 | Mark members as static |
-| CA1716 | 2 | 0 | Identifiers should not match keywords |
-| CA1032 | 2 | 0 | Implement standard exception constructors |
-| CA1812 | 0 | 2 | Avoid uninstantiated internal classes |
-| CA1416 | 0 | 1 | Validate platform compatibility |
-| CA1711 | 0 | 1 | Identifiers should not have incorrect suffix |
-| CA5394 | 1 | 0 | Do not use insecure randomness |
-| CA5392 | 1 | 0 | Use DefaultDllImportSearchPaths |
-| CA2225 | 1 | 0 | Operator overloads have named alternates |
-| CA1725 | 1 | 0 | Parameter names should match base declaration |
-| CA1034 | 1 | 0 | Nested types should not be visible |
-| CA1003 | 1 | 0 | Use generic event handler instances |
-| CA1001 | 1 | 0 | Types owning disposable fields should be disposable |
+### `src` — 26 diagnostics
 
-**Read of these numbers:** the bulk is policy, not defects. 471 of 642 are in test code and
-come from three rules that encode library-authoring conventions test projects do not follow.
-Of the 171 in `src`, 85 are CA1062 — argument null validation, which is largely redundant when
-`Nullable` is `enable`. The genuinely defective sites number about eight.
+| Rule | Sites | What it is |
+|---|---:|---|
+| CA1859 | 4 | Use concrete types for improved performance |
+| CA1826 | 4 | Use property instead of `Enumerable` method |
+| CA1720 | 4 | Identifier contains type name |
+| CA1068 | 3 | `CancellationToken` parameters must come last |
+| CA1822 | 2 | Mark members as static |
+| CA1716 | 2 | Identifiers should not match keywords |
+| CA1849 | 2 | Call async methods in an async context — **opt-in** |
+| CA1725 | 1 | Parameter names should match base declaration |
+| CA1001 | 1 | Types owning disposable fields should be disposable |
+| CA2000 | 1 | Dispose objects before losing scope — **opt-in** |
+| CA5392 | 1 | Use `DefaultDllImportSearchPaths` — **opt-in** |
+| CA1003 | 1 | Use generic event handler instances — **opt-in** |
+
+### `tests` — 412 diagnostics
+
+| Rule | Sites | What it is |
+|---|---:|---|
+| CA1707 | 362 | Identifiers should not contain underscores |
+| CA1816 | 25 | Call `GC.SuppressFinalize` |
+| CA1849 | 12 | Call async methods in an async context — **opt-in** |
+| CA2000 | 10 | Dispose objects before losing scope — **opt-in** |
+| CA1822 | 1 | Mark members as static |
+| CA1711 | 1 | Identifiers should not have incorrect suffix |
+| CA1416 | 1 | Validate platform compatibility |
+
+**Read of these numbers:** `src` is nearly clean — 26 sites, of which 4 are genuine defects.
+The work is concentrated in one mechanical rename: 362 test methods from snake_case to
+PascalCase, per the decision that test projects follow the same naming conventions as product
+code. That rename is the risk in this phase, not the difficulty.
+
+### The four opt-in rules
+
+Each is outside Recommended and each located an actual bug here. That is the only admissible
+reason to add a rule.
+
+| Rule | Defect | Site |
+|---|---|---|
+| CA2000 | An `Orchestrator` is leaked **once per delegation** | `DelegateStation.cs:59` |
+| CA1849 | Synchronous `File.WriteAllText` inside `async` methods | `Toolchain.cs:535`, `:562` |
+| CA5392 | `DllImport("libc")` unconstrained, while cwd is a repo being edited | `CliAgentTransport.cs:228` |
+| CA1003 | `Changed` is `Action<string>`, not a standard event | `UsageGovernor.cs:55` |
 
 ## File Structure
 
 | File | Responsibility | Change |
 |---|---|---|
-| `.editorconfig` | Rule severities and per-path scoping, each suppression justified | Create |
+| `.editorconfig` | Rule severities and per-path scoping, each decision justified | Create |
 | `Directory.Build.props` | Analysis level and warning policy | Modify |
 | `src/Factory.Runtime/Workspace.cs` | CA1001 — owns a `SemaphoreSlim`, is not disposable | Modify |
-| `src/Factory.Runtime/DelegateStation.cs` | CA2000 — `Orchestrator` created and not disposed | Modify |
+| `src/Factory.Runtime/DelegateStation.cs` | CA2000 — `Orchestrator` created, never disposed | Modify |
 | `src/Factory.Runtime/Toolchain.cs` | CA1849 — sync file writes inside async methods | Modify |
-| `src/Factory.Runtime/Providers/Beads/BeadsWorkItemStore.cs` | CA1725 — parameter name diverges from the interface | Modify |
+| `src/Factory.Runtime/Providers/Beads/BeadsWorkItemStore.cs` | CA1725 — parameter name diverges from interface | Modify |
 | `src/Factory.Agents/CliAgentTransport.cs` | CA5392 — `DllImport` without a search-path attribute | Modify |
 | `src/Factory.Agents/UsageGovernor.cs` | CA1003 — `Action<string>` event | Modify |
-| `src/Factory.Evolution/PromptRegistry.cs` | CA5394 — `Random` used for A/B traffic split | Modify (suppress in place) |
+| `src/Factory.Agents/UsageChangedEventArgs.cs` | The event's payload type | Create |
+| `src/Factory.Runtime/FactoryHost.cs:140` | The only `Changed` subscriber | Modify |
+| `tests/Factory.Tests/*.cs` | CA1707 — 362 method renames | Modify |
 
-`.editorconfig` is the only new file. It is deliberately one file rather than one per project:
-the whole point is a single definition of the bar, and per-path sections express the test/src
-distinction without splitting the file.
+`.editorconfig` is the only new configuration file. One file, with per-path sections: the point
+is a single definition of the bar, and a `[tests/**/*.cs]` section expresses the test/src
+distinction without splitting it.
 
 ---
 
-### Task 1: Turn analyzers on as warnings and record the count
+### Task 1: Turn analyzers on and record the count
 
-Nothing is fixed in this task. It makes the problem visible and reproducible, so every later
-task can be measured against a number rather than an impression.
+Nothing is fixed here. This makes the problem visible and reproducible so every later task is
+measured against a number rather than an impression.
 
 **Files:**
 - Modify: `Directory.Build.props:10`
@@ -107,9 +127,8 @@ task can be measured against a number rather than an impression.
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `.editorconfig` at the repository root with a `[*.cs]` section; the MSBuild
-  properties `AnalysisLevel` and `EnforceCodeStyleInBuild` set solution-wide. Later tasks add
-  sections to this same file.
+- Produces: `.editorconfig` at the repository root with a `[*.cs]` section; `AnalysisLevel` and
+  `EnforceCodeStyleInBuild` set solution-wide. Later tasks add sections to this same file.
 
 - [ ] **Step 1: Add the analyzer properties**
 
@@ -117,25 +136,28 @@ In `Directory.Build.props`, inside the existing `<PropertyGroup>`, immediately a
 `<NoWarn>` line:
 
 ```xml
-    <AnalysisLevel>latest-all</AnalysisLevel>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 ```
 
-`latest-all` is the shorthand for the spec's `AnalysisLevel=latest` plus `AnalysisMode=All`.
-Use the shorthand; setting both separately does the same thing in two lines.
+Do **not** add `TreatWarningsAsErrors` yet. Task 6 does that, once the count is zero.
 
-Do **not** add `TreatWarningsAsErrors` yet. Task 6 does that, and only once the count is zero.
-
-- [ ] **Step 2: Create the `.editorconfig` skeleton**
+- [ ] **Step 2: Create `.editorconfig` with the opt-in rules**
 
 Create `.editorconfig` at the repository root:
 
 ```ini
 # Analyzer policy for the Software Factory.
 #
-# Every rule set below `default` is either a defect class we fix, or a convention that does
-# not apply here. A suppression without a stated reason is not allowed: the reason is the
-# whole value of the file.
+# The floor is AnalysisMode=Recommended, set in Directory.Build.props. AnalysisMode=All was
+# measured at 642 diagnostics against Recommended's 411, and nearly all of the difference was
+# rules this codebase deliberately does not follow — CA1062 argument null checks (redundant
+# under Nullable enable), CA2007 ConfigureAwait (no synchronisation context in an application),
+# CA1063 full IDisposable ceremony (on sealed, managed-only types). Suppressing those would
+# have made this file mostly justifications for ignoring the analyzer.
+#
+# A rule is added above Recommended only when it found an actual bug here. Each opt-in below
+# names the bug.
 
 root = true
 
@@ -145,287 +167,330 @@ indent_size = 4
 end_of_line = lf
 insert_final_newline = true
 charset = utf-8
+
+# CA2000: dispose objects before losing scope.
+# DelegateStation created an Orchestrator (sealed, IDisposable) per delegated work item and
+# never disposed it — one leak per delegation, for the life of the process.
+dotnet_diagnostic.CA2000.severity = warning
+
+# CA1849: call async methods in an async context.
+# Toolchain wrote its baseline with synchronous File.WriteAllText from inside async methods,
+# blocking a pool thread on disk for every baseline capture.
+dotnet_diagnostic.CA1849.severity = warning
+
+# CA5392: use DefaultDllImportSearchPaths.
+# CliAgentTransport declared DllImport("libc") with no search-path constraint, which permits
+# the loader to search the current working directory. This process runs with its working
+# directory set to a repository it is actively modifying.
+dotnet_diagnostic.CA5392.severity = warning
+
+# CA1003: use generic event handler instances.
+# UsageGovernor.Changed was Action<string>, so it could not carry additional context without a
+# breaking signature change, and did not follow the sender/args convention callers expect.
+dotnet_diagnostic.CA1003.severity = warning
 ```
 
 - [ ] **Step 3: Rebuild and count**
 
-Run:
-
 ```bash
-dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/analyzers.log | tail -5
-grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/analyzers.log | sort -u | wc -l
+dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/an.log | tail -5
+grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/an.log \
+  | sort -u > /tmp/uniq.txt
+echo "total:"; wc -l < /tmp/uniq.txt
+echo "src:";   grep -c "/src/"   /tmp/uniq.txt
+echo "tests:"; grep -c "/tests/" /tmp/uniq.txt
 ```
 
-Expected: build exits 0 (warnings do not fail yet), count is **642**.
+Expected: build exits 0 (warnings do not fail yet); total **438**, src **26**, tests **412**.
 
-If the count differs from 642, the SDK has moved. Do not proceed on a guess — record the new
-count, regenerate the per-rule table with the command in Step 4, and use those numbers for the
-rest of the plan.
+If the totals differ, the SDK has moved. Do not proceed on a guess — record the new counts,
+regenerate the per-rule tables with the command in Step 4, and use those for the rest of the
+plan.
 
 - [ ] **Step 4: Record the per-rule split**
 
-Run:
-
 ```bash
-grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/analyzers.log \
-  | sort -u > /tmp/uniq.txt
-echo "src:";   grep -c "/src/"   /tmp/uniq.txt
-echo "tests:"; grep -c "/tests/" /tmp/uniq.txt
-grep "/src/" /tmp/uniq.txt | grep -oE "warning [A-Z]+[0-9]+" | sort | uniq -c | sort -rn
+echo "=== src ==="
+grep "/src/"   /tmp/uniq.txt | grep -oE "warning [A-Z]+[0-9]+" | sort | uniq -c | sort -rn
+echo "=== tests ==="
+grep "/tests/" /tmp/uniq.txt | grep -oE "warning [A-Z]+[0-9]+" | sort | uniq -c | sort -rn
 ```
 
-Expected: `src: 171`, `tests: 471`, and the src breakdown matching the table above.
+Expected: the two tables in "Measured Starting Point" above.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add Directory.Build.props .editorconfig
-git commit -m "Turn every analyzer on, so the bar is visible before it is enforced
+git commit -m "Turn the analyzers on, at Recommended rather than All
 
-Warnings only. 642 diagnostics: 471 in tests, 171 in src. Enforcement
-comes once that count is zero."
+All was measured at 642 diagnostics against Recommended's 411, and the
+difference was almost entirely rules this codebase deliberately does not
+follow. Four rules outside Recommended are added back by name, because
+each one found a real bug: a per-delegation Orchestrator leak, sync file
+writes inside async methods, an unconstrained native library search
+path, and a non-standard event signature.
+
+438 diagnostics: 26 in src, 412 in tests. Enforcement comes once that
+count is zero."
 ```
 
 ---
 
-### Task 2: Scope library-authoring rules away from test code
+### Task 2: Scope away the one rule that does not apply to sealed test fixtures
 
-471 of 642 diagnostics are in test projects, from rules that encode conventions for shipping
-libraries. Test method names are deliberately snake_case sentences; test fixtures are sealed
-and never subclassed. These are not defects.
+CA1816 (25 sites, all in tests) requires `GC.SuppressFinalize(this)` in a `Dispose`. That call
+exists to stop a finalizer running on an already-cleaned object. The test fixtures are `sealed`,
+hold only managed handles, and declare no finalizer, so it suppresses nothing.
+
+This is the *only* test-scoped suppression in this plan. CA1707 is **not** suppressed — test
+projects follow the same naming conventions as product code, and Task 3 renames them.
 
 **Files:**
 - Modify: `.editorconfig`
 
 **Interfaces:**
 - Consumes: `.editorconfig` from Task 1.
-- Produces: a `[tests/**/*.cs]` section in `.editorconfig`. Task 3 adds `[src/**/*.cs]`.
+- Produces: a `[tests/**/*.cs]` section in `.editorconfig`.
 
-- [ ] **Step 1: Add the test-scoped section**
+- [ ] **Step 1: Confirm the fixtures really are sealed and finalizer-free**
+
+Before suppressing, verify the justification is true rather than assumed:
+
+```bash
+grep -rn "class.*IDisposable" tests --include='*.cs' | grep -v sealed
+grep -rn "~[A-Z]" tests --include='*.cs'
+```
+
+Expected: both empty. If either returns a hit, that type is **not** covered by this
+justification — fix it by adding `GC.SuppressFinalize(this)` there and narrow the suppression.
+
+- [ ] **Step 2: Add the test-scoped section**
 
 Append to `.editorconfig`:
 
 ```ini
 # ── Test code ────────────────────────────────────────────────────────────────
-# Test projects are not libraries. They ship to nobody, are never subclassed, and their
-# identifiers are sentences on purpose.
+# Test projects follow the same conventions as product code. The single exception below is a
+# rule whose premise does not hold here, not a convention we decline to follow.
 [tests/**/*.cs]
 
-# CA1707: identifiers should not contain underscores.
-# Test names are sentences — `Two_independent_ready_items_are_both_claimed_and_completed`
-# reads as a specification. Renaming them to PascalCase would destroy the only documentation
-# the suite has.
-dotnet_diagnostic.CA1707.severity = none
-
-# CA1063 / CA1816: full IDisposable pattern with GC.SuppressFinalize.
-# The pattern exists so a base class can be safely subclassed and finalized. Test fixtures are
-# sealed and hold managed handles only, so the ceremony protects against nothing.
-dotnet_diagnostic.CA1063.severity = none
+# CA1816: call GC.SuppressFinalize in Dispose.
+# That call prevents a finalizer running on an already-cleaned object. Every disposable type in
+# tests/ is sealed, holds only managed handles, and declares no finalizer — verified by grep in
+# this task's first step — so there is no finalizer for it to suppress.
 dotnet_diagnostic.CA1816.severity = none
-
-# CA1515: consider making public types internal.
-# xUnit discovers test classes by reflection over public types.
-dotnet_diagnostic.CA1515.severity = none
-
-# CA1812: avoid uninstantiated internal classes.
-# Fixture and plugin-probe types are instantiated by xUnit or by the plugin loader through
-# reflection, which the analyzer cannot see.
-dotnet_diagnostic.CA1812.severity = none
 ```
 
-Note the rules deliberately **not** suppressed for tests: CA1849 (12), CA2000 (10), CA1062
-(2), CA2007 (1), CA1822 (1), CA1711 (1), CA1416 (1), CA1002 (1). Sync-over-async and undisposed
-objects in tests are exactly the shared-state bugs that make this suite slow and
-concurrency-fragile. Task 5 fixes them.
-
-- [ ] **Step 2: Rebuild and verify the drop**
-
-Run:
+- [ ] **Step 3: Rebuild and verify the drop**
 
 ```bash
-dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/analyzers.log | tail -3
-grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/analyzers.log \
-  | sort -u > /tmp/uniq.txt
-wc -l < /tmp/uniq.txt
-grep -c "/tests/" /tmp/uniq.txt
-```
-
-Expected: total **200**, tests **29**.
-
-The arithmetic: 471 test diagnostics minus CA1707 (362), CA1063 (50), CA1816 (25), CA1515 (3)
-and CA1812 (2) — 442 suppressed — leaves 29 in tests, and 642 − 442 = 200 overall. The `src`
-count is unchanged at 171.
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add .editorconfig
-git commit -m "Stop applying library-authoring rules to test code
-
-Test names are sentences and fixtures are sealed, so CA1707, CA1063,
-CA1816, CA1515 and CA1812 flag conventions that do not apply. Each
-suppression carries its reason. Sync-over-async and undisposed objects
-in tests stay flagged: those are real."
-```
-
----
-
-### Task 3: Decide the src-wide policy rules
-
-Three rules account for 119 of the 171 src diagnostics and each is a genuine policy question,
-not a defect. Decide once, write the reason down, move on.
-
-**Files:**
-- Modify: `.editorconfig`
-
-**Interfaces:**
-- Consumes: `.editorconfig` from Tasks 1–2.
-- Produces: a `[src/**/*.cs]` section in `.editorconfig`.
-
-- [ ] **Step 1: Add the src-scoped section**
-
-Append to `.editorconfig`:
-
-```ini
-# ── Product code ─────────────────────────────────────────────────────────────
-[src/**/*.cs]
-
-# CA1062: validate arguments of public methods. (85 sites)
-# The solution builds with `Nullable` enable. A non-nullable reference parameter is already a
-# compile-time contract, and adding a runtime null check to every public method restates it in
-# a weaker form at every call site. Microsoft's own guidance is to disable CA1062 when nullable
-# reference types are on. This factory has no public package surface: `src` is consumed by the
-# CLI and the test projects, both of which compile under the same nullable contract.
-dotnet_diagnostic.CA1062.severity = none
-
-# CA2007: consider calling ConfigureAwait on the awaited task. (16 sites)
-# This is an application and a CLI, not a library. There is no synchronisation context to
-# deadlock against, so ConfigureAwait(false) is noise rather than protection. Where the codebase
-# already writes it — the orchestrator and station paths — that is a deliberate local choice and
-# is left alone.
-dotnet_diagnostic.CA2007.severity = none
-
-# CA1031: do not catch general exception types. (18 sites)
-# Downgraded, not disabled. Several sites are deliberate and already carry a comment saying so:
-# a broken plugin assembly must not stop a factory whose configured providers all work, and
-# best-effort diagnostics must not fail the run they are diagnosing. But a blanket suppression
-# would also hide the accidental ones, and this repository's stated rule is that errors are
-# handled explicitly and never swallowed. Kept as a suggestion so new ones are visible in the
-# IDE without failing the build.
-dotnet_diagnostic.CA1031.severity = suggestion
-```
-
-- [ ] **Step 2: Rebuild and verify**
-
-Run:
-
-```bash
-dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/analyzers.log | tail -3
-grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/analyzers.log \
+dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/an.log | tail -3
+grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/an.log \
   | sort -u | wc -l
 ```
 
-Expected: **81** — 200 minus the src-only CA1062 (85), CA2007 (16) and CA1031 (18). The two
-CA1062 and one CA2007 sites in `tests/` are deliberately *not* covered by a `[src/**/*.cs]`
-section and remain.
+Expected: **413** (438 − 25).
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add .editorconfig
-git commit -m "Settle the three analyzer rules that are policy, not defects
+git commit -m "Drop the one analyzer rule whose premise does not hold in tests
 
-CA1062 restates a contract the nullable compiler already enforces.
-CA2007 protects against a synchronisation context an application does
-not have. CA1031 stays visible as a suggestion, because some of those
-catches are deliberate and some are not, and a blanket suppression
-would stop telling them apart."
+CA1816 wants GC.SuppressFinalize so a finalizer does not run on a
+cleaned object. Every disposable type in tests/ is sealed with no
+finalizer, verified by grep, so there is nothing to suppress. This is
+the only test-scoped exception: CA1707 stays on and the renames follow."
 ```
 
 ---
 
-### Task 4: Fix the genuine defects
+### Task 3: Rename 362 test methods to PascalCase
 
-Eight sites where the analyzer found a real problem. Each gets a test where the behaviour is
-observable, and a fix.
+The largest task and the only risky one. Renaming is mechanical; losing a test to it is not.
+The guard is the test count: **415 before, 415 after**.
 
 **Files:**
-- Modify: `src/Factory.Runtime/Workspace.cs:13`
-- Modify: `src/Factory.Runtime/DelegateStation.cs:59`
-- Modify: `src/Factory.Runtime/Providers/Beads/BeadsWorkItemStore.cs:56`
-- Modify: `src/Factory.Agents/CliAgentTransport.cs:228`
-- Modify: `src/Factory.Agents/UsageGovernor.cs:55`
-- Modify: `src/Factory.Runtime/Toolchain.cs:535,562`
-- Modify: `src/Factory.Evolution/PromptRegistry.cs:97`
-- Test: `tests/Factory.Tests/RuntimeTests.cs`
+- Modify: `tests/Factory.Tests/*.cs` (all 34 files)
 
 **Interfaces:**
-- Consumes: `.editorconfig` from Tasks 1–3.
+- Consumes: `.editorconfig` from Tasks 1–2.
+- Produces: no API change — test method names only. No product code is touched.
+
+- [ ] **Step 1: Record the exact pre-rename count**
+
+```bash
+dotnet test SoftwareFactory.sln --nologo 2>&1 | tail -3
+```
+
+Expected: `Passed! - Failed: 0, Passed: 415, Skipped: 0, Total: 415`. Write the number down.
+If it is not 415, stop — the baseline moved and this plan's guard is invalid.
+
+- [ ] **Step 2: Check for names referenced outside the test source**
+
+A rename breaks anything that names a test as a string.
+
+```bash
+grep -rn "FullyQualifiedName" . --include='*.md' --include='*.json' --include='*.sh' \
+  --include='*.props' --include='*.csproj' 2>/dev/null | grep -v '/obj/\|/bin/'
+grep -rn "_" docs/superpowers/notes --include='*.md' | grep -E "\b[A-Z][a-z]+(_[a-z]+){2,}" | head
+```
+
+Record every hit. Each one must be updated in Step 6 or the reference goes stale.
+
+- [ ] **Step 3: List the methods to rename**
+
+```bash
+grep -rhoE "public (async Task|void) [A-Za-z0-9]+(_[A-Za-z0-9]+)+\(" tests --include='*.cs' \
+  | sed -E 's/public (async Task|void) //; s/\($//' | sort -u > /tmp/renames.txt
+wc -l < /tmp/renames.txt
+```
+
+Expected: 362 or slightly fewer — a name appearing in two files counts once here but twice in
+the diagnostic count. Record both numbers.
+
+- [ ] **Step 4: Check for collisions before renaming anything**
+
+Two distinct snake_case names can collapse to the same PascalCase name, which silently deletes
+a test.
+
+```bash
+python3 - <<'PY'
+import re, pathlib
+names = pathlib.Path('/tmp/renames.txt').read_text().split()
+def pascal(n):
+    return ''.join(p[:1].upper() + p[1:] for p in n.split('_') if p)
+seen = {}
+for n in names:
+    seen.setdefault(pascal(n), []).append(n)
+clashes = {k: v for k, v in seen.items() if len(v) > 1}
+print(f"{len(names)} names -> {len(seen)} PascalCase")
+for k, v in clashes.items():
+    print("COLLISION", k, v)
+PY
+```
+
+Expected: no `COLLISION` lines. If any appear, resolve them by hand — give one of the pair a
+distinguishing word — before running the bulk rename.
+
+- [ ] **Step 5: Apply the rename**
+
+Only the method *declaration* names change. Test methods are never called by name from other
+code, so declaration-site renaming is sufficient — but the script below also rewrites
+`nameof(...)` and `[MemberData]`/`[Theory]` references to the same identifiers, so a fixture
+that names a method still compiles.
+
+```python
+# /tmp/rename_tests.py
+import pathlib, re
+
+def pascal(name: str) -> str:
+    return ''.join(p[:1].upper() + p[1:] for p in name.split('_') if p)
+
+decl = re.compile(r'\b(public\s+(?:async\s+Task|void)\s+)([A-Za-z0-9]+(?:_[A-Za-z0-9]+)+)\b')
+mapping: dict[str, str] = {}
+
+files = list(pathlib.Path('tests').rglob('*.cs'))
+
+for path in files:
+    for _, name in decl.findall(path.read_text()):
+        mapping[name] = pascal(name)
+
+for path in files:
+    text = original = path.read_text()
+    for old, new in mapping.items():
+        text = re.sub(rf'\b{re.escape(old)}\b', new, text)
+    if text != original:
+        path.write_text(text)
+
+print(f"renamed {len(mapping)} identifiers across {len(files)} files")
+```
+
+Run it:
+
+```bash
+python3 /tmp/rename_tests.py
+```
+
+- [ ] **Step 6: Update any external references found in Step 2**
+
+Edit each file recorded in Step 2 to use the new PascalCase name. If Step 2 found nothing,
+this step is a no-op — say so rather than skipping it silently.
+
+- [ ] **Step 7: Verify the count is unchanged**
+
+```bash
+dotnet test SoftwareFactory.sln --nologo 2>&1 | tail -3
+```
+
+Expected: `Passed! - Failed: 0, Passed: 415, Skipped: 0, Total: 415`.
+
+**415 is the gate.** A lower number means the rename merged or hid a test. If it is not 415,
+revert with `git checkout -- tests` and resolve the collision before retrying.
+
+- [ ] **Step 8: Verify CA1707 is gone**
+
+```bash
+dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/an.log | tail -3
+grep -c "warning CA1707" /tmp/an.log
+grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/an.log \
+  | sort -u | wc -l
+```
+
+Expected: CA1707 count **0**; total **51** (413 − 362).
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add tests
+git commit -m "Name test methods the way the rest of the codebase is named
+
+362 snake_case test methods become PascalCase. Test projects follow the
+same naming conventions as product code; CA1707 is enforced everywhere
+rather than waived for tests.
+
+Test count is unchanged at 415, which is the check that matters here --
+a rename that collapses two names into one would silently delete a test."
+```
+
+---
+
+### Task 4: Fix the four defects the opt-in rules caught
+
+Each of these is why its rule was added. Fix them, and the opt-in has paid for itself.
+
+**Files:**
+- Modify: `src/Factory.Runtime/DelegateStation.cs:59`
+- Modify: `src/Factory.Runtime/Toolchain.cs:535,562`
+- Modify: `src/Factory.Agents/CliAgentTransport.cs:228`
+- Modify: `src/Factory.Agents/UsageGovernor.cs:55,137,189,193`
+- Create: `src/Factory.Agents/UsageChangedEventArgs.cs`
+- Modify: `src/Factory.Runtime/FactoryHost.cs:140`
+- Test: `tests/Factory.Tests/AgentTests.cs`
+
+**Interfaces:**
+- Consumes: `.editorconfig` from Tasks 1–2.
 - Produces:
-  - `Workspace : IDisposable` — `public void Dispose()`.
-  - `BeadsWorkItemStore.TryClaim(string owner)` — parameter renamed from `claimant`; call sites
-    that use a named argument must be updated.
-  - `UsageGovernor.Changed` becomes `EventHandler<UsageChangedEventArgs>`; `UsageChangedEventArgs`
-    is a new public type in `src/Factory.Agents/UsageChangedEventArgs.cs` with a
-    `public string Message { get; }`.
+  - `UsageChangedEventArgs` — public sealed class in `Factory.Agents`, constructor
+    `UsageChangedEventArgs(string message)`, property `public string Message { get; }`.
+  - `UsageGovernor.Changed` — type changes from `Action<string>?` to
+    `EventHandler<UsageChangedEventArgs>?`.
 
-- [ ] **Step 1: Write the failing test for `Workspace` disposal**
+- [ ] **Step 1: Dispose the delegated orchestrator**
 
-`Workspace` holds `private readonly SemaphoreSlim _integrateGate = new(1, 1);` and never
-releases it (CA1001). Add to `tests/Factory.Tests/RuntimeTests.cs`:
-
-```csharp
-[Fact]
-public void Workspace_releases_its_integration_gate_when_disposed()
-{
-    var root = Directory.CreateTempSubdirectory().FullName;
-    var workspace = new Workspace(root, new FactoryPaths(root));
-
-    workspace.Dispose();
-
-    Assert.Throws<ObjectDisposedException>(() => workspace.Dispose());
-}
-```
-
-This asserts the semaphore was really disposed: a second `Dispose` on a disposed
-`SemaphoreSlim` is the observable consequence. If you make `Dispose` idempotent instead, change
-the assertion to match — but then it proves nothing, so prefer the throwing form.
-
-- [ ] **Step 2: Run it and watch it fail**
-
-Run: `dotnet test SoftwareFactory.sln --filter "FullyQualifiedName~Workspace_releases_its_integration_gate"`
-Expected: FAIL — `Workspace` does not contain a definition for `Dispose`.
-
-- [ ] **Step 3: Make `Workspace` disposable**
-
-In `src/Factory.Runtime/Workspace.cs`, change the declaration and add the method:
-
-```csharp
-public sealed class Workspace(string repoRoot, FactoryPaths paths) : IDisposable
-{
-    private readonly SemaphoreSlim _integrateGate = new(1, 1);
-
-    public void Dispose() => _integrateGate.Dispose();
-```
-
-Sealed, managed-only, no finalizer — so a bare `Dispose` is correct and CA1063/CA1816 do not
-apply. Do not add the full pattern.
-
-- [ ] **Step 4: Run it and watch it pass**
-
-Run: `dotnet test SoftwareFactory.sln --filter "FullyQualifiedName~Workspace_releases_its_integration_gate"`
-Expected: PASS.
-
-- [ ] **Step 5: Dispose the delegated orchestrator**
-
-`src/Factory.Runtime/DelegateStation.cs:59` creates an `Orchestrator` — which is
-`sealed class Orchestrator : IDisposable` — and never disposes it (CA2000). One delegation per
-work item leaks one orchestrator.
+`DelegateStation.cs:59` creates an `Orchestrator` — `sealed class Orchestrator : IDisposable`
+— and never disposes it. One leak per delegated work item.
 
 Change:
 
 ```csharp
         var report = await child.CreateOrchestrator().RunAsync(new OrchestratorOptions
+        {
+            StopWhenIdle = true,
+            Depth = ctx.Run.Depth + 1,
+            MaxConcurrency = 1
+        }, ctx.Ct).ConfigureAwait(false);
 ```
 
 to:
@@ -433,31 +498,47 @@ to:
 ```csharp
         using var orchestrator = child.CreateOrchestrator();
         var report = await orchestrator.RunAsync(new OrchestratorOptions
+        {
+            StopWhenIdle = true,
+            Depth = ctx.Run.Depth + 1,
+            MaxConcurrency = 1
+        }, ctx.Ct).ConfigureAwait(false);
 ```
 
-- [ ] **Step 6: Match the interface parameter name**
+- [ ] **Step 2: Make the baseline writes async**
 
-`src/Factory.Runtime/Providers/Beads/BeadsWorkItemStore.cs:56` declares
-`TryClaim(string claimant)` while `IWorkItemStore.TryClaim(string owner)` names it `owner`
-(CA1725). A caller using a named argument against the interface breaks on the concrete type.
-
-Rename the parameter to `owner` and update its use in the body:
+`Toolchain.cs:535` and `:562` call synchronous `File.WriteAllText` inside `async` methods,
+blocking a pool thread on disk. Both sites have the same shape:
 
 ```csharp
-    public WorkItem? TryClaim(string owner) =>
-        cli.Json<BeadRecord>([.. BeadMapper.ClaimArgs(owner)])
-           .Select(BeadMapper.ToWorkItem)
-           .FirstOrDefault();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(cachePath))!);
+            File.WriteAllText(cachePath, FactoryJson.Write(baseline, pretty: true));
+        }
+        catch (IOException) { }
 ```
 
-Then check for named-argument call sites: `grep -rn "claimant:" src tests --include='*.cs'`.
-Update any that appear.
+becomes:
 
-- [ ] **Step 7: Constrain the native library search path**
+```csharp
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(cachePath))!);
+            await File.WriteAllTextAsync(cachePath, FactoryJson.Write(baseline, pretty: true))
+                      .ConfigureAwait(false);
+        }
+        catch (IOException) { }
+```
 
-`src/Factory.Agents/CliAgentTransport.cs:228` declares `DllImport("libc")` with no search-path
-constraint (CA5392), which allows the loader to search the current working directory — and the
-factory runs with its working directory set to a repository it is actively modifying.
+At `:562` the local is named `fresh`, not `baseline` — substitute accordingly. Do not widen the
+`catch`: `WriteAllTextAsync` throws the same `IOException` family.
+
+- [ ] **Step 3: Constrain the native library search path**
+
+`CliAgentTransport.cs:228` declares `DllImport("libc")` with no search-path constraint, which
+permits the loader to search the current working directory — and this process runs with its
+working directory set to a repository it is actively modifying.
 
 Change:
 
@@ -475,73 +556,16 @@ to:
     private static extern uint Geteuid();
 ```
 
-- [ ] **Step 8: Run the full suite**
-
-Run: `dotnet test SoftwareFactory.sln --nologo`
-Expected: 416 passed (415 plus the new one), 0 failed.
-
-- [ ] **Step 9: Commit**
-
-```bash
-git add src tests
-git commit -m "Fix what the analyzers found that was actually broken
-
-Workspace held a SemaphoreSlim it never released. Every delegation
-leaked an Orchestrator. BeadsWorkItemStore named a parameter the
-interface calls something else, so a named argument breaks on the
-concrete type. And a DllImport with no search path let the loader look
-in the working directory, which for this process is a repository it is
-in the middle of editing."
-```
-
----
-
-### Task 5: Clear the long tail
-
-The rules left after Tasks 2–4: CA1002, CA1849, CA2000 (tests), CA1859, CA1826, CA1720,
-CA1515 (src), CA1068, CA1822, CA1716, CA1032, CA1003, CA5394, CA2225, CA1034, CA1711, CA1416.
-Roughly 60 sites. Each is small; none is architectural.
-
-**Files:**
-- Modify: `.editorconfig`
-- Modify: various under `src/` and `tests/` as the build reports them
-- Modify: `src/Factory.Agents/UsageGovernor.cs:55`
-- Create: `src/Factory.Agents/UsageChangedEventArgs.cs`
-- Modify: `src/Factory.Evolution/PromptRegistry.cs:97`
-
-**Interfaces:**
-- Consumes: everything from Tasks 1–4.
-- Produces: `UsageChangedEventArgs` (public, in `Factory.Agents`), and
-  `UsageGovernor.Changed` as `EventHandler<UsageChangedEventArgs>`.
-
-- [ ] **Step 1: Suppress the two rules that are wrong here, with reasons**
-
-Append to the `[src/**/*.cs]` section of `.editorconfig`:
-
-```ini
-# CA5394: do not use insecure randomness.
-# PromptRegistry.Select uses Random to split traffic between a champion and a challenger
-# prompt. This is A/B sampling, not a security decision — nothing is protected by the value
-# being unpredictable, and a cryptographic RNG would only make the evolution loop slower.
-dotnet_diagnostic.CA5394.severity = none
-
-# CA1515: consider making public types internal.
-# The factory exposes a plugin ABI. Provider and port types are public because third-party
-# assemblies implement them; narrowing them would break the contract described in
-# FactoryProviderAttribute.
-dotnet_diagnostic.CA1515.severity = none
-```
-
-- [ ] **Step 2: Write the failing test for the event signature**
-
-`UsageGovernor.Changed` is `Action<string>` (CA1003). Add to `tests/Factory.Tests/AgentTests.cs`:
+- [ ] **Step 4: Write the failing test for the event signature**
 
 `ObserveRejection` is the public trigger: it calls the private `Record`, whose snapshot has a
 status other than `Allowed`, which raises `Changed` (`UsageGovernor.cs:107`, `:125`, `:137`).
 
+Add to `tests/Factory.Tests/AgentTests.cs`:
+
 ```csharp
 [Fact]
-public void Usage_governor_reports_a_rejection_through_a_standard_event()
+public void UsageGovernorReportsARejectionThroughAStandardEvent()
 {
     var governor = new UsageGovernor();
     string? reported = null;
@@ -553,16 +577,20 @@ public void Usage_governor_reports_a_rejection_through_a_standard_event()
 }
 ```
 
-The assertion is deliberately on delivery, not on the exact text: the message is composed by
-`RateLimitSnapshot.Describe` from a clock reading, and asserting its wording would test the
-formatter rather than the event contract this task changes.
+The assertion is on delivery, not on wording: the message is composed by
+`RateLimitSnapshot.Describe` from a clock reading, and asserting its text would test the
+formatter rather than the event contract this task changes. The method name is PascalCase
+because Task 3 already made that the convention.
 
-- [ ] **Step 3: Run it and watch it fail**
+- [ ] **Step 5: Run it and watch it fail**
 
-Run: `dotnet test SoftwareFactory.sln --filter "FullyQualifiedName~Usage_governor_reports_changes"`
-Expected: FAIL — the lambda's parameter count does not match `Action<string>`.
+```bash
+dotnet test SoftwareFactory.sln --filter "FullyQualifiedName~UsageGovernorReportsARejection"
+```
 
-- [ ] **Step 4: Introduce the event args type**
+Expected: FAIL — the lambda takes two parameters and `Action<string>` supplies one.
+
+- [ ] **Step 6: Introduce the event args type**
 
 Create `src/Factory.Agents/UsageChangedEventArgs.cs`:
 
@@ -577,17 +605,23 @@ public sealed class UsageChangedEventArgs(string message) : EventArgs
 }
 ```
 
-In `src/Factory.Agents/UsageGovernor.cs`, change the event and every site that raises it:
+In `src/Factory.Agents/UsageGovernor.cs:55`:
 
 ```csharp
     /// <summary>Raised when the governor changes what it will allow, so callers can report it.</summary>
     public event EventHandler<UsageChangedEventArgs>? Changed;
 ```
 
-There are exactly three raise sites — `UsageGovernor.cs:137`, `:189` and `:193` — each of which
-becomes `Changed?.Invoke(this, new UsageChangedEventArgs(<same expression>))`.
+There are exactly three raise sites. Each becomes
+`Changed?.Invoke(this, new UsageChangedEventArgs(<the same expression>))`:
 
-There is exactly one subscriber, `src/Factory.Runtime/FactoryHost.cs:140`:
+- `:137` — `snapshot.Describe(_clock.GetUtcNow())`
+- `:189` — `$"{reason} — longer than the {RateLimitSnapshot.Format(Policy.MaxWait)} wait ceiling, stopping"`
+- `:193` — `$"{reason} — waiting {RateLimitSnapshot.Format(wait)}"`
+
+- [ ] **Step 7: Update the only subscriber**
+
+`src/Factory.Runtime/FactoryHost.cs:140`:
 
 ```csharp
         governor.Changed += message => (log ?? (_ => { }))($"  [usage] {message}");
@@ -599,62 +633,180 @@ becomes:
         governor.Changed += (_, e) => (log ?? (_ => { }))($"  [usage] {e.Message}");
 ```
 
-Confirm nothing was missed with
-`grep -rn "Changed?.Invoke\|\.Changed +=" src tests --include='*.cs'`.
+Confirm nothing was missed:
 
-- [ ] **Step 5: Run it and watch it pass**
+```bash
+grep -rn "Changed?.Invoke\|\.Changed +=" src tests --include='*.cs'
+```
 
-Run: `dotnet test SoftwareFactory.sln --filter "FullyQualifiedName~Usage_governor_reports_changes"`
+Expected: three raise sites in `UsageGovernor.cs`, one subscriber in `FactoryHost.cs`, one in
+the new test. Nothing else.
+
+- [ ] **Step 8: Run the full suite**
+
+```bash
+dotnet test SoftwareFactory.sln --nologo 2>&1 | tail -3
+```
+
+Expected: 416 passed, 0 failed.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src tests
+git commit -m "Fix the four defects that justified the opt-in rules
+
+Every delegation leaked an Orchestrator. Toolchain blocked a pool thread
+writing its baseline synchronously from an async method. A DllImport with
+no search path let the loader look in the working directory, which for
+this process is a repository it is in the middle of editing. And Changed
+was an Action<string>, so it could not carry context without a breaking
+change.
+
+Each of these is why its rule was added above Recommended."
+```
+
+---
+
+### Task 5: Clear the remaining 46
+
+What is left after Tasks 2–4: **21 in `src`, 25 in `tests`**, across twelve rules. Each is
+small; none is architectural.
+
+The running total, so a task that lands wrong is visible immediately:
+
+```
+Task 1  turn on                        438   (src 26, tests 412)
+Task 2  CA1816 scoped out, tests -25   413   (src 26, tests 387)
+Task 3  CA1707 renames,     tests -362  51   (src 26, tests  25)
+Task 4  four defects fixed,   src  -5   46   (src 21, tests  25)
+Task 5  the rest                        0
+```
+
+**Files:**
+- Modify: `src/Factory.Runtime/Workspace.cs:13`
+- Modify: `src/Factory.Runtime/Providers/Beads/BeadsWorkItemStore.cs:56`
+- Modify: various under `src/` and `tests/` as the build reports them
+- Test: `tests/Factory.Tests/RuntimeTests.cs`
+
+**Interfaces:**
+- Consumes: everything from Tasks 1–4.
+- Produces:
+  - `Workspace : IDisposable` — `public void Dispose()`.
+  - `BeadsWorkItemStore.TryClaim(string owner)` — parameter renamed from `claimant`.
+
+- [ ] **Step 1: Write the failing test for `Workspace` disposal**
+
+`Workspace` holds `private readonly SemaphoreSlim _integrateGate = new(1, 1);` and never
+releases it (CA1001). Add to `tests/Factory.Tests/RuntimeTests.cs`:
+
+```csharp
+[Fact]
+public void WorkspaceReleasesItsIntegrationGateWhenDisposed()
+{
+    var root = Directory.CreateTempSubdirectory().FullName;
+    var workspace = new Workspace(root, new FactoryPaths(root));
+
+    workspace.Dispose();
+
+    Assert.Throws<ObjectDisposedException>(() => workspace.Dispose());
+}
+```
+
+A second `Dispose` on a disposed `SemaphoreSlim` throwing is the observable proof the semaphore
+was really disposed. Do not make `Dispose` idempotent to make this pass — that would leave the
+assertion proving nothing.
+
+- [ ] **Step 2: Run it and watch it fail**
+
+```bash
+dotnet test SoftwareFactory.sln --filter "FullyQualifiedName~WorkspaceReleasesItsIntegrationGate"
+```
+
+Expected: FAIL — `Workspace` has no `Dispose`.
+
+- [ ] **Step 3: Make `Workspace` disposable**
+
+In `src/Factory.Runtime/Workspace.cs`:
+
+```csharp
+public sealed class Workspace(string repoRoot, FactoryPaths paths) : IDisposable
+{
+    private readonly SemaphoreSlim _integrateGate = new(1, 1);
+
+    public void Dispose() => _integrateGate.Dispose();
+```
+
+Sealed, managed-only, no finalizer — a bare `Dispose` is correct. Do not add the full
+IDisposable pattern; CA1063 and CA1816 do not apply and are not enabled here anyway.
+
+- [ ] **Step 4: Run it and watch it pass**
+
+```bash
+dotnet test SoftwareFactory.sln --filter "FullyQualifiedName~WorkspaceReleasesItsIntegrationGate"
+```
+
 Expected: PASS.
 
-- [ ] **Step 6: Work the remaining diagnostics to zero**
+- [ ] **Step 5: Match the interface parameter name**
+
+`BeadsWorkItemStore.cs:56` declares `TryClaim(string claimant)` while
+`IWorkItemStore.TryClaim(string owner)` (`IWorkItemStore.cs:16`) names it `owner` (CA1725). A
+caller using a named argument against the interface breaks on the concrete type.
+
+```csharp
+    public WorkItem? TryClaim(string owner) =>
+        cli.Json<BeadRecord>([.. BeadMapper.ClaimArgs(owner)])
+           .Select(BeadMapper.ToWorkItem)
+           .FirstOrDefault();
+```
+
+Then check for named-argument call sites and update any found:
+
+```bash
+grep -rn "claimant" src tests --include='*.cs'
+```
+
+- [ ] **Step 6: Work the rest to zero**
 
 Rebuild and take them in descending count order:
 
 ```bash
-dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/analyzers.log | tail -3
-grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/analyzers.log \
-  | sort -u | grep -oE "warning [A-Z]+[0-9]+" | sort | uniq -c | sort -rn
+dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/an.log | tail -3
+grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/an.log \
+  | sort -u > /tmp/uniq.txt
+wc -l < /tmp/uniq.txt
+cat /tmp/uniq.txt | sed 's#.*/guardrails/##'
 ```
 
-Guidance per rule, so you are not deciding from scratch:
+Guidance per rule, so nothing is decided from scratch:
 
-- **CA1002** (do not expose `List<T>`): change the property or return type to
-  `IReadOnlyList<T>`. The codebase already uses `IReadOnlyList<T>` throughout `Blueprint` and
-  `StationDef`; follow that.
-- **CA1849** (call async methods in an async context): `Toolchain.cs:535` and `:562` call
-  `File.WriteAllText` inside an `async` method. Change to
-  `await File.WriteAllTextAsync(...).ConfigureAwait(false)` and widen the surrounding
-  `catch (IOException)` to keep covering it.
-- **CA2000** (dispose before losing scope), 10 sites in tests: wrap in `using`. Where the object
-  must outlive the statement, assign it to a field on a fixture that is already disposed.
-- **CA1859** (use concrete types): change the local or field's declared type to the concrete one.
-- **CA1826** (use property instead of `Enumerable` method): replace `.First()`/`.Last()`/
-  `.Count()` on a list with `[0]` / `[^1]` / `.Count`.
-- **CA1068** (`CancellationToken` must be the last parameter): reorder. Update call sites; the
-  compiler finds them all.
-- **CA1822** (mark members as static): add `static`.
-- **CA1032** (standard exception constructors): `WorkItemStoreException` needs the
-  `(string message)` and `(string message, Exception innerException)` constructors.
-- **CA1720 / CA1716 / CA1711** (identifier naming): rename. These are public API names —
-  if a rename would break the plugin ABI described in `FactoryProviderAttribute`, suppress
-  the specific rule with that reason instead of renaming.
-- **CA2225** (operator overloads need named alternates): add the named method
-  (e.g. an `Add` alongside `operator +` on `TokenUsage`).
-- **CA1034** (nested types should not be visible): move the nested type to its own file — the
-  repository's file-organization rule requires one top-level type per file anyway.
-- **CA1416** (platform compatibility): guard with `OperatingSystem.IsMacOS()` or annotate with
-  `[SupportedOSPlatform]`.
+- **CA1859** (use concrete types), 4 in src: change the local or field's declared type to the
+  concrete one the analyzer names.
+- **CA1826** (use property instead of `Enumerable` method), 4 in src: replace `.First()` /
+  `.Last()` / `.Count()` on a list with `[0]` / `[^1]` / `.Count`.
+- **CA1720** (identifier contains type name), 4 in src: rename. One is
+  `AgentEvent.cs:62`. If a rename would break the plugin ABI described in
+  `FactoryProviderAttribute`, suppress CA1720 for that one site with that reason instead.
+- **CA1068** (`CancellationToken` must be last), 3 in src: reorder the parameter. The compiler
+  finds every call site.
+- **CA1822** (mark members as static), 2 in src + 1 in tests: add `static`.
+- **CA1716** (identifiers should not match keywords), 2 in src: rename. Same ABI caveat as
+  CA1720.
+- **CA2000** (dispose before losing scope), 10 in tests: wrap in `using`. Where the object must
+  outlive the statement, assign it to a fixture field that is already disposed.
+- **CA1849** (async in async context), 12 in tests: `await` the async overload.
+- **CA1711** (incorrect suffix), 1 in tests: rename.
+- **CA1416** (platform compatibility), 1 in tests: guard with `OperatingSystem.IsMacOS()` or
+  annotate the member with `[SupportedOSPlatform]`.
 
-Commit in small batches — one rule per commit — rather than one commit at the end.
+Commit in small batches — one rule per commit — not one commit at the end.
 
 - [ ] **Step 7: Verify zero**
 
-Run:
-
 ```bash
-dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/analyzers.log | tail -3
-grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/analyzers.log \
+dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/an.log | tail -3
+grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/an.log \
   | sort -u | wc -l
 ```
 
@@ -662,8 +814,11 @@ Expected: **0**.
 
 - [ ] **Step 8: Restore green**
 
-Run: `dotnet test SoftwareFactory.sln --nologo`
-Expected: 417 passed (415 + 2 new), 0 failed. Paste the actual line into the commit body.
+```bash
+dotnet test SoftwareFactory.sln --nologo 2>&1 | tail -3
+```
+
+Expected: 417 passed, 0 failed. Paste the actual line into the commit body.
 
 ---
 
@@ -671,7 +826,7 @@ Expected: 417 passed (415 + 2 new), 0 failed. Paste the actual line into the com
 
 **Files:**
 - Modify: `Directory.Build.props`
-- Modify: `docs/superpowers/notes/2026-08-19-phase-1-analyzers.md` (create)
+- Create: `docs/superpowers/notes/2026-08-19-phase-1-analyzers.md`
 
 **Interfaces:**
 - Consumes: a zero-warning build from Task 5.
@@ -679,7 +834,7 @@ Expected: 417 passed (415 + 2 new), 0 failed. Paste the actual line into the com
 
 - [ ] **Step 1: Flip the policy**
 
-In `Directory.Build.props`, next to the analyzer properties added in Task 1:
+In `Directory.Build.props`, next to the analyzer properties from Task 1:
 
 ```xml
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -687,38 +842,53 @@ In `Directory.Build.props`, next to the analyzer properties added in Task 1:
 
 - [ ] **Step 2: Prove it holds**
 
-Run: `dotnet build SoftwareFactory.sln --nologo --no-incremental`
+```bash
+dotnet build SoftwareFactory.sln --nologo --no-incremental
+```
+
 Expected: exit 0, zero warnings, zero errors.
 
 - [ ] **Step 3: Prove it bites**
 
-Introduce a deliberate violation and confirm the build now fails:
+A gate that cannot be shown to fail has not been shown to work. Introduce a violation of a
+rule that is definitely enabled — CA1707, which Task 3 just cleared:
 
 ```bash
-printf '\nclass Unused_Name { }\n' >> src/Factory.Core/Ids.cs
+printf '\nnamespace Factory.Core;\npublic sealed class Bad_Name { }\n' > src/Factory.Core/BadName.cs
 dotnet build SoftwareFactory.sln --nologo --no-incremental 2>&1 | tail -5
 ```
 
-Expected: **FAIL**, with `error CA1707` (or another rule) rather than a warning. A gate that
-cannot be shown to fail has not been shown to work.
+Expected: **build FAILS** with `error CA1707` — an error, not a warning.
 
-Then revert:
+Then remove it:
 
 ```bash
-git checkout -- src/Factory.Core/Ids.cs
+rm -f src/Factory.Core/BadName.cs
+dotnet build SoftwareFactory.sln --nologo --no-incremental 2>&1 | tail -3
 ```
+
+Expected: exit 0 again.
 
 - [ ] **Step 4: Restore green, with evidence**
 
-Run: `dotnet test SoftwareFactory.sln --nologo`
+```bash
+dotnet test SoftwareFactory.sln --nologo 2>&1 | tail -3
+```
+
 Expected: 417 passed, 0 failed.
 
 - [ ] **Step 5: Write the note**
 
-Create `docs/superpowers/notes/2026-08-19-phase-1-analyzers.md` recording: the starting count
-(642), the split (471 tests / 171 src), every rule suppressed and why, the eight defects fixed,
-and the final build and test output. Phase 5's coverage gate needs this to know which rules are
-off and on what grounds.
+Create `docs/superpowers/notes/2026-08-19-phase-1-analyzers.md` recording:
+
+- Both measurements: `AnalysisMode=All` at 642, `Recommended` at 411, and why All was rejected.
+- The four opt-in rules and the defect each one found.
+- The single test-scoped suppression (CA1816) and its verified justification.
+- The CA1707 decision — tests follow product naming conventions — and that 362 methods were
+  renamed with the test count held at 415.
+- The final build and test output, pasted.
+
+Phase 5's coverage gate needs this to know which rules are off and on what grounds.
 
 - [ ] **Step 6: Commit**
 
@@ -726,9 +896,9 @@ off and on what grounds.
 git add Directory.Build.props docs/superpowers/notes/2026-08-19-phase-1-analyzers.md
 git commit -m "Make a warning fail the build
 
-Verified both ways: a clean build exits 0, and a deliberately
-introduced violation fails it. CheckStation already runs dotnet build,
-so every work item is now gated on this without a gate being written."
+Verified both ways: a clean build exits 0, and a deliberately introduced
+CA1707 violation fails it as an error. CheckStation already runs dotnet
+build, so every work item is gated on this without a gate being written."
 ```
 
 ---
@@ -736,17 +906,20 @@ so every work item is now gated on this without a gate being written."
 ## Definition of Done
 
 - [ ] `dotnet build SoftwareFactory.sln --no-incremental` exits 0 with zero warnings.
-- [ ] A deliberately introduced violation fails the build — demonstrated, not assumed.
-- [ ] `dotnet test SoftwareFactory.sln` reports 417 passed, 0 failed, with output pasted.
-- [ ] Every `severity = none` in `.editorconfig` has a comment saying why the rule does not
-      apply here.
-- [ ] `docs/superpowers/notes/2026-08-19-phase-1-analyzers.md` records the counts, the
+- [ ] A deliberately introduced violation **fails** the build — demonstrated, then removed.
+- [ ] `dotnet test SoftwareFactory.sln` reports **417 passed, 0 failed**, with output pasted.
+- [ ] The test count was 415 immediately before and immediately after the CA1707 rename.
+- [ ] `.editorconfig` contains exactly one `severity = none` (CA1816, tests), with its
+      justification verified by grep rather than asserted.
+- [ ] Each of the four opt-in rules names the defect it found.
+- [ ] `docs/superpowers/notes/2026-08-19-phase-1-analyzers.md` records both measurements, the
       decisions, and the evidence.
 
 ## Out of Scope
 
 - CSharpier — Phase 2.
-- Splitting `Factory.Tests` into tiers — Phase 3. The analyzer suppressions scoped to
-  `tests/**` will apply to the new projects automatically because the glob is path-based.
-- Any coverage or complexity threshold — Phases 5.
+- Splitting `Factory.Tests` into tiers — Phase 3. The `[tests/**/*.cs]` section is a path glob,
+  so it applies to the new projects automatically.
+- Any coverage or complexity threshold — Phase 5.
 - `IGate`, the pipeline builder, gate packages — Phase 4 onward.
+- Raising `AnalysisMode` to `All`. Measured and rejected; see Global Constraints.

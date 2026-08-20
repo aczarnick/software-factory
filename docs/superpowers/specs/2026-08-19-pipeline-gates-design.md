@@ -321,11 +321,34 @@ either ordering.
 Each step is **small batch, low WIP**: finished and proven before the next begins.
 
 ### Phase 1 — Analyzers
-1. `.editorconfig`, `AnalysisLevel=latest`, `AnalysisMode=All`, `EnforceCodeStyleInBuild`.
+1. `.editorconfig`, `AnalysisLevel=latest-recommended`, `EnforceCodeStyleInBuild`, plus an
+   explicit opt-in list of rules outside Recommended that each caught a real defect here.
 2. **Restore green.** Turn on as *warnings*. Count. Remediate to zero. Evidence: build +
    full suite green.
 3. Flip `TreatWarningsAsErrors`. `CheckStation` already runs `dotnet build`, so this is
    enforced immediately with no gate.
+
+`AnalysisMode=All` was measured and rejected: it produced 642 diagnostics against
+Recommended's 411, and the 231-diagnostic difference in `src` was almost entirely policy
+rules the codebase deliberately does not follow — `CA1062` argument null checks (85 sites,
+redundant under `Nullable enable`), `CA2007` ConfigureAwait (16, no synchronisation context
+in an application), `CA1063` full IDisposable ceremony (50, on sealed managed-only types).
+Suppressing those would have made `.editorconfig` mostly justifications for ignoring the
+analyzer.
+
+Recommended is therefore the floor, with four rules re-enabled by name because each one
+located an actual bug in this repository rather than a style preference:
+
+| Rule | Sites | Defect it found |
+|---|---:|---|
+| `CA2000` | 11 | `DelegateStation` leaks an `Orchestrator` once per delegation |
+| `CA1849` | 14 | `Toolchain` does synchronous `File.WriteAllText` inside `async` methods |
+| `CA5392` | 1 | `DllImport("libc")` unconstrained, while cwd is a repo being edited |
+| `CA1003` | 1 | `UsageGovernor.Changed` is `Action<string>`, not a standard event |
+
+`CA1707` (identifiers should not contain underscores) is enforced everywhere, tests
+included: 362 test methods are renamed from snake_case to PascalCase. Test projects follow
+the same naming conventions as product code.
 
 ### Phase 2 — Formatting
 4. CSharpier as a local tool, pinned in `.config/dotnet-tools.json`.
@@ -365,8 +388,9 @@ Each step is **small batch, low WIP**: finished and proven before the next begin
   number measurable.
 - **Complexity thresholds and the tool.** `Microsoft.CodeAnalysis.Metrics` for .NET;
   language-agnostic equivalents for generated output must be chosen per toolchain.
-- **Phase 1 remediation size.** Unknown and unestimated until analyzers are switched on and
-  the warnings are counted. That count is the first deliverable of Phase 1.
+- ~~**Phase 1 remediation size.**~~ Measured 2026-08-19: **438** diagnostics under
+  `latest-recommended` plus the four opt-in rules — 26 in `src`, 412 in `tests`, of which 362
+  are `CA1707` test-method renames. See `docs/superpowers/plans/2026-08-19-phase-1-analyzers.md`.
 
 ---
 
@@ -375,7 +399,8 @@ Each step is **small batch, low WIP**: finished and proven before the next begin
 | Risk | Mitigation |
 |---|---|
 | A pathological in-process gate hangs the factory | Mandatory per-gate timeout; process-killing for shell gates; `doctor` reports historical timeouts. Full isolation was declined for token-economy reasons (§3.7) |
-| Phase 1 remediation is larger than expected | Warnings-first, counted before committing to the flip; `Advisory` and baseline semantics let adoption stage |
+| Phase 1 remediation is larger than expected | Measured before committing: 438 diagnostics, 362 of them one mechanical rename. `AnalysisMode=All` was measured (642) and rejected in favour of Recommended plus named opt-ins |
+| The 362 `CA1707` renames break test discovery or a `--filter` expression | Test count is asserted unchanged at 415 before and after the rename; `--filter` and doc references are grepped |
 | The 100% unit gate proves unreachable | Per-tier baseline measured before the threshold is chosen; gate lands `Advisory` first |
 | Two pipeline sources confuse provenance | `doctor` always prints which resolved, and to what version |
 | Nothing runs while the daemon is down | Accepted. Revisit only if scheduled sweeps prove to be missed in practice |
