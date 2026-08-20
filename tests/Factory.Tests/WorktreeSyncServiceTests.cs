@@ -95,4 +95,36 @@ public class WorktreeSyncServiceTests : IDisposable
         var mainStatus = await Shell.GitAsync(_dir, default, "status", "--porcelain");
         Assert.True(string.IsNullOrWhiteSpace(mainStatus.Stdout));
     }
+
+    private sealed class SpyGitShell : IGitShell
+    {
+        public readonly List<string> Invocations = new();
+
+        public Task<ShellResult> GitAsync(string workingDirectory, CancellationToken ct, params string[] args)
+        {
+            var joined = string.Join(' ', args);
+            Invocations.Add(joined);
+            return Task.FromResult(joined switch
+            {
+                "rev-parse mainline" => new ShellResult(0, "headsha\n", "", false),
+                "merge-base basesha headsha" => new ShellResult(0, "basesha\n", "", false),
+                "merge mainline" => new ShellResult(1, "", "conflict", false),
+                _ => new ShellResult(0, "", "", false)
+            });
+        }
+    }
+
+    [Fact]
+    public async Task A_conflicting_merge_issues_merge_then_merge_abort_through_the_injected_shell()
+    {
+        var spy = new SpyGitShell();
+        var sync = new WorktreeSyncService(spy);
+
+        var outcome = await sync.SyncAsync("main", "mainline", "worktree", "basesha");
+
+        Assert.Equal(SyncOutcome.Conflict, outcome);
+        Assert.Equal(
+            new[] { "rev-parse mainline", "merge-base basesha headsha", "merge mainline", "merge --abort" },
+            spy.Invocations);
+    }
 }
