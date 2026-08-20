@@ -49,6 +49,13 @@ public sealed record RunRecord
     public int Turns { get; init; }
     public long DurationMs { get; init; }
     public string? StopReason { get; init; }
+
+    /// <summary>Transport session this run happened in, when a model was called. It is the only
+    /// handle to what the agent actually did: the terminal result message carries it and it used to
+    /// be discarded here, leaving the evolution loop to reason about a station from scalars — turns,
+    /// cost, pass or fail — with no way to see the work behind them. Null for a deterministic
+    /// station, which calls no model and so has no session to point at.</summary>
+    public string? SessionId { get; init; }
     public string? Error { get; init; }
 
     /// <summary>True when the response cache served this without a model call.</summary>
