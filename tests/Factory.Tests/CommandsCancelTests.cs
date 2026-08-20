@@ -7,7 +7,7 @@ namespace Factory.Tests;
 /// <summary>Redirects Console.Out, which is process-global — grouped into a shared,
 /// non-parallel collection with other tests that do the same so they cannot race each other.</summary>
 [CollectionDefinition("Console")]
-public class ConsoleCollection;
+public class ConsoleTestGroup;
 
 [Collection("Console")]
 public sealed class CommandsCancelTests : IDisposable
