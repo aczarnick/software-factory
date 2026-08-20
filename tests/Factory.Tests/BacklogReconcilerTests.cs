@@ -14,7 +14,7 @@ public sealed class BacklogReconcilerTests : IDisposable
     {
         public WorkItem Add(WorkItem item) { items.Add(item); return item; }
         public WorkItem Update(WorkItem item) => item;
-        public WorkItem Transition(WorkItem item, WorkItemState to, string? reason) => item with { State = to };
+        public WorkItem Transition(WorkItem item, WorkItemState target, string? reason) => item with { State = target };
         public WorkItem? Get(string id) => items.FirstOrDefault(i => i.Id == id);
         public IReadOnlyList<WorkItem> All() => items;
         public WorkItem? TryClaim(string owner) => null;

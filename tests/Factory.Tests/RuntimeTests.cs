@@ -634,7 +634,7 @@ public class ClaimRefreshTests
 
         public WorkItem Add(WorkItem item) => throw new NotSupportedException();
         public WorkItem Update(WorkItem item) => throw new NotSupportedException();
-        public WorkItem Transition(WorkItem item, WorkItemState to, string? reason) => throw new NotSupportedException();
+        public WorkItem Transition(WorkItem item, WorkItemState target, string? reason) => throw new NotSupportedException();
         public WorkItem? Get(string id) => throw new NotSupportedException();
         public IReadOnlyList<WorkItem> All() => throw new NotSupportedException();
         public WorkItem? TryClaim(string owner) => throw new NotSupportedException();

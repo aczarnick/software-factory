@@ -235,8 +235,8 @@ public sealed class FactoryHost : IDisposable
         return Update(ready with { Station = resumable ? ready.Station : null });
     }
 
-    public WorkItem Transition(WorkItem item, WorkItemState to, string? reason = null) =>
-        Services.Items.Transition(item, to, reason);
+    public WorkItem Transition(WorkItem item, WorkItemState target, string? reason = null) =>
+        Services.Items.Transition(item, target, reason);
 
     public WorkItem Update(WorkItem item) => Services.Items.Update(item);
 

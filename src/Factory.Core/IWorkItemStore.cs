@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace Factory.Core;
 
 /// <summary>The backlog. Exactly one provider is active: item state has a single authority,
@@ -6,8 +8,13 @@ public interface IWorkItemStore
 {
     WorkItem Add(WorkItem item);
     WorkItem Update(WorkItem item);
-    WorkItem Transition(WorkItem item, WorkItemState to, string? reason);
+    WorkItem Transition(WorkItem item, WorkItemState target, string? reason);
 
+    // Renaming this member is a plugin ABI break: FactoryProviderAttribute-marked plugins
+    // implement this interface as a typed C# member, so an already-compiled plugin binary
+    // would no longer satisfy IWorkItemStore and would fail to cast at ProviderRegistry.Resolve.
+    [SuppressMessage("Naming", "CA1716", Justification =
+        "Renaming Get would break already-compiled plugins implementing this interface (see FactoryProviderAttribute).")]
     WorkItem? Get(string id);
     IReadOnlyList<WorkItem> All();
 

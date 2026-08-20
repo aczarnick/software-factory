@@ -17,7 +17,7 @@ public class GuardedProviderTests
     {
         public WorkItem Add(WorkItem item) => throw new InvalidOperationException("store down");
         public WorkItem Update(WorkItem item) => throw new InvalidOperationException("store down");
-        public WorkItem Transition(WorkItem item, WorkItemState to, string? reason) => throw new InvalidOperationException("store down");
+        public WorkItem Transition(WorkItem item, WorkItemState target, string? reason) => throw new InvalidOperationException("store down");
         public WorkItem? Get(string id) => throw new InvalidOperationException("store down");
         public IReadOnlyList<WorkItem> All() => throw new InvalidOperationException("store down");
         public WorkItem? TryClaim(string owner) => throw new InvalidOperationException("store down");

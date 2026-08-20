@@ -29,14 +29,14 @@ public sealed class LedgerWorkItemStore(IRunHistory history, FactoryState state)
         return updated;
     }
 
-    public WorkItem Transition(WorkItem item, WorkItemState to, string? reason)
+    public WorkItem Transition(WorkItem item, WorkItemState target, string? reason)
     {
-        if (!WorkItemStates.CanTransition(item.State, to))
+        if (!WorkItemStates.CanTransition(item.State, target))
             throw new InvalidOperationException(
-                $"Illegal transition {item.State} -> {to} for {item.Id}.");
+                $"Illegal transition {item.State} -> {target} for {item.Id}.");
 
-        Record(new WorkItemStateChanged(item.Id, item.State, to, reason));
-        return item with { State = to, UpdatedAt = DateTimeOffset.UtcNow };
+        Record(new WorkItemStateChanged(item.Id, item.State, target, reason));
+        return item with { State = target, UpdatedAt = DateTimeOffset.UtcNow };
     }
 
     public WorkItem? Get(string id) => state.Items.GetValueOrDefault(id);

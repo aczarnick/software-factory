@@ -35,13 +35,13 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string
         return item.State == WorkItemState.Ready ? written with { Owner = null } : written;
     }
 
-    public WorkItem Transition(WorkItem item, WorkItemState to, string? reason)
+    public WorkItem Transition(WorkItem item, WorkItemState target, string? reason)
     {
-        if (!WorkItemStates.CanTransition(item.State, to))
+        if (!WorkItemStates.CanTransition(item.State, target))
             throw new InvalidOperationException(
-                $"Illegal transition {item.State} -> {to} for {item.Id}.");
+                $"Illegal transition {item.State} -> {target} for {item.Id}.");
 
-        var moved = Update(item with { State = to, UpdatedAt = DateTimeOffset.UtcNow });
+        var moved = Update(item with { State = target, UpdatedAt = DateTimeOffset.UtcNow });
         Note(item.Id, reason);
 
         return moved;

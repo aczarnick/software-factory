@@ -17,7 +17,7 @@ public class LedgerMirroringWorkItemStoreTests
         public IReadOnlyList<WorkItem> ReclaimResult = [];
         public WorkItem Add(WorkItem item) => item;
         public WorkItem Update(WorkItem item) => item;
-        public WorkItem Transition(WorkItem item, WorkItemState to, string? reason) => item with { State = to };
+        public WorkItem Transition(WorkItem item, WorkItemState target, string? reason) => item with { State = target };
         public WorkItem? Get(string id) => null;
         public IReadOnlyList<WorkItem> All() => [];
         public WorkItem? TryClaim(string owner) => ClaimResult;

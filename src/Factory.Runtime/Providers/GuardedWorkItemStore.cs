@@ -9,8 +9,8 @@ public sealed class GuardedWorkItemStore(IWorkItemStore inner, string providerNa
     public WorkItem Add(WorkItem item) => Guard(nameof(Add), () => inner.Add(item));
     public WorkItem Update(WorkItem item) => Guard(nameof(Update), () => inner.Update(item));
 
-    public WorkItem Transition(WorkItem item, WorkItemState to, string? reason) =>
-        Guard(nameof(Transition), () => inner.Transition(item, to, reason));
+    public WorkItem Transition(WorkItem item, WorkItemState target, string? reason) =>
+        Guard(nameof(Transition), () => inner.Transition(item, target, reason));
 
     public WorkItem? Get(string id) => Guard(nameof(Get), () => inner.Get(id));
     public IReadOnlyList<WorkItem> All() => Guard(nameof(All), inner.All);

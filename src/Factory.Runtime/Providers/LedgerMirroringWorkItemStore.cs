@@ -28,9 +28,9 @@ public sealed class LedgerMirroringWorkItemStore(
         return updated;
     }
 
-    public WorkItem Transition(WorkItem item, WorkItemState to, string? reason)
+    public WorkItem Transition(WorkItem item, WorkItemState target, string? reason)
     {
-        var moved = inner.Transition(item, to, reason);
+        var moved = inner.Transition(item, target, reason);
         MirrorChange(moved, item.State, reason);
         return moved;
     }
