@@ -55,6 +55,11 @@ public sealed class ItemRun(WorkItem item, string workDir, int depth = 0)
     public string? LastFailure { get; set; }
 
     public IReadOnlyList<AcceptanceCriterion> DeferredCriteria { get; set; } = [];
+
+    /// <summary>A conversation left unfinished by the turn ceiling, and the station it belongs to.
+    /// Held per item because that is how long a retry stays in scope, and stationed because each
+    /// station has its own briefing — resuming one inside another would splice two together.</summary>
+    public (string StationId, string SessionId)? Unfinished { get; set; }
 }
 
 public sealed class StationContext
@@ -135,6 +140,14 @@ public abstract class AgentStation : IStation
             _ => throw new InvalidOperationException($"Station '{def.Id}' has no model profile.")
         };
 
+    /// <summary>Sent instead of the full briefing when continuing a run that ran out of turns. The
+    /// session still holds the item, the plan and everything already read; restating it would pay
+    /// for the context twice and invite the model to begin again rather than carry on.</summary>
+    private const string ContinuationPrompt =
+        "You ran out of turns before finishing. Your workspace still holds every change you made. " +
+        "Continue from exactly where you stopped and complete the work — do not start over, and do " +
+        "not redo what is already done.";
+
     /// <summary>Runs the station's model call and turns the outcome into a ledger record.
     /// Every model call in the factory goes through here, which is what makes the run table
     /// complete enough to evaluate prompts from.</summary>
@@ -145,16 +158,29 @@ public abstract class AgentStation : IStation
         var s = ctx.Services;
         var def = ctx.Def;
 
+        // Only this station's own unfinished conversation, and only once: if the continuation also
+        // runs out of room it records a fresh session rather than resuming a spent one.
+        var resuming = ctx.Run.Unfinished is { } unfinished && unfinished.StationId == def.Id
+            ? unfinished.SessionId
+            : null;
+        if (resuming is not null) ctx.Run.Unfinished = null;
+
         var request = new AgentRequest
         {
-            Prompt = userPrompt,
+            Prompt = resuming is null ? userPrompt : ContinuationPrompt,
             Profile = ProfileFor(def, prompt.Text),
             WorkingDirectory = ctx.Run.WorkDir,
             JsonSchema = schema,
+            ResumeSessionId = resuming,
             MaxBudgetUsd = s.Budget.RemainingForRun(ctx.Item, def.BudgetUsd),
             ContextDigest = Ids.Hash(prompt.Hash, ctx.Item.Id, ctx.Run.LastFailure),
-            NoCache = noCache
+            // A resumed turn continues a conversation the cache has never seen ending this way,
+            // and replaying a stored answer would discard the work it is meant to finish.
+            NoCache = noCache || resuming is not null
         };
+
+        if (resuming is not null)
+            ctx.Log($"resuming the previous session rather than starting over");
 
         var runId = Ids.New("run");
         s.Record(new RunStarted(runId, ctx.Item.Id, def.Id, prompt.Id, ModelCatalog.Resolve(def.Tier)));
@@ -180,6 +206,10 @@ public abstract class AgentStation : IStation
             CacheHit = result.CacheHit,
             Attempt = ctx.Item.Attempts
         };
+
+        // Kept for the next attempt at this station. A run that ended for a reason of its own is
+        // not left here: resuming that conversation would carry the reason along with it.
+        if (result.CanResume) ctx.Run.Unfinished = (def.Id, result.SessionId!);
 
         if (result.CostUsd > 0)
         {

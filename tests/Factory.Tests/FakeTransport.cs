@@ -37,6 +37,19 @@ public sealed class FakeTransport : IAgentTransport
             ?? AgentRunResult.Failure($"no fake responder for station '{request.Profile.Name}'"));
     }
 
+    /// <summary>A run stopped by the turn ceiling with work still in hand — the case worth
+    /// continuing rather than restarting.</summary>
+    public static AgentRunResult OutOfTurns(string sessionId, decimal cost = 1.90m) => new()
+    {
+        Success = false,
+        Error = "error_max_turns",
+        ExhaustedTurns = true,
+        SessionId = sessionId,
+        CostUsd = cost,
+        Turns = 40,
+        StopReason = "tool_use"
+    };
+
     public static AgentRunResult Success(string text, decimal cost = 0.001m) => new()
     {
         Success = true,
