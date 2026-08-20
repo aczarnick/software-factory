@@ -36,6 +36,12 @@ Roslyn analyzers, xUnit 2.9.2.
   `dotnet test` against the same worktree — a second run corrupts the first. Run one at a time.
 - The suite has **415** tests. That number must be 415 before and after the rename task, and
   417 at the end of this plan. A change in count is a bug, not a detail.
+- **Count diagnostics with `warning [A-Za-z]+[0-9]+`, not `[A-Z]+[0-9]+`.** An uppercase-only
+  prefix silently skips every mixed-case analyzer id — `xUnit####` in particular. This plan
+  originally used the uppercase form and hid a live `xUnit2031` for four tasks, which would have
+  failed Task 6's `TreatWarningsAsErrors` gate. Before that flip, always also run
+  `grep -oE 'warning [A-Za-z]+[0-9]+' LOG | sort -u` and read the distinct rule ids, so no
+  prefix goes unnoticed.
 
 ## Measured Starting Point
 
@@ -197,7 +203,7 @@ dotnet_diagnostic.CA1003.severity = warning
 
 ```bash
 dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/an.log | tail -5
-grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/an.log \
+grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Za-z]+[0-9]+" /tmp/an.log \
   | sort -u > /tmp/uniq.txt
 echo "total:"; wc -l < /tmp/uniq.txt
 echo "src:";   grep -c "/src/"   /tmp/uniq.txt
@@ -214,9 +220,9 @@ plan.
 
 ```bash
 echo "=== src ==="
-grep "/src/"   /tmp/uniq.txt | grep -oE "warning [A-Z]+[0-9]+" | sort | uniq -c | sort -rn
+grep "/src/"   /tmp/uniq.txt | grep -oE "warning [A-Za-z]+[0-9]+" | sort | uniq -c | sort -rn
 echo "=== tests ==="
-grep "/tests/" /tmp/uniq.txt | grep -oE "warning [A-Z]+[0-9]+" | sort | uniq -c | sort -rn
+grep "/tests/" /tmp/uniq.txt | grep -oE "warning [A-Za-z]+[0-9]+" | sort | uniq -c | sort -rn
 ```
 
 Expected: the two tables in "Measured Starting Point" above.
@@ -299,7 +305,7 @@ Expected: `sealed 25 classes`.
 ```bash
 dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/an.log | tail -3
 grep -c "warning CA1816" /tmp/an.log
-grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/an.log \
+grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Za-z]+[0-9]+" /tmp/an.log \
   | sort -u | wc -l
 ```
 
@@ -461,7 +467,7 @@ revert with `git checkout -- tests` and resolve the collision before retrying.
 ```bash
 dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/an.log | tail -3
 grep -c "warning CA1707" /tmp/an.log
-grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/an.log \
+grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Za-z]+[0-9]+" /tmp/an.log \
   | sort -u | wc -l
 ```
 
@@ -743,20 +749,27 @@ releases it (CA1001). Add to `tests/Factory.Tests/RuntimeTests.cs`:
 
 ```csharp
 [Fact]
-public void WorkspaceReleasesItsIntegrationGateWhenDisposed()
+public async Task WorkspaceReleasesItsIntegrationGateWhenDisposed()
 {
     var root = Directory.CreateTempSubdirectory().FullName;
     var workspace = new Workspace(root, new FactoryPaths(root));
+    await workspace.EnsureRepoAsync();
+    var item = new WorkItem { Id = "wi-dispose-test", Title = "dispose test" };
+    var workDir = await workspace.AcquireAsync(item);
 
     workspace.Dispose();
 
-    Assert.Throws<ObjectDisposedException>(() => workspace.Dispose());
+    await Assert.ThrowsAsync<ObjectDisposedException>(
+        () => workspace.IntegrateAsync(item, workDir, "message"));
 }
 ```
 
-A second `Dispose` on a disposed `SemaphoreSlim` throwing is the observable proof the semaphore
-was really disposed. Do not make `Dispose` idempotent to make this pass — that would leave the
-assertion proving nothing.
+The assertion goes through `IntegrateAsync` because that is what actually waits on the semaphore
+(`Workspace.cs:90`), so a disposed gate surfaces as `ObjectDisposedException` from a real public
+operation.
+
+Do **not** assert that a second `Dispose()` throws. `SemaphoreSlim.Dispose()` is idempotent and
+never throws on a repeat call, so that assertion cannot fire and would prove nothing.
 
 - [ ] **Step 2: Run it and watch it fail**
 
@@ -815,7 +828,7 @@ Rebuild and take them in descending count order:
 
 ```bash
 dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/an.log | tail -3
-grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/an.log \
+grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Za-z]+[0-9]+" /tmp/an.log \
   | sort -u > /tmp/uniq.txt
 wc -l < /tmp/uniq.txt
 cat /tmp/uniq.txt | sed 's#.*/guardrails/##'
@@ -848,7 +861,7 @@ Commit in small batches — one rule per commit — not one commit at the end.
 
 ```bash
 dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/an.log | tail -3
-grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/an.log \
+grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Za-z]+[0-9]+" /tmp/an.log \
   | sort -u | wc -l
 ```
 
