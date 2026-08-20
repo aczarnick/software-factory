@@ -25,8 +25,11 @@ Roslyn analyzers, xUnit 2.9.2.
 - **`AnalysisMode=All` is rejected.** It was measured at 642 diagnostics; the 231-diagnostic
   difference was almost entirely policy rules this codebase deliberately does not follow. Do
   not raise the mode. Add individual rules by name instead, and only with a reason.
-- Every `severity = none` MUST carry a comment in `.editorconfig` saying why the rule does not
-  apply here. Every opt-in above Recommended MUST name the defect it caught.
+- **There are no rule suppressions in this plan.** `.editorconfig` must contain zero
+  `severity = none` entries at the end of it. Every diagnostic is fixed, not waived. If you
+  reach for a suppression, you have found something this plan did not anticipate — stop and
+  raise it rather than adding one.
+- Every opt-in above Recommended MUST name, in a comment, the defect it caught here.
 - Verification is `dotnet build SoftwareFactory.sln` **and** `dotnet test SoftwareFactory.sln`.
   Show actual output. Non-zero exit means not done.
 - The full suite takes ~4 minutes and is **not** safe to run concurrently with another
@@ -110,9 +113,9 @@ reason to add a rule.
 | `src/Factory.Runtime/FactoryHost.cs:140` | The only `Changed` subscriber | Modify |
 | `tests/Factory.Tests/*.cs` | CA1707 — 362 method renames | Modify |
 
-`.editorconfig` is the only new configuration file. One file, with per-path sections: the point
-is a single definition of the bar, and a `[tests/**/*.cs]` section expresses the test/src
-distinction without splitting it.
+`.editorconfig` is the only new configuration file, and it has a single `[*.cs]` section — one
+definition of the bar, applied identically to product and test code. There is no test-scoped
+section, because nothing is waived for tests.
 
 ---
 
@@ -237,71 +240,95 @@ count is zero."
 
 ---
 
-### Task 2: Scope away the one rule that does not apply to sealed test fixtures
+### Task 2: Seal the test fixtures
 
-CA1816 (25 sites, all in tests) requires `GC.SuppressFinalize(this)` in a `Dispose`. That call
-exists to stop a finalizer running on an already-cleaned object. The test fixtures are `sealed`,
-hold only managed handles, and declare no finalizer, so it suppresses nothing.
+CA1816 (25 sites, all in tests) asks for `GC.SuppressFinalize(this)` in a `Dispose`. All 25
+sites are the same line — `public void Dispose() => TempDir.Delete(_dir);` — which deletes a
+temp directory. There is no managed resource and no finalizer, so `GC.SuppressFinalize` would
+suppress nothing.
 
-This is the *only* test-scoped suppression in this plan. CA1707 is **not** suppressed — test
-projects follow the same naming conventions as product code, and Task 3 renames them.
+What the analyzer is actually pointing at is that every one of these is a **non-sealed
+`public class`** with a non-virtual `Dispose()`: a derived class could not extend cleanup. The
+same fact is why CA1063 fired 50 times under `AnalysisMode=All` — 25 classes, two rules.
+
+`sealed` is therefore the fix, and it was verified empirically: sealing all 25 takes CA1816
+from 25 to **0**. No suppression and no ceremony.
+
+No test class is inherited from — confirmed by grep in Step 1 — so sealing changes no behaviour.
+xUnit constructs a fresh instance per test and calls `Dispose` after it; sealing does not affect
+either.
 
 **Files:**
-- Modify: `.editorconfig`
+- Modify: 25 files under `tests/Factory.Tests/`
 
 **Interfaces:**
 - Consumes: `.editorconfig` from Task 1.
-- Produces: a `[tests/**/*.cs]` section in `.editorconfig`.
+- Produces: no API change. `.editorconfig` gains nothing — there is no `[tests/**/*.cs]`
+  section in this plan.
 
-- [ ] **Step 1: Confirm the fixtures really are sealed and finalizer-free**
-
-Before suppressing, verify the justification is true rather than assumed:
+- [ ] **Step 1: Confirm nothing inherits from a test class**
 
 ```bash
-grep -rn "class.*IDisposable" tests --include='*.cs' | grep -v sealed
-grep -rn "~[A-Z]" tests --include='*.cs'
+grep -rnE "public class [A-Za-z0-9]+ : [A-Za-z]" tests --include='*.cs' | grep -v IDisposable
 ```
 
-Expected: both empty. If either returns a hit, that type is **not** covered by this
-justification — fix it by adding `GC.SuppressFinalize(this)` there and narrow the suppression.
+Expected: empty. A hit means that class *is* a base and must not be sealed — exclude it and
+handle it separately.
 
-- [ ] **Step 2: Add the test-scoped section**
+- [ ] **Step 2: Seal them**
 
-Append to `.editorconfig`:
-
-```ini
-# ── Test code ────────────────────────────────────────────────────────────────
-# Test projects follow the same conventions as product code. The single exception below is a
-# rule whose premise does not hold here, not a convention we decline to follow.
-[tests/**/*.cs]
-
-# CA1816: call GC.SuppressFinalize in Dispose.
-# That call prevents a finalizer running on an already-cleaned object. Every disposable type in
-# tests/ is sealed, holds only managed handles, and declares no finalizer — verified by grep in
-# this task's first step — so there is no finalizer for it to suppress.
-dotnet_diagnostic.CA1816.severity = none
+```bash
+python3 - <<'PY'
+import pathlib, re
+total = 0
+for path in pathlib.Path('tests').rglob('*.cs'):
+    text = path.read_text()
+    sealed = re.sub(r'\bpublic class ([A-Za-z0-9]+) : IDisposable\b',
+                    r'public sealed class \1 : IDisposable', text)
+    if sealed != text:
+        total += len(re.findall(r'\bpublic class [A-Za-z0-9]+ : IDisposable\b', text))
+        path.write_text(sealed)
+print("sealed", total, "classes")
+PY
 ```
+
+Expected: `sealed 25 classes`.
 
 - [ ] **Step 3: Rebuild and verify the drop**
 
 ```bash
 dotnet build SoftwareFactory.sln --nologo -v n --no-incremental 2>&1 | tee /tmp/an.log | tail -3
+grep -c "warning CA1816" /tmp/an.log
 grep -oE "[A-Za-z0-9_./-]+\.cs\([0-9]+,[0-9]+\): warning [A-Z]+[0-9]+" /tmp/an.log \
   | sort -u | wc -l
 ```
 
-Expected: **413** (438 − 25).
+Expected: CA1816 count **0**; total **413** (438 − 25).
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Run the suite**
 
 ```bash
-git add .editorconfig
-git commit -m "Drop the one analyzer rule whose premise does not hold in tests
+dotnet test SoftwareFactory.sln --nologo 2>&1 | tail -3
+```
 
-CA1816 wants GC.SuppressFinalize so a finalizer does not run on a
-cleaned object. Every disposable type in tests/ is sealed with no
-finalizer, verified by grep, so there is nothing to suppress. This is
-the only test-scoped exception: CA1707 stays on and the renames follow."
+Expected: 415 passed, 0 failed. Sealing is behaviour-neutral, so any change here is a real
+problem.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tests
+git commit -m "Seal the test fixtures instead of waiving the rule about them
+
+All 25 CA1816 sites are the same line -- Dispose deleting a temp
+directory. There is no managed resource and no finalizer, so
+GC.SuppressFinalize would suppress nothing. What the analyzer is
+actually pointing at is that each of these is a non-sealed public class
+with a non-virtual Dispose, which a derived class could not extend.
+Nothing inherits from them, so sealing is free and takes CA1816 to zero.
+
+Same 25 diagnostics cleared either way; this way .editorconfig keeps no
+suppressions at all."
 ```
 
 ---
@@ -677,10 +704,10 @@ The running total, so a task that lands wrong is visible immediately:
 
 ```
 Task 1  turn on                        438   (src 26, tests 412)
-Task 2  CA1816 scoped out, tests -25   413   (src 26, tests 387)
+Task 2  seal 25 fixtures,   tests  -25 413   (src 26, tests 387)
 Task 3  CA1707 renames,     tests -362  51   (src 26, tests  25)
-Task 4  four defects fixed,   src  -5   46   (src 21, tests  25)
-Task 5  the rest                        0
+Task 4  four defects fixed,   src   -5  46   (src 21, tests  25)
+Task 5  the rest                         0
 ```
 
 **Files:**
@@ -737,8 +764,9 @@ public sealed class Workspace(string repoRoot, FactoryPaths paths) : IDisposable
     public void Dispose() => _integrateGate.Dispose();
 ```
 
-Sealed, managed-only, no finalizer — a bare `Dispose` is correct. Do not add the full
-IDisposable pattern; CA1063 and CA1816 do not apply and are not enabled here anyway.
+`Workspace` is already `sealed` and holds only a managed `SemaphoreSlim` with no finalizer, so a
+bare `Dispose` is correct and CA1816 does not fire — the same reason Task 2 sealed the test
+fixtures. Do not add the full IDisposable pattern.
 
 - [ ] **Step 4: Run it and watch it pass**
 
@@ -883,7 +911,8 @@ Create `docs/superpowers/notes/2026-08-19-phase-1-analyzers.md` recording:
 
 - Both measurements: `AnalysisMode=All` at 642, `Recommended` at 411, and why All was rejected.
 - The four opt-in rules and the defect each one found.
-- The single test-scoped suppression (CA1816) and its verified justification.
+- That CA1816's 25 sites were cleared by sealing the fixtures, not by a suppression, and that
+  `.editorconfig` therefore contains no waivers at all.
 - The CA1707 decision — tests follow product naming conventions — and that 362 methods were
   renamed with the test count held at 415.
 - The final build and test output, pasted.
@@ -909,8 +938,8 @@ build, so every work item is gated on this without a gate being written."
 - [ ] A deliberately introduced violation **fails** the build — demonstrated, then removed.
 - [ ] `dotnet test SoftwareFactory.sln` reports **417 passed, 0 failed**, with output pasted.
 - [ ] The test count was 415 immediately before and immediately after the CA1707 rename.
-- [ ] `.editorconfig` contains exactly one `severity = none` (CA1816, tests), with its
-      justification verified by grep rather than asserted.
+- [ ] `.editorconfig` contains **zero** `severity = none` entries. Every diagnostic was fixed,
+      none waived. Verify with `grep -c "severity = none" .editorconfig` returning 0.
 - [ ] Each of the four opt-in rules names the defect it found.
 - [ ] `docs/superpowers/notes/2026-08-19-phase-1-analyzers.md` records both measurements, the
       decisions, and the evidence.
@@ -918,8 +947,8 @@ build, so every work item is gated on this without a gate being written."
 ## Out of Scope
 
 - CSharpier — Phase 2.
-- Splitting `Factory.Tests` into tiers — Phase 3. The `[tests/**/*.cs]` section is a path glob,
-  so it applies to the new projects automatically.
+- Splitting `Factory.Tests` into tiers — Phase 3. `.editorconfig` has one `[*.cs]` section with
+  no path scoping, so it applies to the new projects with no change.
 - Any coverage or complexity threshold — Phase 5.
 - `IGate`, the pipeline builder, gate packages — Phase 4 onward.
 - Raising `AnalysisMode` to `All`. Measured and rejected; see Global Constraints.

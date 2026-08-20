@@ -350,6 +350,12 @@ located an actual bug in this repository rather than a style preference:
 included: 362 test methods are renamed from snake_case to PascalCase. Test projects follow
 the same naming conventions as product code.
 
+**Nothing is suppressed.** `.editorconfig` ends Phase 1 with zero `severity = none` entries.
+The one candidate — `CA1816` on 25 test fixtures — turned out to be pointing at a real
+property rather than asking for ceremony: every site is a non-sealed `public class` whose
+`Dispose` only deletes a temp directory. Sealing them takes the rule to zero, verified
+empirically. A rule that looks inapplicable is worth a second look before it is waived.
+
 ### Phase 2 — Formatting
 4. CSharpier as a local tool, pinned in `.config/dotnet-tools.json`.
 5. **Restore green.** Format the tree. Evidence: `csharpier check .` exit 0, suite green.
