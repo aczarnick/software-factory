@@ -136,6 +136,10 @@ public sealed class CliAgentTransport(string? executable = null, TimeSpan? timeo
             Usage = usage,
             Turns = evt.Int("num_turns"),
             StopReason = evt.Str("stop_reason") ?? evt.Subtype,
+            // Carried as its own flag rather than left for a caller to recognise in the error text:
+            // the turn ceiling arrives as the subtype while stop_reason still reads "tool_use", so
+            // matching on the message would be matching on prose.
+            ExhaustedTurns = evt.Subtype == "error_max_turns",
             Error = isError ? DescribeError(evt) : null,
             DurationMs = durationMs,
             ToolsUsed = toolsUsed.Distinct().ToList(),

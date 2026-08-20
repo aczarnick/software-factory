@@ -16,6 +16,15 @@ public sealed record AgentRunResult
     public int Turns { get; init; }
     public string? StopReason { get; init; }
     public string? Error { get; init; }
+
+    /// <summary>The run hit its turn ceiling with work still in hand, rather than ending for a
+    /// reason of its own. It is the one failure worth continuing instead of restarting: the
+    /// conversation was progressing, and <see cref="SessionId"/> can carry it on for the price of a
+    /// cache read rather than paying for the whole briefing again.</summary>
+    public bool ExhaustedTurns { get; init; }
+
+    /// <summary>Whether this run can be picked up where it stopped.</summary>
+    public bool CanResume => ExhaustedTurns && SessionId is { Length: > 0 };
     public long DurationMs { get; init; }
 
     /// <summary>True when served from the response cache without a model call.</summary>

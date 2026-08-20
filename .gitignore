@@ -14,3 +14,6 @@ examples/
 
 # Harness-managed worktrees
 .claude/worktrees/
+
+# JetBrains per-user settings, written by the IDE
+*.DotSettings.user
