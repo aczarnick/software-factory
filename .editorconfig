@@ -1,0 +1,41 @@
+# Analyzer policy for the Software Factory.
+#
+# The floor is AnalysisMode=Recommended, set in Directory.Build.props. AnalysisMode=All was
+# measured at 642 diagnostics against Recommended's 411, and nearly all of the difference was
+# rules this codebase deliberately does not follow — CA1062 argument null checks (redundant
+# under Nullable enable), CA2007 ConfigureAwait (no synchronisation context in an application),
+# CA1063 full IDisposable ceremony (on sealed, managed-only types). Suppressing those would
+# have made this file mostly justifications for ignoring the analyzer.
+#
+# A rule is added above Recommended only when it found an actual bug here. Each opt-in below
+# names the bug.
+
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
+
+# CA2000: dispose objects before losing scope.
+# DelegateStation created an Orchestrator (sealed, IDisposable) per delegated work item and
+# never disposed it — one leak per delegation, for the life of the process.
+dotnet_diagnostic.CA2000.severity = warning
+
+# CA1849: call async methods in an async context.
+# Toolchain wrote its baseline with synchronous File.WriteAllText from inside async methods,
+# blocking a pool thread on disk for every baseline capture.
+dotnet_diagnostic.CA1849.severity = warning
+
+# CA5392: use DefaultDllImportSearchPaths.
+# CliAgentTransport declared DllImport("libc") with no search-path constraint, which permits
+# the loader to search the current working directory. This process runs with its working
+# directory set to a repository it is actively modifying.
+dotnet_diagnostic.CA5392.severity = warning
+
+# CA1003: use generic event handler instances.
+# UsageGovernor.Changed was Action<string>, so it could not carry additional context without a
+# breaking signature change, and did not follow the sender/args convention callers expect.
+dotnet_diagnostic.CA1003.severity = warning
