@@ -103,6 +103,7 @@ public sealed class IntakeAgent(FactoryServices services)
             Turns = result.Turns,
             DurationMs = result.DurationMs,
             StopReason = result.StopReason,
+            SessionId = result.SessionId,
             Error = result.Error,
             CacheHit = result.CacheHit
         }));

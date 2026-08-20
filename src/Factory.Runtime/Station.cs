@@ -175,6 +175,7 @@ public abstract class AgentStation : IStation
             Turns = result.Turns,
             DurationMs = result.DurationMs,
             StopReason = result.StopReason,
+            SessionId = result.SessionId,
             Error = result.Error,
             CacheHit = result.CacheHit,
             Attempt = ctx.Item.Attempts

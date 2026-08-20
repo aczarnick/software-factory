@@ -50,6 +50,11 @@ public static class FactoryVersion
     /// v4 adds the <see cref="CriteriaVerified"/> event, so per-criterion outcomes survive as ledger
     /// evidence instead of being computed and discarded. <see cref="IRunHistorySink"/> takes
     /// <see cref="FactoryEvent"/>, so a contract-3 sink is now handed a case it does not know — the
-    /// same exposure v2 and v3 were bumped for.</summary>
-    public const int ContractVersion = 4;
+    /// same exposure v2 and v3 were bumped for.
+    ///
+    /// v5 adds <see cref="RunRecord.SessionId"/>. <see cref="IRunHistory"/> and
+    /// <see cref="IRunHistorySink"/> both expose <see cref="RunRecord"/>, so this is the same class
+    /// of widening as v2's. A contract-4 history that drops the field on write turns every run it
+    /// stores back into an untraceable scalar, which is the state this member exists to end.</summary>
+    public const int ContractVersion = 5;
 }
