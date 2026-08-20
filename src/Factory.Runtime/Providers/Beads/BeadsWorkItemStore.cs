@@ -53,8 +53,8 @@ public sealed class BeadsWorkItemStore(BeadsCli cli, string owner, Action<string
     public IReadOnlyList<WorkItem> All() =>
         [.. cli.Json<BeadRecord>([.. BeadMapper.AllArgs()]).Select(BeadMapper.ToWorkItem)];
 
-    public WorkItem? TryClaim(string claimant) =>
-        cli.Json<BeadRecord>([.. BeadMapper.ClaimArgs(claimant)])
+    public WorkItem? TryClaim(string owner) =>
+        cli.Json<BeadRecord>([.. BeadMapper.ClaimArgs(owner)])
            .Select(BeadMapper.ToWorkItem)
            .FirstOrDefault();
 
