@@ -24,7 +24,7 @@ public sealed class CommandsCancelTests : IDisposable
 
         var cli = CommandLine.Parse(["cancel", item.Id, "--dir", _dir]);
 
-        var writer = new StringWriter();
+        using var writer = new StringWriter();
         var original = Console.Out;
         Console.SetOut(writer);
         int exitCode;

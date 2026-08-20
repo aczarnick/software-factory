@@ -53,7 +53,8 @@ public class LedgerMirroringWorkItemStoreTests
         state.Apply(new WorkItemFiled(item));
 
         var inner = new FakeStore { ClaimResult = item with { State = WorkItemState.InProgress, Owner = "claimant" } };
-        var mirror = new LedgerMirroringWorkItemStore(inner, new NullHistory(), state, _ => { });
+        using var history = new NullHistory();
+        var mirror = new LedgerMirroringWorkItemStore(inner, history, state, _ => { });
 
         mirror.TryClaim("claimant");
 
@@ -74,7 +75,8 @@ public class LedgerMirroringWorkItemStoreTests
         };
         state.Apply(new WorkItemFiled(item));
 
-        var mirror = new LedgerMirroringWorkItemStore(new FakeStore(), new NullHistory(), state, _ => { });
+        using var history = new NullHistory();
+        var mirror = new LedgerMirroringWorkItemStore(new FakeStore(), history, state, _ => { });
 
         // inner.Release returns nothing, so unlike every other mutating call, the mirror has no
         // "after" item from the store to compare against — only its own fold copy to correct.
@@ -106,7 +108,8 @@ public class LedgerMirroringWorkItemStoreTests
         {
             ReclaimResult = [new WorkItem { Id = item.Id, Title = item.Title, State = WorkItemState.Ready }]
         };
-        var mirror = new LedgerMirroringWorkItemStore(inner, new NullHistory(), state, _ => { });
+        using var history = new NullHistory();
+        var mirror = new LedgerMirroringWorkItemStore(inner, history, state, _ => { });
 
         var reclaimed = mirror.Reclaim(TimeSpan.FromMinutes(15)).Single();
 
@@ -228,8 +231,8 @@ public class LedgerMirroringWorkItemStoreTests
         var item = WorkItem.Create("mirrored after the host was disposed");
         state.Apply(new WorkItemFiled(item));
 
-        var mirror = new LedgerMirroringWorkItemStore(
-            new FakeStore(), new NullHistory(new ObjectDisposedException(nameof(IRunHistory))), state, _ => { });
+        using var history = new NullHistory(new ObjectDisposedException(nameof(IRunHistory)));
+        var mirror = new LedgerMirroringWorkItemStore(new FakeStore(), history, state, _ => { });
 
         // Deliberately outside the tolerated set: a closed ledger is a lifecycle bug, not an
         // environment fault, and no reconcile heals it — every later append fails the same way. A

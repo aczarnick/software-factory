@@ -51,7 +51,7 @@ public sealed class DoctorCommandTests : IDisposable
 
     private static int RunDoctor(CommandLine cli, out string output)
     {
-        var writer = new StringWriter();
+        using var writer = new StringWriter();
         var original = Console.Out;
         Console.SetOut(writer);
         try

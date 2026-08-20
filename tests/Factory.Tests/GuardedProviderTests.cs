@@ -98,7 +98,7 @@ public class GuardedProviderTests
         {
             using var writer = new JsonlRunHistory(Path.Combine(dir, "ledger.jsonl"));
             var sink = new GuardedRunHistorySink(new ThrowingSink(), "tracer", 1, _ => { });
-            var history = new FanOutRunHistory(writer, [sink]);
+            using var history = new FanOutRunHistory(writer, [sink]);
 
             history.Append(new FactoryNote("survives"));
 
@@ -110,10 +110,19 @@ public class GuardedProviderTests
     [Fact]
     public void DisposeStillDisposesTheWriterWhenASinkFlushThrows()
     {
-        var writer = new RecordingHistory();
-        var history = new FanOutRunHistory(writer, [new ThrowingFlushSink()]);
-
-        Assert.Throws<InvalidOperationException>(() => history.Dispose());
+        using var writer = new RecordingHistory();
+        FanOutRunHistory? history = new FanOutRunHistory(writer, [new ThrowingFlushSink()]);
+        try
+        {
+            // A flush that throws must still leave the writer disposed, via FanOutRunHistory's
+            // own finally block.
+            Assert.Throws<InvalidOperationException>(() => history.Dispose());
+            history = null;
+        }
+        finally
+        {
+            history?.Dispose();
+        }
 
         Assert.True(writer.Disposed);
     }
@@ -126,7 +135,7 @@ public class GuardedProviderTests
         {
             using var writer = new JsonlRunHistory(Path.Combine(dir, "ledger.jsonl"));
             var sink = new ObservingSink(writer);
-            var history = new FanOutRunHistory(writer, [sink]);
+            using var history = new FanOutRunHistory(writer, [sink]);
 
             history.Append(new FactoryNote("ordering"));
 
