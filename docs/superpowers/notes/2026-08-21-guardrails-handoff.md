@@ -1,8 +1,10 @@
 # Guardrails programme — session handoff
 
 **Date:** 2026-08-21
-**Branch:** `worktree-guardrails` (28 commits, **unmerged**)
+**Branch:** `worktree-guardrails` — 31 commits, rebased onto `master`, **not yet fast-forwarded in**
 **Worktree:** `.claude/worktrees/guardrails` (git-ignored, still on disk)
+**Backup:** `guardrails-prerebase` points at the pre-rebase tip. Delete it once the fast-forward has
+landed and the suite is green in the main checkout — until then it is the only copy of the old history.
 **State:** Phase 1 complete and reviewed. Phases 2–6 planned, not started.
 
 ---
@@ -130,7 +132,7 @@ phase note; do not let the four-for-four version resurface.
 | `v3z.5` | Phase 5 — coverage / complexity / security gates. Carries the two open numbers. |
 | `v3z.6` | Phase 6 — LLM review gates, cron scheduling, worktree enforcement. |
 | `v3z.7` | **Progress hooks are process-wide statics.** Take this before stall detection is wired. |
-| `v3z.8` | `Workspace.Dispose()` never called by its owner. |
+| `v3z.8` | Neither `Workspace.Dispose()` nor `ToolchainGate.Dispose()` is called by its owner. |
 | `v3z.9` | `EnforceCodeStyleInBuild` enforces nothing. Blocked on Phase 2. |
 
 ## 5. Decisions still owed by the user
