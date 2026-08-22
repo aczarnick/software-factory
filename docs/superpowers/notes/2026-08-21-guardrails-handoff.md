@@ -20,13 +20,48 @@ Read the spec before touching phases 2–6. It records not just the decisions bu
 **measurements and rejected alternatives** behind them, which is what stops the next session
 relitigating settled ground.
 
-## 2. THE MERGE IS NOT DONE — and there is a hazard
+## 2. THE MERGE IS NOT DONE — and it is a real job, not a formality
 
-`worktree-guardrails` is 28 commits ahead of `master` and has never been merged. It cannot be
-merged from inside the worktree: a worktree-isolated session is blocked from git operations
-against the shared checkout, which is correct and deliberate.
+**Measured 2026-08-21, after the work was finished:**
 
-**The hazard.** The main checkout has uncommitted changes to three files:
+```
+master...worktree-guardrails      19 behind, 29 ahead     (diverged, not fast-forwardable)
+files changed by BOTH sides       12
+snake_case test methods on master 378
+```
+
+`master` advanced **19 commits** while this branch was being built — including a
+`factory: integrate wi-…` commit, i.e. the autonomous daemon committing to `master` directly.
+This is exactly the hazard recorded in the phase-2 storage-ports handoff: a live `factory up`
+commits to whatever the main checkout has at HEAD.
+
+**Why this is not a small merge:**
+
+- The 12 overlapping files include `tests/Factory.Tests/RuntimeTests.cs`, `AgentTests.cs`,
+  `CoreTests.cs` and `DoctorCommandTests.cs` — precisely the files this branch rewrote wholesale
+  when it renamed 362 test methods. Large textual conflicts are near-certain.
+- `master` now has **378 snake_case test methods**. This branch renamed 362 at the branch point,
+  so `master` has added new tests in the old convention. Every one of them is a **CA1707 error**
+  after the merge, because `TreatWarningsAsErrors` is now on.
+- Overlapping source files include `Toolchain.cs`, `Workspace.cs`, `CheckStation.cs` and
+  `CliAgentTransport.cs` — all four carry Phase 1 defect fixes, so conflicts there need
+  resolving with the fix intact, not just textually.
+
+**Recommended approach — do not merge into `master` first.** Merge the other direction, inside
+the worktree, where there is a green build to check against and `master` is never left broken:
+
+```bash
+cd /Users/aczarnick/personal/repos/software-factory/.claude/worktrees/guardrails
+git merge master                # resolve 12 conflicts here
+# rename every new snake_case test method master brought in -- CA1707 is an error now
+dotnet build SoftwareFactory.sln --no-incremental   # must reach 0 Warning(s) 0 Error(s)
+dotnet test SoftwareFactory.sln
+```
+
+Only once that is green does the main-checkout merge become a fast-forward and therefore safe.
+Tracked as its own bead — it deserves a fresh session, not the tail end of one.
+
+**The other hazard.** The main checkout also has uncommitted changes to three files:
 
 ```
  M src/Factory.Cli/Commands.cs
@@ -46,36 +81,26 @@ Also uncommitted in the main checkout, and required for the harness worktree flo
  M .claude/settings.local.json    (+ worktree.baseRef: head)
 ```
 
-### Suggested merge sequence
+### Before touching the merge, land the loose ends in the main checkout
 
-Run from the main checkout, **not** the worktree. Preserve the uncommitted work first — do not
-use bare `git stash`, the stash stack is shared with other worktrees and sessions.
+Do not use bare `git stash` — the stash stack is shared with other worktrees and with concurrent
+sessions, so a pop can take someone else's work.
 
 ```bash
 cd /Users/aczarnick/personal/repos/software-factory
 git status                                    # confirm what is dirty
 
-# 1. Land the two settings changes; they are prerequisites, not part of the feature.
+# The two settings changes are prerequisites for the harness worktree flow, not feature work.
 git add .gitignore .claude/settings.local.json
 git commit -m "Ignore harness worktrees and branch them from local HEAD"
 
-# 2. Set the in-flight work aside as a WIP commit (survives concurrent sessions; a stash does not).
+# Set the in-flight verdict-column work aside as a WIP commit; it survives concurrent sessions.
 git add -A
 git commit -m "WIP: verdict column work in progress"
-
-# 3. Merge.
-git merge worktree-guardrails
-
-# 4. Resolve Commands.cs and LedgerProjectionTests.cs by hand.
-#    Then rename any snake_case test methods in the WIP files to PascalCase, or the
-#    build fails on CA1707 -- which is now an error, by design.
-
-# 5. Prove it.
-dotnet build SoftwareFactory.sln --no-incremental   # must be 0 Warning(s) 0 Error(s)
-dotnet test SoftwareFactory.sln                     # 417 + whatever the WIP adds
 ```
 
-No git remote is configured. Nothing to push.
+Then do the `git merge master` inside the worktree as above. No git remote is configured, so
+there is nothing to push at any point.
 
 ## 3. Phase 1 outcome
 
