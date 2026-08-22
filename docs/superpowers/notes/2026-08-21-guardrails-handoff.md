@@ -1,11 +1,18 @@
 # Guardrails programme — session handoff
 
 **Date:** 2026-08-21
-**Branch:** `worktree-guardrails` — 31 commits, rebased onto `master`, **not yet fast-forwarded in**
-**Worktree:** `.claude/worktrees/guardrails` (git-ignored, still on disk)
-**Backup:** `guardrails-prerebase` points at the pre-rebase tip. Delete it once the fast-forward has
-landed and the suite is green in the main checkout — until then it is the only copy of the old history.
-**State:** Phase 1 complete and reviewed. Phases 2–6 planned, not started.
+**Landed on `master`** at `a939c96` by fast-forward on 2026-08-21. Worktree removed; the
+`worktree-guardrails` and `guardrails-prerebase` branches are deleted. Verified in the main
+checkout after the merge: build `0 Warning(s) 0 Error(s)`, suite 432 passed of 433 with the one
+failure being the known flake, confirmed passing in isolation.
+**State:** Phase 1 complete, reviewed, and merged. Phases 2–6 planned, not started.
+
+**Heads-up for concurrent work.** At merge time five other sessions had live worktrees
+(`budget-park`, `installer`, `resume`, `sessionid`, `verify-gate`), all branched from `master`
+*before* the gate landed. Every one of them will hit warnings-as-errors the first time it rebases —
+mostly `CA1707` on snake_case test names, plus `CA1816` on any non-sealed `IDisposable` fixture.
+The fixes are mechanical and the scripts are in §2 of this note and in the Phase 1 plan; the
+surprise is the expensive part, not the work.
 
 ---
 
