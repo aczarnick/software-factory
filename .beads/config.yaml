@@ -73,4 +73,4 @@
 
 export.auto: true
 sync:
-    remote: "git+ssh://git@github.com/aczarnick/software-factory.git"
+    remote: "git+https://github.com/aczarnick/software-factory"
