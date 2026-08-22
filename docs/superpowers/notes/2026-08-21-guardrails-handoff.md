@@ -28,7 +28,11 @@ earlier drafts of this note is gone:
 ```
 master...worktree-guardrails      0 behind, 29 ahead      (linear)
 build                             0 Warning(s) 0 Error(s)
+suite                             432 passed, 1 failed of 433
 ```
+
+The one failure is the known flake below, confirmed passing in isolation (1 passed, 1s) straight
+after. 433 is 417 plus the 16 tests master brought in.
 
 The rebase replayed 30 commits and hit **two conflicts**, both resolved in master's favour because
 master had moved further:
