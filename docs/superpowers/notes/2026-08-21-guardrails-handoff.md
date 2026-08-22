@@ -20,87 +20,84 @@ Read the spec before touching phases 2–6. It records not just the decisions bu
 **measurements and rejected alternatives** behind them, which is what stops the next session
 relitigating settled ground.
 
-## 2. THE MERGE IS NOT DONE — and it is a real job, not a formality
+## 2. Rebased onto master — merge is now a fast-forward
 
-**Measured 2026-08-21, after the work was finished:**
-
-```
-master...worktree-guardrails      19 behind, 29 ahead     (diverged, not fast-forwardable)
-files changed by BOTH sides       12
-snake_case test methods on master 378
-```
-
-`master` advanced **19 commits** while this branch was being built — including a
-`factory: integrate wi-…` commit, i.e. the autonomous daemon committing to `master` directly.
-This is exactly the hazard recorded in the phase-2 storage-ports handoff: a live `factory up`
-commits to whatever the main checkout has at HEAD.
-
-**Why this is not a small merge:**
-
-- The 12 overlapping files include `tests/Factory.Tests/RuntimeTests.cs`, `AgentTests.cs`,
-  `CoreTests.cs` and `DoctorCommandTests.cs` — precisely the files this branch rewrote wholesale
-  when it renamed 362 test methods. Large textual conflicts are near-certain.
-- `master` now has **378 snake_case test methods**. This branch renamed 362 at the branch point,
-  so `master` has added new tests in the old convention. Every one of them is a **CA1707 error**
-  after the merge, because `TreatWarningsAsErrors` is now on.
-- Overlapping source files include `Toolchain.cs`, `Workspace.cs`, `CheckStation.cs` and
-  `CliAgentTransport.cs` — all four carry Phase 1 defect fixes, so conflicts there need
-  resolving with the fix intact, not just textually.
-
-**Recommended approach — do not merge into `master` first.** Merge the other direction, inside
-the worktree, where there is a green build to check against and `master` is never left broken:
-
-```bash
-cd /Users/aczarnick/personal/repos/software-factory/.claude/worktrees/guardrails
-git merge master                # resolve 12 conflicts here
-# rename every new snake_case test method master brought in -- CA1707 is an error now
-dotnet build SoftwareFactory.sln --no-incremental   # must reach 0 Warning(s) 0 Error(s)
-dotnet test SoftwareFactory.sln
-```
-
-Only once that is green does the main-checkout merge become a fast-forward and therefore safe.
-Tracked as its own bead — it deserves a fresh session, not the tail end of one.
-
-**The other hazard.** The main checkout also has uncommitted changes to three files:
+`worktree-guardrails` was **rebased onto `master`** on 2026-08-21, so the divergence described in
+earlier drafts of this note is gone:
 
 ```
- M src/Factory.Cli/Commands.cs
- M tests/Factory.Tests/LedgerProjectionTests.cs
-?? tests/Factory.Tests/ListVerdictColumnTests.cs
+master...worktree-guardrails      0 behind, 29 ahead      (linear)
+build                             0 Warning(s) 0 Error(s)
 ```
 
-This branch **also modifies the first two**. A merge will collide. Worse, `LedgerProjectionTests.cs`
-and `ListVerdictColumnTests.cs` are test files written before this branch existed, so their test
-methods are almost certainly still snake_case — and `CA1707` is now an **error**, so they will fail
-the build the moment they are committed.
+The rebase replayed 30 commits and hit **two conflicts**, both resolved in master's favour because
+master had moved further:
 
-Also uncommitted in the main checkout, and required for the harness worktree flow to work at all:
+- `src/Factory.Runtime/CheckStation.cs` — master had extracted the baseline/run block into a
+  `RunCheckedAsync` helper guarded by the new `ToolchainGate`. Took master's structure, then
+  re-applied this branch's actual point (CA1068 puts `ct` last) by converting the helper's two
+  positional calls to named arguments. Worth noting *why* that was safe to catch: because `ct`
+  moved past a parameter of a different type, a stale positional call fails to compile rather than
+  silently binding the wrong argument.
+- `tests/Factory.Tests/DoctorCommandTests.cs` — master had independently added the same
+  `OperatingSystem.IsWindows()` guard, with braces and a better comment. Took master's version;
+  this branch's commit was redundant there.
+
+One commit was **dropped as already upstream**: the `xUnit2031` fix. Master had fixed the same
+`Assert.Single(… .Where(…))` independently.
+
+### What the gate then caught in master's code
+
+Master's 19 commits were written before these rules were errors, so the first green build required
+fixing **30 violations** in them — 29 in tests, one in `src`:
+
+| Rule | Sites | Fix |
+|---|---:|---|
+| CA1707 | 16 | Renamed to PascalCase (same script as the original 362) |
+| CA1849 | 6 | `await File.WriteAllTextAsync` / `ReadAllTextAsync` in async test methods |
+| CA1816 | 4 | Sealed the new fixtures |
+| CA2000 | 2 | `using var` on two `StringWriter`s |
+| CA1861 | 1 | Hoisted a constant array out of an argument |
+| CA1001 | 1 | **`ToolchainGate` owned a `SemaphoreSlim` without being disposable** |
+
+That last one is the gate working on code it did not write: `ToolchainGate` is a type master added
+after this branch started, carrying exactly the defect class `Workspace` had. Fixed the same way —
+and like `Workspace`, its owner still never disposes it. Both are now tracked together in
+`v3z.8`, because the same shape appearing twice suggests the real problem is the ownership
+boundary for disposables in `FactoryServices`.
+
+### To land it
+
+The main-checkout merge is now a fast-forward, but the main checkout still has uncommitted work
+that must be dealt with first:
 
 ```
- M .gitignore                     (+ .claude/worktrees/)
+ M .gitignore                     (+ .claude/worktrees/)   <- prerequisite for the worktree flow
  M .claude/settings.local.json    (+ worktree.baseRef: head)
 ```
 
-### Before touching the merge, land the loose ends in the main checkout
-
-Do not use bare `git stash` — the stash stack is shared with other worktrees and with concurrent
-sessions, so a pop can take someone else's work.
+Do **not** use bare `git stash` — the stash stack is shared with other worktrees and concurrent
+sessions, so a pop can take someone else's work. A WIP commit is safe; a stash is not.
 
 ```bash
 cd /Users/aczarnick/personal/repos/software-factory
-git status                                    # confirm what is dirty
+git status                                     # see what is actually dirty now
 
-# The two settings changes are prerequisites for the harness worktree flow, not feature work.
 git add .gitignore .claude/settings.local.json
 git commit -m "Ignore harness worktrees and branch them from local HEAD"
 
-# Set the in-flight verdict-column work aside as a WIP commit; it survives concurrent sessions.
-git add -A
-git commit -m "WIP: verdict column work in progress"
+git status                                     # anything else dirty -> WIP commit it
+git merge --ff-only worktree-guardrails        # refuses rather than surprising you
+
+dotnet build SoftwareFactory.sln --no-incremental   # 0 Warning(s) 0 Error(s)
+dotnet test SoftwareFactory.sln
 ```
 
-Then do the `git merge master` inside the worktree as above. No git remote is configured, so
-there is nothing to push at any point.
+Use `--ff-only` deliberately: if it refuses, `master` has moved again (the daemon commits to it),
+and the right response is another rebase in the worktree, not a merge commit that leaves `master`
+briefly un-gated.
+
+There is no git remote. Nothing to push.
 
 ## 3. Phase 1 outcome
 
