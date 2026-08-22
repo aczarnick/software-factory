@@ -8,7 +8,7 @@ namespace Factory.Tests;
 /// item concurrency. Each check here holds the gate for long enough (via a fake compile step)
 /// that a missing lock would show up as observed concurrency above one.
 /// </summary>
-public class ToolchainGateTests : IDisposable
+public sealed class ToolchainGateTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);
@@ -28,7 +28,7 @@ public class ToolchainGateTests : IDisposable
     }
 
     [Fact]
-    public async Task ToolchainGate_SerialisesConcurrentItemChecks()
+    public async Task ToolchainGateSerialisesConcurrentItemChecks()
     {
         using var host = FactoryHost.Init(_dir, transport: new FakeTransport());
 

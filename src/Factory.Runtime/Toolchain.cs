@@ -429,7 +429,7 @@ public static class ToolchainProbes
 /// once. <see cref="ToolchainRunner.BaselineAsync"/> documents why a baseline taken while
 /// something else is building is unreliable; this gate is what keeps that invariant true once
 /// items run concurrently. Model calls are never serialised by this — only the toolchain.</summary>
-public sealed class ToolchainGate
+public sealed class ToolchainGate : IDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
 
@@ -438,6 +438,8 @@ public sealed class ToolchainGate
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         return new Release(_gate);
     }
+
+    public void Dispose() => _gate.Dispose();
 
     private sealed class Release(SemaphoreSlim gate) : IDisposable
     {

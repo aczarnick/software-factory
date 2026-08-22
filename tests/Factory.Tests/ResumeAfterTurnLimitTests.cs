@@ -10,7 +10,7 @@ namespace Factory.Tests;
 /// again: one such run cost $1.92 of a $2.00 ceiling and needed $0.32 more to finish, while the
 /// restart cost another $2. The transport has always accepted a session to resume; nothing set it.
 /// </summary>
-public class ResumeAfterTurnLimitTests : IDisposable
+public sealed class ResumeAfterTurnLimitTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
     public void Dispose() => TempDir.Delete(_dir);
@@ -42,7 +42,7 @@ public class ResumeAfterTurnLimitTests : IDisposable
         [.. transport.Requests.Where(r => r.Profile.Name == "implement")];
 
     [Fact]
-    public async Task A_station_that_ran_out_of_turns_resumes_its_own_session()
+    public async Task AStationThatRanOutOfTurnsResumesItsOwnSession()
     {
         var transport = ExhaustsThenSucceeds("sess-abc");
         using var host = FactoryHost.Init(_dir, transport: transport);
@@ -61,7 +61,7 @@ public class ResumeAfterTurnLimitTests : IDisposable
     }
 
     [Fact]
-    public async Task A_resumed_attempt_does_not_resend_the_whole_briefing()
+    public async Task AResumedAttemptDoesNotResendTheWholeBriefing()
     {
         var transport = ExhaustsThenSucceeds("sess-abc");
         using var host = FactoryHost.Init(_dir, transport: transport);
@@ -82,7 +82,7 @@ public class ResumeAfterTurnLimitTests : IDisposable
     }
 
     [Fact]
-    public async Task A_run_that_failed_for_any_other_reason_is_not_resumed()
+    public async Task ARunThatFailedForAnyOtherReasonIsNotResumed()
     {
         var attempts = 0;
         var transport = new FakeTransport()
@@ -109,7 +109,7 @@ public class ResumeAfterTurnLimitTests : IDisposable
     }
 
     [Fact]
-    public async Task A_session_is_never_resumed_by_a_different_station()
+    public async Task ASessionIsNeverResumedByADifferentStation()
     {
         var transport = ExhaustsThenSucceeds("sess-abc");
         using var host = FactoryHost.Init(_dir, transport: transport);

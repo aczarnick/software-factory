@@ -8,7 +8,7 @@ namespace Factory.Tests;
 /// deferred to review and never appear in a deterministic verdict, so counting them in the
 /// denominator makes a fully verified item read as partly failed for the rest of its life.</summary>
 [Collection("Console")]
-public class ListVerdictColumnTests : IDisposable
+public sealed class ListVerdictColumnTests : IDisposable
 {
     private readonly string _dir = TempDir.Create();
 
@@ -35,7 +35,7 @@ public class ListVerdictColumnTests : IDisposable
             }
         }
 
-        var writer = new StringWriter();
+        using var writer = new StringWriter();
         var original = Console.Out;
         Console.SetOut(writer);
         try
@@ -51,7 +51,7 @@ public class ListVerdictColumnTests : IDisposable
     }
 
     [Fact]
-    public void An_item_whose_machine_criteria_all_passed_reads_as_complete()
+    public void AnItemWhoseMachineCriteriaAllPassedReadsAsComplete()
     {
         var item = WorkItem.Create("mixed criteria") with
         {
@@ -68,7 +68,7 @@ public class ListVerdictColumnTests : IDisposable
     }
 
     [Fact]
-    public void A_failing_machine_criterion_still_shows_against_the_machine_total()
+    public void AFailingMachineCriterionStillShowsAgainstTheMachineTotal()
     {
         var item = WorkItem.Create("one failed") with
         {
@@ -85,7 +85,7 @@ public class ListVerdictColumnTests : IDisposable
             ]));
         }
 
-        var writer = new StringWriter();
+        using var writer = new StringWriter();
         var original = Console.Out;
         Console.SetOut(writer);
         try { Commands.List(CommandLine.Parse(["ls", "--dir", _dir])); }
@@ -95,7 +95,7 @@ public class ListVerdictColumnTests : IDisposable
     }
 
     [Fact]
-    public void An_item_with_only_judged_criteria_is_not_reported_as_machine_verified()
+    public void AnItemWithOnlyJudgedCriteriaIsNotReportedAsMachineVerified()
     {
         var item = WorkItem.Create("judgement only") with
         {

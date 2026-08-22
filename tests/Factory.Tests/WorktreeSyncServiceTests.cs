@@ -2,8 +2,11 @@ using Factory.Runtime;
 
 namespace Factory.Tests;
 
-public class WorktreeSyncServiceTests : IDisposable
+public sealed class WorktreeSyncServiceTests : IDisposable
 {
+    private static readonly string[] ExpectedConflictInvocations =
+        ["rev-parse mainline", "merge-base basesha headsha", "merge mainline", "merge --abort"];
+
     private readonly string _dir = TempDir.Create();
     private readonly WorktreeSyncService _sync = new();
 
@@ -14,7 +17,7 @@ public class WorktreeSyncServiceTests : IDisposable
         await Shell.GitAsync(_dir, default, "init", "-q");
         await Shell.GitAsync(_dir, default, "config", "user.email", "factory@local");
         await Shell.GitAsync(_dir, default, "config", "user.name", "Software Factory");
-        File.WriteAllText(Path.Combine(_dir, "base.txt"), "base\n");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "base.txt"), "base\n");
         await Shell.GitAsync(_dir, default, "add", "-A");
         await Shell.GitAsync(_dir, default, "commit", "-q", "-m", "initial commit");
         return (await Shell.GitAsync(_dir, default, "rev-parse", "HEAD")).Stdout.Trim();
@@ -35,7 +38,7 @@ public class WorktreeSyncServiceTests : IDisposable
         (await Shell.GitAsync(_dir, default, "branch", "--show-current")).Stdout.Trim();
 
     [Fact]
-    public async Task Mainline_unchanged_since_the_base_commit_is_a_no_op()
+    public async Task MainlineUnchangedSinceTheBaseCommitIsANoOp()
     {
         var baseCommit = await InitMainAsync();
         var mainlineRef = await CurrentBranchAsync();
@@ -49,13 +52,13 @@ public class WorktreeSyncServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Mainline_advanced_cleanly_is_synced_into_the_worktree()
+    public async Task MainlineAdvancedCleanlyIsSyncedIntoTheWorktree()
     {
         var baseCommit = await InitMainAsync();
         var mainlineRef = await CurrentBranchAsync();
         var worktree = await AddWorktreeAsync("factory/item-b");
 
-        File.WriteAllText(Path.Combine(_dir, "mainline-addition.txt"), "new on mainline\n");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "mainline-addition.txt"), "new on mainline\n");
         await Shell.GitAsync(_dir, default, "add", "-A");
         await Shell.GitAsync(_dir, default, "commit", "-q", "-m", "mainline advances");
 
@@ -66,7 +69,7 @@ public class WorktreeSyncServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task A_genuine_conflict_aborts_the_merge_and_leaves_the_worktree_untouched()
+    public async Task AGenuineConflictAbortsTheMergeAndLeavesTheWorktreeUntouched()
     {
         var baseCommit = await InitMainAsync();
         var mainlineRef = await CurrentBranchAsync();
@@ -74,22 +77,22 @@ public class WorktreeSyncServiceTests : IDisposable
 
         // Conflicting edits to the same line, one on mainline and one already committed in the
         // worktree's own branch.
-        File.WriteAllText(Path.Combine(_dir, "base.txt"), "changed on mainline\n");
+        await File.WriteAllTextAsync(Path.Combine(_dir, "base.txt"), "changed on mainline\n");
         await Shell.GitAsync(_dir, default, "add", "-A");
         await Shell.GitAsync(_dir, default, "commit", "-q", "-m", "mainline edits base.txt");
 
-        File.WriteAllText(Path.Combine(worktree, "base.txt"), "changed in the worktree\n");
+        await File.WriteAllTextAsync(Path.Combine(worktree, "base.txt"), "changed in the worktree\n");
         await Shell.GitAsync(worktree, default, "add", "-A");
         await Shell.GitAsync(worktree, default, "commit", "-q", "-m", "worktree edits base.txt");
 
-        var beforeAttempt = File.ReadAllText(Path.Combine(worktree, "base.txt"));
+        var beforeAttempt = await File.ReadAllTextAsync(Path.Combine(worktree, "base.txt"));
 
         var outcome = await _sync.SyncAsync(_dir, mainlineRef, worktree, baseCommit);
 
         Assert.Equal(SyncOutcome.Conflict, outcome);
         Assert.False(File.Exists(Path.Combine(worktree, ".git", "MERGE_HEAD")),
             "a conflicting merge must have been aborted");
-        Assert.Equal(beforeAttempt, File.ReadAllText(Path.Combine(worktree, "base.txt")));
+        Assert.Equal(beforeAttempt, await File.ReadAllTextAsync(Path.Combine(worktree, "base.txt")));
 
         // Never touched the main checkout, only the worktree.
         var mainStatus = await Shell.GitAsync(_dir, default, "status", "--porcelain");
@@ -115,7 +118,7 @@ public class WorktreeSyncServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task A_conflicting_merge_issues_merge_then_merge_abort_through_the_injected_shell()
+    public async Task AConflictingMergeIssuesMergeThenMergeAbortThroughTheInjectedShell()
     {
         var spy = new SpyGitShell();
         var sync = new WorktreeSyncService(spy);
@@ -123,8 +126,6 @@ public class WorktreeSyncServiceTests : IDisposable
         var outcome = await sync.SyncAsync("main", "mainline", "worktree", "basesha");
 
         Assert.Equal(SyncOutcome.Conflict, outcome);
-        Assert.Equal(
-            new[] { "rev-parse mainline", "merge-base basesha headsha", "merge mainline", "merge --abort" },
-            spy.Invocations);
+        Assert.Equal(ExpectedConflictInvocations, spy.Invocations);
     }
 }

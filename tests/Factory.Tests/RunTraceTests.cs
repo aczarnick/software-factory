@@ -11,7 +11,7 @@ namespace Factory.Tests;
 public class RunTraceTests
 {
     [Fact]
-    public void A_run_record_carries_the_session_that_produced_it()
+    public void ARunRecordCarriesTheSessionThatProducedIt()
     {
         var record = new RunRecord
         {
@@ -25,7 +25,7 @@ public class RunTraceTests
     }
 
     [Fact]
-    public void A_session_id_survives_the_ledger_round_trip()
+    public void ASessionIdSurvivesTheLedgerRoundTrip()
     {
         var record = new RunRecord
         {
@@ -43,7 +43,7 @@ public class RunTraceTests
     }
 
     [Fact]
-    public void A_run_with_no_session_reported_records_none()
+    public void ARunWithNoSessionReportedRecordsNone()
     {
         var record = new RunRecord { RunId = "run_1", ItemId = "wi_1", StationId = "check" };
 

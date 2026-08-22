@@ -302,7 +302,7 @@ public class BlueprintTests
     }
 
     [Fact]
-    public void ConcurrencyDefault_MatchesDocumentedValue()
+    public void ConcurrencyDefaultMatchesDocumentedValue()
     {
         // HANDOFF.md's "Operating notes" states this same number and why. If either changes
         // without the other, this test — and not a stale ledger — is what catches it.
