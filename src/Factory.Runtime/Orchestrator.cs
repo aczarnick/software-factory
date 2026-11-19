@@ -32,6 +32,10 @@ public sealed record OrchestratorReport
     public int Completed { get; init; }
     public int Failed { get; init; }
     public int Blocked { get; init; }
+
+    /// <summary>Items returned to the queue because a spend window was exhausted. Distinct from
+    /// blocked: nothing is wrong with the work and no human has to clear it.</summary>
+    public int Parked { get; init; }
     public decimal CostUsd { get; init; }
     public TokenUsage Usage { get; init; } = TokenUsage.Zero;
     public int ModelCalls { get; init; }
@@ -41,7 +45,8 @@ public sealed record OrchestratorReport
     public decimal DelegatedCostUsd { get; init; }
 
     public string Summary =>
-        $"{Completed} completed, {Failed} failed, {Blocked} blocked · " +
+        $"{Completed} completed, {Failed} failed, {Blocked} blocked" +
+        (Parked > 0 ? $", {Parked} parked" : "") + " · " +
         $"${CostUsd:F4}" +
         (DelegatedCostUsd > 0 ? $" (${DelegatedCostUsd:F4} in linked factories)" : "") +
         $" · {Usage.Total:N0} tokens · {ModelCalls} model calls, {CacheHits} cache hits";
@@ -59,7 +64,11 @@ public sealed class Orchestrator : IDisposable
     private readonly HeartbeatWriter _heartbeat;
     private readonly DateTime _startedAtUtc = DateTime.UtcNow;
 
-    private int _completed, _failed, _blocked, _delegatedCalls;
+    private int _completed, _failed, _blocked, _parked, _delegatedCalls;
+
+    /// <summary>The hold currently being slept through, so the reason is logged once per
+    /// transition rather than once per nap.</summary>
+    private string? _heldFor;
     private decimal _delegatedCost;
     private TokenUsage _delegatedUsage = TokenUsage.Zero;
     private readonly Lock _tally = new();
@@ -97,6 +106,52 @@ public sealed class Orchestrator : IDisposable
         // item id through every call site.
         Shell.OnCommandStarted = TouchProgress;
         Shell.OnCommandCompleted = TouchProgress;
+    }
+
+    /// <summary>Why dispatch is holding, and how long the loop may sleep before looking again.
+    ///
+    /// Two ceilings hold work without anything being wrong with it, and both clear by the passage
+    /// of time: the provider's usage window, which the governor reads off the transport, and this
+    /// factory's own daily spend window. Neither is a reason to fail or block an item.</summary>
+    private sealed record DispatchHold(TimeSpan Wait, string Reason, bool ClearsAtAKnownTime, TimeSpan WaitCeiling)
+    {
+        /// <summary>A one-shot run reports and exits rather than sitting on a window: `factory up`
+        /// is a command, and its caller wants the queue left intact, not a process asleep for
+        /// hours. A daemon sleeps instead, which is the only way the factory clears a window
+        /// unattended. A window whose reset was never measured is also abandoned past the
+        /// governor's wait ceiling — waiting on a guess is how a CLI run silently hangs.</summary>
+        public bool StopRatherThanWait(OrchestratorOptions opts) =>
+            ClearsAtAKnownTime
+                ? opts.StopWhenIdle
+                : Wait > WaitCeiling || opts.StopWhenIdle && Wait > opts.PollInterval * 4;
+
+        /// <summary>A known window is slept through in poll-sized naps rather than one long delay:
+        /// the wait is re-derived each pass, so spend another writer records — or a reading that
+        /// was already stale — is picked up within a poll instead of at the end of a delay
+        /// measured in hours.</summary>
+        public TimeSpan Nap(OrchestratorOptions opts) =>
+            ClearsAtAKnownTime && opts.PollInterval < Wait ? opts.PollInterval : Wait;
+    }
+
+    /// <summary>The binding reason not to start anything new, if there is one.
+    ///
+    /// The spend window is checked first: it is this factory's own decision and it applies to every
+    /// item, so nothing can be afforded while it is exhausted no matter what the provider says.</summary>
+    private DispatchHold? DispatchHoldNow()
+    {
+        if (_s.Budget.ShouldHold(out var budgetWait, out var budgetReason))
+            // No ceiling on the wait: midnight is a measured instant, and a daemon that gives up
+            // on it is back to needing a human to restart it.
+            return new DispatchHold(budgetWait, budgetReason, ClearsAtAKnownTime: true, TimeSpan.MaxValue);
+
+        // Only a rejection stops dispatch. A warning narrows concurrency and paces runs instead,
+        // which Concurrency above has already applied.
+        if (_s.Runner.Governor.ShouldHold(out var usageWait, out var usageReason) &&
+            _s.Runner.Governor.Binding?.Status == RateLimitStatus.Rejected)
+            return new DispatchHold(
+                usageWait, usageReason, ClearsAtAKnownTime: false, _s.Runner.Governor.Policy.MaxWait);
+
+        return null;
     }
 
     /// <summary>Records that an item just made forward progress.</summary>
@@ -144,26 +199,30 @@ public sealed class Orchestrator : IDisposable
             // a usage ceiling the factory narrows itself rather than sprinting into the wall.
             var concurrency = _s.Runner.Governor.Concurrency(configured);
 
-            // A rejected window means nothing new should be started at all. In-flight items
+            // An exhausted window means nothing new should be started at all. In-flight items
             // are left to drain, so no verified work is lost to a limit we just hit.
-            var throttled = _s.Runner.Governor.ShouldHold(out var holdFor, out var holdReason) &&
-                            _s.Runner.Governor.Binding?.Status == RateLimitStatus.Rejected;
+            var hold = DispatchHoldNow();
 
-            if (throttled && running.Count == 0)
+            if (hold is not null && running.Count == 0)
             {
-                if (holdFor > _s.Runner.Governor.Policy.MaxWait || opts.StopWhenIdle && holdFor > opts.PollInterval * 4)
+                if (hold.StopRatherThanWait(opts))
                 {
-                    _s.Log($"⏸ {holdReason} — stopping; remaining work stays queued");
+                    _s.Log($"⏸ {hold.Reason} — stopping; remaining work stays queued");
                     break;
                 }
 
-                _s.Log($"⏸ {holdReason}");
-                try { await Task.Delay(holdFor, ct).ConfigureAwait(false); }
+                // Logged on the transition only: a window is slept through in poll-sized naps,
+                // and a line per nap would bury everything else in the run.
+                if (_heldFor != hold.Reason) _s.Log($"⏸ {_heldFor = hold.Reason}");
+
+                try { await Task.Delay(hold.Nap(opts), ct).ConfigureAwait(false); }
                 catch (OperationCanceledException) { break; }
                 continue;
             }
 
-            var claimable = throttled ? 0 : concurrency - running.Count;
+            _heldFor = null;
+
+            var claimable = hold is not null ? 0 : concurrency - running.Count;
 
             // Claiming marks the item in progress before it is dispatched, so the next poll
             // cannot pick it up again.
@@ -208,6 +267,7 @@ public sealed class Orchestrator : IDisposable
                 Completed = _completed,
                 Failed = _failed,
                 Blocked = _blocked,
+                Parked = _parked,
                 // Totals include work done inside child factories, which spend through their
                 // own runners and would otherwise be invisible here.
                 CostUsd = _s.Runner.TotalCostUsd + _delegatedCost,
@@ -345,6 +405,11 @@ public sealed class Orchestrator : IDisposable
                     {
                         _s.Budget.EnsureCanSpend(run.Item);
                     }
+                    catch (BudgetExhaustedException ex) when (ex.ResetsAt is not null)
+                    {
+                        Park(run, ex.Message);
+                        return;
+                    }
                     catch (BudgetExhaustedException ex)
                     {
                         await BlockAsync(run, ex.Message, ct).ConfigureAwait(false);
@@ -481,6 +546,33 @@ public sealed class Orchestrator : IDisposable
 
         Interlocked.Increment(ref _failed);
         _s.Log($"✘ {item.Id} failed — {Trim(reason)}");
+    }
+
+    /// <summary>Returns an item to the queue because a spend window is exhausted. Not blocked and
+    /// not failed: nothing is wrong with the work, and a human clearing it by hand is exactly what
+    /// this avoids — the item is dispatchable again the moment the window rolls.
+    ///
+    /// The workspace is deliberately kept, unlike a failure: the item resumes at the station it was
+    /// parked on, and discarding the worktree would throw away everything the earlier stations built.
+    ///
+    /// The reason rides the release rather than <c>LastError</c>: a parked item has no error, and
+    /// writing one would make every listing report a fault that does not exist.</summary>
+    private void Park(ItemRun run, string reason)
+    {
+        try
+        {
+            _s.Items.Release(run.Item.Id, reason);
+        }
+        catch (WorkItemStoreException ex)
+        {
+            // The item stays in progress and its lease expires, which the next run's reclaim
+            // covers. Reported rather than escalated: the backlog refusing a release is not a
+            // reason to also lose the run's own accounting of why it stopped.
+            _s.Log($"  could not park {run.Item.Id} — the backlog refused the release: {ex.Message}");
+        }
+
+        Interlocked.Increment(ref _parked);
+        _s.Log($"⏸ {run.Item.Id} parked — {Trim(reason)}");
     }
 
     private async Task BlockAsync(ItemRun run, string reason, CancellationToken ct)
